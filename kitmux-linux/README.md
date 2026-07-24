@@ -73,7 +73,7 @@ Inside the headless Ubuntu VM:
 kitmux-linux/scripts/build-release-runtime.sh
 ```
 
-This creates a 299 MB proof tree under
+This creates a roughly 303 MB proof tree under
 `kitmux-linux/build/kitmux-engine-runtime`, packages the pinned Python and
 Kitty runtime, applies relative ELF runpaths, rejects this checkout's absolute
 path, and runs the Linux stress suite both before and after moving the tree.

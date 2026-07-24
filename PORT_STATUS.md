@@ -4,15 +4,15 @@
 
 **Implementation state:** Engine and desktop proofs are in progress. Separate
 Ubuntu ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a relocatable
-299 MB engine runtime, Linux stress tests, and a visible GTK 4 `GtkGLArea`
+303 MB engine runtime, Linux stress tests, and a visible GTK 4 `GtkGLArea`
 smoke now exist. No production GTK application or package exists yet.
 
 **Active phase:** Phase 1 — prove headless `libkitty`.
 
-**Next slice:** Finish 1.3 — reproduce the release runtime from clean Ubuntu
-and Fedora checkouts, complete the per-library license/SBOM inventory, then
-close the release-layout gate. Phase 0.4 shared fixture promotion remains open
-and blocks the Rust product model.
+**Next slice:** Finish 1.3 — complete the per-library license/SBOM inventory,
+then close the release-layout gate. Clean Ubuntu/Fedora reproduction now
+passes. Phase 0.4 shared fixture promotion remains open and blocks the Rust
+product model.
 
 ## Verified checkout state
 
@@ -71,15 +71,35 @@ listed only in the checkout's local Git exclude file.
   direct-child reaping, zombie absence, and exact FD-baseline restoration.
 - Full headless gate passed: six C/C++/ELF/engine/session/stress tests plus the
   Rust/C layout check. CTest completed in 6.58 seconds.
-- Built a 299 MB release-shaped engine tree with pinned CPython 3.14, Kitty,
+- Built a release-shaped engine tree with pinned CPython 3.14, Kitty,
   libkitty glue/config/font assets, bundled shared libraries, relative ELF
   runpaths, SHA-256 inventory, and no `LD_LIBRARY_PATH`.
 - The release stress gate passed from both its random staging path and final
   path. It resolved `libpython3.14.so.1.0` inside the bundle and rejected
   embedded paths to this developer checkout.
 - The third-party inventory has started but is explicitly incomplete. Clean
-  Ubuntu/Fedora reproduction and full licensing/SBOM remain required before
-  Slice 1.3 is complete.
+  Ubuntu/Fedora reproduction and full licensing/SBOM were still required at
+  this checkpoint.
+
+### 2026-07-23 — clean Ubuntu and Fedora release reproduction
+
+- Added rootless Podman gates that archive the committed Linux tree, add only
+  the locked materialized source inputs, and build in fresh Ubuntu 26.04 and
+  Fedora 44 ARM64 userspaces. Each distribution passed twice.
+- Every pass built the release runtime, ran the 16-session/24-close stress gate
+  from a random staging path, moved the complete tree, and passed the gate
+  again from its final path.
+- Clean isolation found and fixed three hidden dependencies on development
+  state: the build-time Python executable borrowed the VM's host
+  `libpython3.14`, the default output parent already existed only because of
+  earlier builds, and one regular fontconfig library was absent while its
+  symlinks survived the VirtioFS extraction.
+- The bundled interpreter now has its own relative runpath and reports the
+  correct pinned version, CPython 3.14.6. The release audit declares the
+  intentionally system-owned X11/XCB/D-Bus dependencies and fails other
+  unresolved ELF dependencies.
+- Full per-library license attribution and a machine-readable SBOM are the
+  remaining Slice 1.3 blocker.
 
 ### 2026-07-23 — headless Linux engine proof
 
@@ -138,14 +158,14 @@ clean-machine release evidence.
 - Shared portable fixtures are still provisional. Do not start the Rust model
   or claim snapshot/control parity until macOS and Linux consume the same
   valid and invalid fixture files.
-- A relocatable `$ORIGIN` engine tree exists, but Slice 1.3 still requires
-  clean Ubuntu/Fedora reproduction and a complete per-library license/SBOM
+- A relocatable `$ORIGIN` engine tree and clean Ubuntu/Fedora reproduction
+  exist, but Slice 1.3 still requires a complete per-library license/SBOM
   inventory.
 
 ## Next-agent handoff
 
 Continue
 [Slice 1.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-13-build-the-release-shaped-runtime).
-Reproduce the current bundle in clean Ubuntu and Fedora environments and
-complete its license/SBOM inventory. Do not scaffold production UI until that
-gate closes.
+Complete the runtime's per-library license attribution and machine-readable
+SBOM, then close the gate. Do not scaffold production UI until that gate
+closes.
