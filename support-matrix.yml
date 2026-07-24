@@ -1,5 +1,15 @@
 schema_version: 1
-updated: 2026-07-23
+updated: 2026-07-24
+
+release_runtime_evidence:
+  architecture: aarch64
+  approximate_size_mib: 104
+  sbom: SPDX-2.3 JSON, 24 packages and 876 regular files
+  ubuntu_26_04_clean_passes: 2
+  ubuntu_26_04_stable_inventory_sha256: c3c0e71fc8dce5e62a07b67ec69247d7bab29690cb8af64243fd6feb0e29e886
+  fedora_44_clean_passes: 2
+  fedora_44_stable_inventory_sha256: a4c958c659abe73ad1f937a4187d0d301408ecca0e1d9b2279d9fed99c01caef
+  package_format: unpackaged release tree
 
 toolchain:
   rust: 1.97.1

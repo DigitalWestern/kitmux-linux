@@ -35,7 +35,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-git -C "${linux_root}" archive HEAD | tar -xf - -C "${base}"
+# Copy the candidate worktree, including intentional uncommitted files, into an
+# isolated tree. Using `git archive HEAD` here previously tested the last
+# commit instead of the changes about to be committed.
+git -C "${linux_root}" ls-files --cached --others --exclude-standard -z \
+  | tar -C "${linux_root}" --null -T - -cf - \
+  | tar -xf - -C "${base}"
 tar -C "${linux_root}" \
   --exclude=.source/kitty/.git \
   -cf - .source \
@@ -44,6 +49,7 @@ tar -C "${linux_root}" \
 run_clean_passes() {
   local label="$1"
   local image="$2"
+  local first_inventory_hash=""
 
   for pass in 1 2; do
     local run_root="${base}.run-${label}-${pass}"
@@ -54,11 +60,23 @@ run_clean_passes() {
       -w /work \
       "${image}" \
       kitmux-linux/scripts/build-release-runtime.sh
+    local inventory_hash
+    inventory_hash="$(
+      sha256sum "${run_root}/kitmux-linux/build/kitmux-engine-runtime/share/SHA256SUMS" \
+        | awk '{print $1}'
+    )"
+    if [[ "${pass}" -eq 1 ]]; then
+      first_inventory_hash="${inventory_hash}"
+    elif [[ "${inventory_hash}" != "${first_inventory_hash}" ]]; then
+      echo "${label} release contents changed between identical clean passes." >&2
+      exit 1
+    fi
     rm -rf -- "${run_root}"
   done
+  echo "${label} reproducible release inventory: ${first_inventory_hash}"
 }
 
 run_clean_passes ubuntu localhost/kitmux-clean-ubuntu:26.04
 run_clean_passes fedora localhost/kitmux-clean-fedora:44
 
-echo "Clean Ubuntu and Fedora release builds passed twice"
+echo "Clean Ubuntu and Fedora release builds passed twice with stable per-image inventories"

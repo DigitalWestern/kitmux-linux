@@ -9,6 +9,10 @@
     "repository": "https://github.com/kovidgoyal/kitty.git",
     "commit": "c1d507dbe8cd12830d8b97b0d350d9dc2e4d383f"
   },
+  "kitty_dependency_bundles": {
+    "linux-arm64.tar.xz": "eb5400212879ced80d02aee1a121e6b0efa3a6c71737a26b9dc5b3e3a4179431",
+    "NerdFontsSymbolsOnly.tar.xz": "7f8c090da3b0eaa7108646bf34cbbb6ed13d5358a72460522108b06c7ecd716a"
+  },
   "sha256": {
     "libkitty/include/libkitty.h": "6c4fda3d0b47c52c69ee2c91255690e2d2a2c58135099827220f867942b333c9",
     "libkitty/src/engine.c": "7973f795968adf0ace4e57b2a78a2b2be4c384a21e754f0e4359b3bdad01b226",

@@ -1,18 +1,18 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-07-23
+**Last inspected:** 2026-07-24
 
-**Implementation state:** Engine and desktop proofs are in progress. Separate
-Ubuntu ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a relocatable
-303 MB engine runtime, Linux stress tests, and a visible GTK 4 `GtkGLArea`
-smoke now exist. No production GTK application or package exists yet.
+**Implementation state:** Phase 1 is closed. Separate Ubuntu ARM64 headless and
+XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine
+runtime, Linux stress tests, and a visible GTK 4 `GtkGLArea` smoke exist. No
+production GTK application or native package exists yet.
 
-**Active phase:** Phase 1 — prove headless `libkitty`.
+**Active phase:** Phase 2 — rendering and toolkit kill spike.
 
-**Next slice:** Finish 1.3 — complete the per-library license/SBOM inventory,
-then close the release-layout gate. Clean Ubuntu/Fedora reproduction now
-passes. Phase 0.4 shared fixture promotion remains open and blocks the Rust
-product model.
+**Next slice:** Slice 2.1 — host one real libkitty terminal surface in
+`GtkGLArea`, integrate its PTY with GLib, and prove visible render/resize/close
+behavior over X11. Phase 0.4 shared fixture promotion remains open and blocks
+the Rust product model, not the GTK kill spike.
 
 ## Verified checkout state
 
@@ -48,6 +48,46 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-24 — Slice 1.3 release runtime closed
+
+- Replaced the copy-every-library release layout with an ELF-derived recursive
+  closure: 25 bundled SONAMEs and 10 declared system SONAMEs. Removed Kitty C
+  build sources, caches, developer launcher artifacts, Python build config,
+  and unused build-time Python packages. The runtime fell from roughly 303 MB
+  to 104 MB without changing the stress result.
+- Added an authoritative 24-component runtime manifest, 23 per-library
+  upstream license notices reconstructed from SHA-256-verified source
+  archives, a deterministic SPDX 2.3 JSON SBOM covering 876 regular files,
+  and per-file SHA-1/SHA-256 plus package verification codes. The generated
+  SBOM passed the official `spdx-tools` full-document validator.
+- Hardened the release audit to reject unowned files, components without
+  payloads, missing notices, stale SBOM and payload checksums, undeclared ELF
+  dependencies, host Python resolution, broken relocatability, and generic
+  developer checkout paths. Locked the ARM64 dependency and Nerd Font bundle
+  hashes and cross-checked 21 component source hashes against Kitty's pinned
+  source inventory.
+- Removed hard-coded Python-directory lookup and made Kitty platform selection
+  architecture-aware. Stopped mutating the cached dependency interpreter,
+  fixed non-canonical compiler prefix mapping, normalized shipped ELF modes,
+  replaced a one-file fontconfig repair with full locked-archive recovery, and
+  fixed the clean gate so it tests the candidate worktree instead of `HEAD`.
+- Source-tested: `kitmux-linux/scripts/test-headless.sh` passed all six
+  C/C++/ELF/engine/session/stress tests in 6.34 seconds plus the Rust/C header
+  layout check.
+- Clean-runtime-tested: `kitmux-linux/scripts/test-clean-containers.sh` passed
+  two isolated Ubuntu 26.04 ARM64 builds and two isolated Fedora 44 ARM64
+  builds. Every build passed from a random staging path and after relocation,
+  including 16-session flood, 24 forced-close/reap cycles, zombie absence, and
+  exact FD restoration. Repeated inventories were byte-identical within each
+  distribution: Ubuntu
+  `c3c0e71fc8dce5e62a07b67ec69247d7bab29690cb8af64243fd6feb0e29e886`;
+  Fedora
+  `a4c958c659abe73ad1f937a4187d0d301408ecca0e1d9b2279d9fed99c01caef`.
+- GUI-tested: no new GUI claim belongs to Slice 1.3; the earlier clear-color
+  GTK/X11 desktop smoke remains the current GUI evidence.
+- Package-tested: the relocatable release tree is verified, but no `.deb`,
+  RPM, installer, or clean desktop install is claimed.
 
 ### 2026-07-23 — Linux desktop VM and GTK/OpenGL environment proof
 
@@ -158,14 +198,14 @@ clean-machine release evidence.
 - Shared portable fixtures are still provisional. Do not start the Rust model
   or claim snapshot/control parity until macOS and Linux consume the same
   valid and invalid fixture files.
-- A relocatable `$ORIGIN` engine tree and clean Ubuntu/Fedora reproduction
-  exist, but Slice 1.3 still requires a complete per-library license/SBOM
-  inventory.
+- The clean release gate currently proves ARM64 userspaces. Tier-1 x86_64,
+  physical-GPU, native package, and clean desktop-install evidence remain
+  future gates.
 
 ## Next-agent handoff
 
 Continue
-[Slice 1.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-13-build-the-release-shaped-runtime).
-Complete the runtime's per-library license attribution and machine-readable
-SBOM, then close the gate. Do not scaffold production UI until that gate
-closes.
+[Slice 2.1 in the implementation plan](LINUX_PORT_PLAN.md#slice-21-host-one-real-terminal-surface).
+Build the smallest real GTK/libkitty surface and prove it in the desktop VM.
+Do not begin input breadth, product chrome, the Rust model, or browser work
+until that slice's render/lifecycle gate is concrete.

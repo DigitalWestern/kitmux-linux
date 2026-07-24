@@ -73,19 +73,27 @@ Inside the headless Ubuntu VM:
 kitmux-linux/scripts/build-release-runtime.sh
 ```
 
-This creates a roughly 303 MB proof tree under
+This creates a roughly 104 MB proof tree under
 `kitmux-linux/build/kitmux-engine-runtime`, packages the pinned Python and
-Kitty runtime, applies relative ELF runpaths, rejects this checkout's absolute
-path, and runs the Linux stress suite both before and after moving the tree.
-It does not use `LD_LIBRARY_PATH`.
+Kitty runtime, copies only the transitive native-library closure, applies
+relative ELF runpaths, rejects developer checkout paths, and runs the Linux
+stress suite both before and after moving the tree. It does not use
+`LD_LIBRARY_PATH`.
 
-The slower clean-distribution gate builds the committed tree twice each in
-fresh Ubuntu 26.04 and Fedora 44 userspaces:
+The tree includes exact per-component notices, the source/component manifest,
+the resolved system/bundled SONAME report, an SPDX 2.3 JSON SBOM with per-file
+checksums, and a complete `SHA256SUMS`. The audit fails on missing attribution,
+unowned payload files, stale SBOM hashes, undeclared native dependencies, or a
+host Python resolution.
+
+The slower clean-distribution gate builds an isolated copy of the current
+Git-visible worktree twice each in fresh Ubuntu 26.04 and Fedora 44 userspaces:
 
 ```sh
 kitmux-linux/scripts/test-clean-containers.sh
 ```
 
+Each distribution's two complete release inventories must be byte-identical.
 The development Kitty bundle uses `LD_LIBRARY_PATH` for its downloaded native
 dependencies. That shortcut is intentionally confined to tests. A release
 runtime must use an isolated, relocatable `$ORIGIN` layout.

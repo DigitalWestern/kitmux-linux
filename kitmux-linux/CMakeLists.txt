@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(KITMUX_PATH_MAP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+file(REAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." KITMUX_PATH_MAP_ROOT)
 add_compile_options(
   "-ffile-prefix-map=${KITMUX_PATH_MAP_ROOT}=."
   "-fmacro-prefix-map=${KITMUX_PATH_MAP_ROOT}=.")
@@ -18,7 +18,15 @@ set(KITMUX_REFERENCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.source/reference"
 set(LIBKITTY_ROOT "${KITMUX_REFERENCE_ROOT}/libkitty")
 set(KITTY_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.source/kitty"
     CACHE PATH "Pinned, patched Kitty source")
-set(KITTY_DEVELOP_ROOT "${KITTY_SOURCE_ROOT}/dependencies/linux-arm64"
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  set(KITTY_PLATFORM "linux-arm64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+  set(KITTY_PLATFORM "linux-64")
+else()
+  message(FATAL_ERROR
+    "Unsupported Linux processor for Kitty dependencies: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+set(KITTY_DEVELOP_ROOT "${KITTY_SOURCE_ROOT}/dependencies/${KITTY_PLATFORM}"
     CACHE PATH "Kitty development dependency bundle")
 
 if(NOT EXISTS "${LIBKITTY_ROOT}/include/libkitty.h")

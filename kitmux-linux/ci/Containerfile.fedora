@@ -15,7 +15,9 @@ RUN dnf install -y \
       libXcursor \
       libxkbcommon \
       libxkbcommon-x11 \
+      libuuid \
       patchelf \
+      python3 \
     && dnf clean all
 
 WORKDIR /work

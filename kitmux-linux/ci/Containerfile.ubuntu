@@ -14,7 +14,9 @@ RUN apt-get update \
       libxcursor1 \
       libxkbcommon-x11-0 \
       libxkbcommon0 \
+      libuuid1 \
       patchelf \
+      python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work

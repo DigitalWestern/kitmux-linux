@@ -260,6 +260,37 @@ Build a disposable GTK 4 probe with:
   packaging conflicts.
 - A visible diagnostic when GL initialization fails.
 
+#### Slice 2.1: Host one real terminal surface
+
+- Replace the clear-color smoke with a small GTK executable that owns one
+  `GtkGLArea` and one real libkitty session.
+- Initialize and tear down Kitty rendering only while a valid GTK GL context
+  is current; preserve GTK's GL state around libkitty drawing.
+- Integrate the PTY descriptor with the GLib main loop, queue redraws on
+  output, propagate pixel/cell resize, and close/reap cleanly.
+- Show an actionable in-window error when GL, Python, font, shader, or session
+  initialization fails.
+- Prove the slice visibly in the desktop VM over X11 before adding more UI.
+
+#### Slice 2.2: Prove terminal interaction
+
+- Add key press/release/repeat, Compose, dead-key, AltGr, non-US layout, and
+  IME preedit/commit paths.
+- Add focus, selection, clipboard, safe paste, mouse reporting, wheel, and
+  search behavior.
+- Keep ordinary GTK controls beside the terminal so focus transfer and
+  shortcut routing are observable.
+
+#### Slice 2.3: Make the toolkit decision
+
+- Exercise Wayland and X11, scale changes, unlike monitor scales, and GL state
+  restoration.
+- Measure heartbeat/frame fairness during PTY flood and repeated resize.
+- Add the minimal adjacent WebKitGTK conflict probe; it is not product browser
+  work.
+- Record GTK as chosen only if the complete decision gate below passes;
+  otherwise run the one planned Qt 6 comparison.
+
 Decision gate:
 
 - Choose GTK only if GL correctness, input/IME, focus, scaling, Wayland/X11,
