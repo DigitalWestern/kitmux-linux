@@ -23,6 +23,17 @@
       "translation": "Host event loop watches kitty_session_fd."
     },
     {
+      "id": "terminal.opengl-rendering",
+      "classification": "terminal-alpha",
+      "behavior": "A live terminal session renders through Kitty's OpenGL pipeline inside a host-owned framebuffer.",
+      "macos_sources": ["libkitty/src/render.c", "libkitty/py/glue.py", "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"],
+      "macos_tests": ["libkitty/tests/test_render_smoke.c"],
+      "linux_acceptance": "GtkGLArea renders a live shell, resizes without session loss, restores host GL state, reports visible initialization failures, and closes without a live child.",
+      "linux_status": "Slice 2.1 passed on GTK 4.22.4 over X11 with Mesa llvmpipe on 2026-07-24; Wayland, physical GPU, fractional scale, and input remain open.",
+      "dependencies": ["engine.session-lifecycle", "GTK 4 GtkGLArea", "OpenGL 3.3"],
+      "translation": "The GUI process isolates libpython but uses distro native graphics/text libraries to avoid loader collisions with GTK."
+    },
+    {
       "id": "terminal.keyboard-paste-ime",
       "classification": "terminal-alpha",
       "behavior": "Keyboard protocol encoding, raw writes, bracketed paste, and composed text reach only the focused pane.",

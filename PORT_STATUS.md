@@ -2,17 +2,17 @@
 
 **Last inspected:** 2026-07-24
 
-**Implementation state:** Phase 1 is closed. Separate Ubuntu ARM64 headless and
-XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine
-runtime, Linux stress tests, and a visible GTK 4 `GtkGLArea` smoke exist. No
-production GTK application or native package exists yet.
+**Implementation state:** Phase 1 and GTK Slice 2.1 are closed. Separate Ubuntu
+ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB
+attributed engine runtime, Linux stress tests, and a real one-session GTK 4
+terminal host exist. No product navigation UI or native package exists yet.
 
 **Active phase:** Phase 2 — rendering and toolkit kill spike.
 
-**Next slice:** Slice 2.1 — host one real libkitty terminal surface in
-`GtkGLArea`, integrate its PTY with GLib, and prove visible render/resize/close
-behavior over X11. Phase 0.4 shared fixture promotion remains open and blocks
-the Rust product model, not the GTK kill spike.
+**Next slice:** Slice 2.2 — prove GTK terminal interaction: keyboard
+press/release/repeat, Compose/dead-key/AltGr/non-US/IME, focus transfer,
+selection, clipboard/paste, mouse/wheel, and search. Phase 0.4 shared fixture
+promotion remains open and blocks the Rust product model, not this GTK spike.
 
 ## Verified checkout state
 
@@ -49,6 +49,33 @@ listed only in the checkout's local Git exclude file.
 
 ## Evidence log
 
+### 2026-07-24 — GTK Slice 2.1 real terminal surface
+
+- Replaced the clear-color `GtkGLArea` smoke with `kitmux_gtk_host`: one real
+  libkitty engine/session, host-owned GTK framebuffer, GLib PTY source, damage
+  redraws, title/bell/exit callbacks, framebuffer resize, a normal GTK status
+  row and Close control, and an in-window diagnostic overlay.
+- The first link exposed a real toolkit collision: libkitty's broad Python
+  development runpath shadowed GTK's distro Cairo, HarfBuzz, GLib, and
+  xkbcommon. The host now links only an isolated copy of the pinned
+  `libpython`; Kitty's full development-library directory never enters the GTK
+  process loader path. This boundary is recorded in ADR 0002.
+- `kitmux-linux/scripts/test-desktop.sh` built with warnings-as-errors and
+  passed on GTK 4.22.4, X11, and Mesa llvmpipe. The live shell pumped 299 PTY
+  bytes through GLib, rendered at 900x530, resized to 760x450 and 980x590,
+  restored the tracked host GL state after Kitty draw, displayed the missing
+  runtime diagnostic in a separate run, and left its recorded child PID dead
+  after the automated close.
+- Visual evidence is `kitmux-linux/gtk-terminal-host-proof.png`; it shows the
+  GTK control row and Kitty-rendered shell prompt/cursor at the final size.
+- `kitmux-linux/scripts/test-headless.sh` remained green: six tests passed in
+  6.32 seconds plus the Rust/C header layout check.
+- GUI-tested: X11 plus software OpenGL only. Wayland, real GPU, input/IME,
+  pointer/clipboard, fractional scaling, flood fairness, and adjacent WebKit
+  remain required before choosing GTK.
+- Package-tested: none. The isolated-libpython development layout is an
+  architecture finding, not package evidence.
+
 ### 2026-07-24 — Slice 1.3 release runtime closed
 
 - Replaced the copy-every-library release layout with an ELF-derived recursive
@@ -84,8 +111,8 @@ listed only in the checkout's local Git exclude file.
   `c3c0e71fc8dce5e62a07b67ec69247d7bab29690cb8af64243fd6feb0e29e886`;
   Fedora
   `a4c958c659abe73ad1f937a4187d0d301408ecca0e1d9b2279d9fed99c01caef`.
-- GUI-tested: no new GUI claim belongs to Slice 1.3; the earlier clear-color
-  GTK/X11 desktop smoke remains the current GUI evidence.
+- GUI-tested: no new GUI claim belonged to Slice 1.3; at that checkpoint the
+  earlier clear-color GTK/X11 desktop smoke was the current GUI evidence.
 - Package-tested: the relocatable release tree is verified, but no `.deb`,
   RPM, installer, or clean desktop install is claimed.
 

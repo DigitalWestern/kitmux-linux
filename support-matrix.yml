@@ -11,6 +11,15 @@ release_runtime_evidence:
   fedora_44_stable_inventory_sha256: a4c958c659abe73ad1f937a4187d0d301408ecca0e1d9b2279d9fed99c01caef
   package_format: unpackaged release tree
 
+gtk_host_evidence:
+  environment: ubuntu-26.04-aarch64-xfce-vnc
+  toolkit: GTK 4.22.4
+  display_backend: x11
+  renderer: Mesa llvmpipe
+  session: live libkitty shell with GLib PTY source
+  verified: [render, tracked-gl-state-restore, resize, diagnostic, child-reap]
+  toolkit_decision: pending input, IME, Wayland, scale, fairness, and WebKit checks
+
 toolchain:
   rust: 1.97.1
   cmake: 4.2.3

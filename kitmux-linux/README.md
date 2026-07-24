@@ -9,7 +9,7 @@ Current scope:
 2. Build `libkitty.so` against Linux CPython.
 3. Compile the public header from C and C++.
 4. Port headless lifecycle and PTY tests.
-5. Run the disposable GTK 4 rendering spike.
+5. Run the bounded GTK 4/libkitty toolkit spike.
 
 No browser, package installer, or production navigation shell belongs here
 yet.
@@ -62,8 +62,14 @@ limactl shell kitmux-linux-desktop -- \
   "$PWD/kitmux-linux/scripts/test-desktop.sh"
 ```
 
-The current VM uses Mesa `llvmpipe`. It proves functional desktop rendering,
-not physical-GPU performance or final GNOME/Wayland compatibility.
+The desktop gate now builds and launches one real libkitty shell in
+`GtkGLArea`, pumps its PTY through GLib, resizes it twice, checks tracked GL
+state restoration and child reaping, exercises the visible error path, and
+writes `gtk-terminal-host-proof.png`.
+
+The current VM uses Mesa `llvmpipe`. It proves one functional X11 rendering
+and lifecycle slice, not physical-GPU performance, Wayland, terminal input,
+fractional scaling, or the final GTK toolkit decision.
 
 ## Release-shaped engine runtime
 

@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 project(kitmux_linux_proofs VERSION 0.1.0 LANGUAGES C CXX)
 
+option(KITMUX_BUILD_GTK_HOST "Build the Phase 2 GTK/libkitty host" OFF)
+set(KITMUX_PYTHON_LIBRARY_OVERRIDE "" CACHE FILEPATH
+    "Optional isolated libpython used to keep GUI toolkit link paths clean")
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -42,8 +46,17 @@ add_library(kitty SHARED
   "${LIBKITTY_ROOT}/src/render.c")
 target_include_directories(kitty
   PUBLIC "${LIBKITTY_ROOT}/include"
-  PRIVATE "${LIBKITTY_ROOT}/src")
-target_link_libraries(kitty PRIVATE Python3::Python ${CMAKE_DL_LIBS})
+  PRIVATE "${LIBKITTY_ROOT}/src" ${Python3_INCLUDE_DIRS})
+if(KITMUX_PYTHON_LIBRARY_OVERRIDE)
+  if(NOT EXISTS "${KITMUX_PYTHON_LIBRARY_OVERRIDE}")
+    message(FATAL_ERROR
+      "KITMUX_PYTHON_LIBRARY_OVERRIDE does not exist: ${KITMUX_PYTHON_LIBRARY_OVERRIDE}")
+  endif()
+  target_link_libraries(kitty PRIVATE
+    "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" ${CMAKE_DL_LIBS})
+else()
+  target_link_libraries(kitty PRIVATE Python3::Python ${CMAKE_DL_LIBS})
+endif()
 target_compile_options(kitty PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
 target_link_options(kitty PRIVATE
   "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libkitty.map"
@@ -78,6 +91,15 @@ target_compile_options(session_api PRIVATE -UNDEBUG)
 add_executable(linux_session_stress tests/linux_session_stress.c)
 target_link_libraries(linux_session_stress PRIVATE kitty)
 target_compile_options(linux_session_stress PRIVATE -UNDEBUG)
+
+if(KITMUX_BUILD_GTK_HOST)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4 epoxy)
+  add_executable(kitmux_gtk_host src/gtk_terminal_host.c)
+  target_link_libraries(kitmux_gtk_host PRIVATE kitty PkgConfig::GTK4)
+  target_compile_options(kitmux_gtk_host PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
 
 enable_testing()
 add_test(NAME public_header_c COMMAND header_c)

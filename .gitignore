@@ -2,6 +2,7 @@
 .source/
 kitmux-linux/build/
 kitmux-linux/build-release/
+kitmux-linux/build-gtk/
 target/
 kitmux-linux/vendor/
 compile_commands.json
