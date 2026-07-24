@@ -13,6 +13,22 @@ fi
 cd "$kitty"
 ./dev.sh build --skip-building-kitten
 deps="$kitty/dependencies/linux-arm64"
+deps_archive="$kitty/dependencies/linux-arm64.tar.xz"
+fontconfig_library="$deps/lib/libfontconfig.so.1.16.1"
+
+# A VirtioFS extraction on the macOS host once omitted this regular file while
+# leaving its two symlinks behind. Repair it from Kitty's pinned dependency
+# archive, then reject any other incomplete shared-library chain.
+if [[ ! -f "$fontconfig_library" && -f "$deps_archive" ]]; then
+  tar -xJf "$deps_archive" -C "$deps" lib/libfontconfig.so.1.16.1
+fi
+broken_links="$(find -L "$deps/lib" -maxdepth 1 -type l -print)"
+if [[ -n "$broken_links" ]]; then
+  echo "Broken Kitty dependency links:" >&2
+  echo "$broken_links" >&2
+  exit 1
+fi
+
 env -u PYTHONHOME -u PYTHONPATH \
   LD_LIBRARY_PATH="$deps/lib" \
   "$deps/bin/python" -c \
