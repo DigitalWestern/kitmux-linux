@@ -2,15 +2,17 @@
 
 **Last inspected:** 2026-07-23
 
-**Implementation state:** Headless engine port in progress. An Ubuntu ARM64 VM,
-Linux build harness, ELF `libkitty.so`, pinned Kitty build, and initial
-cross-language tests now exist. No GTK application or package exists yet.
+**Implementation state:** Engine and desktop proofs are in progress. Separate
+Ubuntu ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a relocatable
+299 MB engine runtime, Linux stress tests, and a visible GTK 4 `GtkGLArea`
+smoke now exist. No production GTK application or package exists yet.
 
 **Active phase:** Phase 1 — prove headless `libkitty`.
 
-**Next slice:** 1.2 — broaden Linux-specific lifecycle, flood, close, and
-process tests. Phase 0.4 shared fixture promotion remains open and blocks the
-Rust product model, but it does not block the independent headless engine work.
+**Next slice:** Finish 1.3 — reproduce the release runtime from clean Ubuntu
+and Fedora checkouts, complete the per-library license/SBOM inventory, then
+close the release-layout gate. Phase 0.4 shared fixture promotion remains open
+and blocks the Rust product model.
 
 ## Verified checkout state
 
@@ -46,6 +48,38 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-23 — Linux desktop VM and GTK/OpenGL environment proof
+
+- Created `kitmux-linux-desktop`, a separate Ubuntu 26.04 ARM64 Lima VZ VM
+  with 4 CPUs, 8 GiB RAM, a 32 GiB disk, video enabled, and only this
+  workspace mounted writable.
+- Installed XFCE 4.20, TigerVNC/noVNC, GTK 4.22.4, Mesa, Weston, Xwayland, and
+  the build toolchain. The local-only noVNC desktop is forwarded to host port
+  6080.
+- Compiled and launched the project-owned GTK 4 `GtkGLArea` smoke and an XFCE
+  terminal. `xdotool` found the visible GTK window and `scrot` captured
+  `kitmux-linux/desktop-vm-proof.png`.
+- `test-desktop.sh` passed X11, noVNC, GTK compilation, and OpenGL discovery.
+  The renderer is Mesa llvmpipe. This is visible X11/software-rendering proof,
+  not physical-GPU, GNOME, Wayland, IME, scaling, or package evidence.
+
+### 2026-07-23 — Linux stress and release-layout proof
+
+- Added a Linux-native gate with 16 simultaneous terminal floods, 736,272
+  pumped bytes, exit callback/status validation, 24 forced-close cycles,
+  direct-child reaping, zombie absence, and exact FD-baseline restoration.
+- Full headless gate passed: six C/C++/ELF/engine/session/stress tests plus the
+  Rust/C layout check. CTest completed in 6.58 seconds.
+- Built a 299 MB release-shaped engine tree with pinned CPython 3.14, Kitty,
+  libkitty glue/config/font assets, bundled shared libraries, relative ELF
+  runpaths, SHA-256 inventory, and no `LD_LIBRARY_PATH`.
+- The release stress gate passed from both its random staging path and final
+  path. It resolved `libpython3.14.so.1.0` inside the bundle and rejected
+  embedded paths to this developer checkout.
+- The third-party inventory has started but is explicitly incomplete. Clean
+  Ubuntu/Fedora reproduction and full licensing/SBOM remain required before
+  Slice 1.3 is complete.
 
 ### 2026-07-23 — headless Linux engine proof
 
@@ -96,20 +130,22 @@ clean-machine release evidence.
 
 ## Current blockers and limits
 
-- The VM is headless. GTK/OpenGL, Wayland/X11 interaction, IME, clipboard,
-  scaling, and desktop packaging remain completely untested.
+- The local desktop VM proves GTK/OpenGL window creation over X11 with
+  llvmpipe. Wayland, physical-GPU behavior, IME, clipboard, scaling, and
+  desktop packaging remain untested.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
 - Shared portable fixtures are still provisional. Do not start the Rust model
   or claim snapshot/control parity until macOS and Linux consume the same
   valid and invalid fixture files.
-- The Kitty development runtime relies on `LD_LIBRARY_PATH`. Slice 1.3 must
-  produce and relocate an isolated `$ORIGIN` release tree.
+- A relocatable `$ORIGIN` engine tree exists, but Slice 1.3 still requires
+  clean Ubuntu/Fedora reproduction and a complete per-library license/SBOM
+  inventory.
 
 ## Next-agent handoff
 
-Start with
-[Slice 1.2 in the implementation plan](LINUX_PORT_PLAN.md#slice-12-port-the-headless-tests).
-Add Linux-native repeated lifecycle, many-session flood, job-control, child
-reaping, and FD/zombie checks around the now-passing reference suite. Do not
-scaffold production UI while the GTK gate remains open.
+Continue
+[Slice 1.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-13-build-the-release-shaped-runtime).
+Reproduce the current bundle in clean Ubuntu and Fedora environments and
+complete its license/SBOM inventory. Do not scaffold production UI until that
+gate closes.

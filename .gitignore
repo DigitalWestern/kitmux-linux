@@ -1,6 +1,7 @@
 .cache/
 .source/
 kitmux-linux/build/
+kitmux-linux/build-release/
 target/
 kitmux-linux/vendor/
 compile_commands.json

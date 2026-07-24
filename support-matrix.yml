@@ -23,6 +23,19 @@ environments:
     packages: []
     purpose: local engine, PTY, ABI, relocation, and model tests
 
+  - id: ubuntu-26.04-aarch64-xfce-vnc
+    support: development
+    image: Ubuntu 26.04 LTS cloud image 20260720
+    architecture: aarch64
+    desktop: XFCE 4.20 over TigerVNC and noVNC
+    display_backends: [x11]
+    gpu: Mesa llvmpipe software renderer
+    compiler: GCC 15.2
+    python: 3.14.4
+    toolkit: GTK 4.22.4
+    packages: []
+    purpose: local visible GTK, GtkGLArea, input, and desktop integration tests
+
   - id: ubuntu-26.04-x86_64-gnome
     support: tier-1
     image: Ubuntu Desktop 26.04 LTS

@@ -1,0 +1,23 @@
+minimumLimaVersion: 2.0.0
+vmType: vz
+arch: aarch64
+cpus: 4
+memory: 8GiB
+disk: 32GiB
+
+images:
+  - location: https://cloud-images.ubuntu.com/releases/resolute/release-20260720/ubuntu-26.04-server-cloudimg-arm64.img
+    arch: aarch64
+    digest: sha256:7bcf159e29ad0000bfed9c57875908c39268f5ed1257f4958fa6a9f5f60edd54
+
+containerd:
+  system: false
+  user: false
+
+video:
+  display: default
+
+portForwards:
+  - guestPort: 6080
+    hostPort: 6080
+    static: true
