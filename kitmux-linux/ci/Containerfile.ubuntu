@@ -1,0 +1,20 @@
+FROM docker.io/library/ubuntu:26.04
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      binutils \
+      build-essential \
+      cmake \
+      file \
+      libdbus-1-3 \
+      libx11-6 \
+      libx11-xcb1 \
+      libxcb-xkb1 \
+      libxcb1 \
+      libxcursor1 \
+      libxkbcommon-x11-0 \
+      libxkbcommon0 \
+      patchelf \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work

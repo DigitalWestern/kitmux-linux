@@ -1,0 +1,21 @@
+FROM registry.fedoraproject.org/fedora:44
+
+RUN dnf install -y \
+      binutils \
+      cmake \
+      coreutils \
+      dbus-libs \
+      file \
+      findutils \
+      gcc \
+      gcc-c++ \
+      libX11 \
+      libX11-xcb \
+      libxcb \
+      libXcursor \
+      libxkbcommon \
+      libxkbcommon-x11 \
+      patchelf \
+    && dnf clean all
+
+WORKDIR /work

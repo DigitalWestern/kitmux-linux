@@ -18,7 +18,7 @@ environments:
     display_backends: []
     gpu: none
     compiler: GCC 15.2
-    python: 3.14.4
+    python: 3.14.6
     toolkit: none
     packages: []
     purpose: local engine, PTY, ABI, relocation, and model tests
@@ -31,7 +31,7 @@ environments:
     display_backends: [x11]
     gpu: Mesa llvmpipe software renderer
     compiler: GCC 15.2
-    python: 3.14.4
+    python: 3.14.6
     toolkit: GTK 4.22.4
     packages: []
     purpose: local visible GTK, GtkGLArea, input, and desktop integration tests

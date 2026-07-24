@@ -79,6 +79,13 @@ Kitty runtime, applies relative ELF runpaths, rejects this checkout's absolute
 path, and runs the Linux stress suite both before and after moving the tree.
 It does not use `LD_LIBRARY_PATH`.
 
+The slower clean-distribution gate builds the committed tree twice each in
+fresh Ubuntu 26.04 and Fedora 44 userspaces:
+
+```sh
+kitmux-linux/scripts/test-clean-containers.sh
+```
+
 The development Kitty bundle uses `LD_LIBRARY_PATH` for its downloaded native
 dependencies. That shortcut is intentionally confined to tests. A release
 runtime must use an isolated, relocatable `$ORIGIN` layout.

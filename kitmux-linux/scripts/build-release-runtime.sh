@@ -27,7 +27,9 @@ if [[ -e "${output}" ]]; then
 fi
 install -d "$(dirname -- "${output}")"
 
-env LD_LIBRARY_PATH="${dependencies}/lib" \
+bundled_python="$(realpath "${dependencies}/bin/python")"
+patchelf --set-rpath '$ORIGIN/../lib' "${bundled_python}"
+
 cmake -S "${workspace}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DPython3_ROOT_DIR="${dependencies}" \
@@ -66,6 +68,9 @@ install -m 0644 \
   "${staging}/fonts/"
 install -m 0644 \
   "${workspace}/release/THIRD_PARTY.md" \
+  "${staging}/share/"
+install -m 0644 \
+  "${workspace}/release/SYSTEM_DEPENDENCIES.md" \
   "${staging}/share/"
 
 find "${staging}" -type d -name __pycache__ -prune -exec rm -rf -- {} +

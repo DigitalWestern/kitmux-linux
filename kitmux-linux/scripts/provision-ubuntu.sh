@@ -9,7 +9,7 @@ fi
 
 "${sudo[@]}" apt-get update
 "${sudo[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  binutils build-essential cmake file git golang-go less patchelf pkg-config \
+  binutils build-essential cmake file git golang-go less patchelf podman pkg-config \
   python3-dev zsh \
   libdbus-1-dev libfontconfig-dev libgl1-mesa-dev libwayland-dev \
   libx11-xcb-dev libxcursor-dev libxi-dev libxinerama-dev \
