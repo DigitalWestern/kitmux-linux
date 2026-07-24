@@ -39,4 +39,3 @@ for relative, expected in lock["sha256"].items():
         raise SystemExit(f"hash mismatch for {relative}: {actual} != {expected}")
 print(f"materialized and verified {len(lock['sha256'])} locked reference files")
 PY
-

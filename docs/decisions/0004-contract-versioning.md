@@ -9,4 +9,3 @@ Command identifiers and error codes are stable strings.
 Both hosts must consume the same valid and invalid fixtures. Bounds and
 malformed-input behavior are part of the contract. Platform paths, shortcuts,
 browser data, and executable discovery are explicitly outside it.
-

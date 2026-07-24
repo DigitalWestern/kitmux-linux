@@ -21,4 +21,3 @@ agent sockets, keychain references, and platform package paths.
 `feature-inventory.json` is authoritative for classification and observable
 Linux acceptance statements. Concrete JSON fixtures will be added under
 `fixtures/v1/` and become authoritative only when both hosts consume them.
-

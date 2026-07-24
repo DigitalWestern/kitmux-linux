@@ -7,4 +7,3 @@ int main(void) {
     (void)callbacks;
     return 0;
 }
-

@@ -95,4 +95,3 @@ for old, new in replacements.items():
 
 path.write_text(source)
 print("applied Linux libkitty GL loader")
-

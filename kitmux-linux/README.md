@@ -37,4 +37,3 @@ layout from Rust.
 The development Kitty bundle uses `LD_LIBRARY_PATH` for its downloaded native
 dependencies. That shortcut is intentionally confined to tests. A release
 runtime must use an isolated, relocatable `$ORIGIN` layout.
-

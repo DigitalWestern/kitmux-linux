@@ -30,4 +30,3 @@ source = (
 destination.parent.mkdir(parents=True, exist_ok=True)
 destination.write_text(source)
 print(f"generated {destination}")
-

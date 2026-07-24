@@ -10,4 +10,3 @@ Wayland and X11.
 The spike is disposable and contains no production navigation UI. A failure
 against a written criterion triggers one equivalent Qt 6 spike; the project
 does not maintain both toolkit implementations.
-

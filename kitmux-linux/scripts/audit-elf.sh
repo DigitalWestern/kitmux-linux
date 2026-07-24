@@ -19,4 +19,3 @@ if [[ -n "$unexpected" ]]; then
 fi
 
 echo "ELF ABI audit: OK"
-

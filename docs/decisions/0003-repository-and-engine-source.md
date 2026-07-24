@@ -12,4 +12,3 @@ Linux-specific build and GL-loader work lives here during the spikes. Before
 beta, decide whether libkitty moves to `home-kitmux/shared`, becomes a separate
 versioned repository, or remains a source package consumed by both hosts.
 There must never be two manually maintained libkitty implementations.
-

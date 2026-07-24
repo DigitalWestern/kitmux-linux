@@ -9,4 +9,3 @@ size_t libkitty_engine_config_size(void) {
 size_t libkitty_session_callbacks_size(void) {
     return sizeof(kitty_session_callbacks);
 }
-

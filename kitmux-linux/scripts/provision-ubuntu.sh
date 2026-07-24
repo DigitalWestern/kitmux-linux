@@ -22,4 +22,3 @@ fi
 
 rustup toolchain install 1.97.1 --profile minimal
 rustup default 1.97.1
-

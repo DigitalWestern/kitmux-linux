@@ -8,4 +8,3 @@ libkitty.
 
 This is not permission to rewrite libkitty or Kitty in Rust. The decision is
 revisited only if the headless FFI or GTK spike reveals a concrete blocker.
-

@@ -11,4 +11,3 @@ The first portable artifact is a relocatable `tar.zst`. Native `deb` and `rpm`
 packages wrap that proven layout. Automatic updating is out of process for the
 terminal alpha; distro/package-manager ownership is the default update
 boundary.
-

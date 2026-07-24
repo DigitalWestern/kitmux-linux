@@ -9,4 +9,3 @@ int main() {
     (void)callbacks;
     return 0;
 }
-

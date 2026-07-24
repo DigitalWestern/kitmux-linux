@@ -17,4 +17,3 @@ cmake -S "$workspace" -B "$workspace/build" -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build "$workspace/build" --parallel
 ctest --test-dir "$workspace/build" --output-on-failure
 "$script_dir/test-rust-header.sh"
-
