@@ -15,7 +15,8 @@ workspace="$(cd -- "${script_dir}/.." && pwd)"
 linux_root="$(cd -- "${workspace}/.." && pwd)"
 source_cache="${linux_root}/.source"
 
-if [[ ! -f "${source_cache}/reference/LOCK.json" ]] \
+if [[ ! -f "${linux_root}/source-lock.json" ]] \
+    || [[ ! -f "${source_cache}/reference/libkitty/include/libkitty.h" ]] \
     || [[ ! -f "${source_cache}/kitty/kitty/fast_data_types.so" ]]; then
   echo "Materialize the locked source and build Kitty before this gate." >&2
   exit 1
