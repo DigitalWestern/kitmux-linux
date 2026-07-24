@@ -13,6 +13,9 @@ terminal host exist. No product navigation UI or native package exists yet.
 press/release/repeat, Compose/dead-key/AltGr/non-US/IME, focus transfer,
 selection, clipboard/paste, mouse/wheel, and search. Phase 0.4 shared fixture
 promotion remains open and blocks the Rust product model, not this GTK spike.
+The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+Operational VM, gate, runtime, and SBOM commands are in
+[`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
 
 ## Verified checkout state
 
@@ -42,12 +45,32 @@ listed only in the checkout's local Git exclude file.
 - The Swift core is most useful first as behavior and fixtures. Some files
   directly depend on Darwin, Combine, CryptoKit, Foundation behavior, or
   macOS paths.
-- Rust plus GTK 4 is the first candidate, not a final choice. A disposable GL,
-  input, scale, and event-loop spike decides the production stack.
+- GTK 4 is the first toolkit candidate, not a final choice. The disposable
+  host is C to test the direct libkitty/GTK boundary; Rust remains the future
+  model/lifecycle candidate after shared fixtures are authoritative. Input,
+  scale, display-backend, and event-loop evidence decides the production
+  stack.
 - The first user-facing target is a terminal-only alpha. Browser panes and
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-24 — durable Slice 2.1 handoff
+
+- Added a GitHub-facing project README, a single Linux operations/evidence
+  guide, an exact Slice 2.2 sub-slice handoff, and a history-preserving
+  monorepo proposal. No migration or GTK functionality was performed.
+- Added a pinned headless Lima definition alongside the existing desktop
+  definition so both VMs can be recreated without developer-local state.
+- Reconciled the plan, feature inventory, support matrix, and ADRs with the
+  actual C GTK spike, the pending GTK decision, and the isolated-libpython
+  boundary.
+- The documentation audit found an ignored 298 MiB local runtime from an older
+  builder. It was preserved, not treated as evidence. Fresh build paths and
+  the verified approximately 104 MiB clean-gate result are now distinguished
+  explicitly.
+- Documentation verification passed `git diff --check`, JSON parsing, YAML
+  parsing, both `limactl validate` checks, and the local Markdown-link audit.
 
 ### 2026-07-24 — GTK Slice 2.1 real terminal surface
 
@@ -217,9 +240,11 @@ clean-machine release evidence.
 
 ## Current blockers and limits
 
-- The local desktop VM proves GTK/OpenGL window creation over X11 with
-  llvmpipe. Wayland, physical-GPU behavior, IME, clipboard, scaling, and
-  desktop packaging remain untested.
+- The local desktop VM proves a real GTK/libkitty session over X11 with
+  llvmpipe. It does not prove performance or driver behavior. Wayland,
+  physical GPU, keyboard/IME, focus breadth, selection, clipboard/paste,
+  mouse/wheel, search, fractional or mixed-monitor scaling, accessibility, PTY
+  and frame fairness, and WebKitGTK coexistence remain untested.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
 - Shared portable fixtures are still provisional. Do not start the Rust model
@@ -228,11 +253,18 @@ clean-machine release evidence.
 - The clean release gate currently proves ARM64 userspaces. Tier-1 x86_64,
   physical-GPU, native package, and clean desktop-install evidence remain
   future gates.
+- Fresh clean-gate runtimes were approximately 104 MiB. Ignored local build
+  directories may contain older layouts and are not release evidence; always
+  build to a new path and run the runtime audit.
+- The GTK development host proves the isolated-libpython loader boundary, but
+  no release-shaped GUI artifact proves it yet. A global Kitty dependency
+  path would shadow GTK's distribution libraries and is forbidden.
 
 ## Next-agent handoff
 
 Continue
-[Slice 2.1 in the implementation plan](LINUX_PORT_PLAN.md#slice-21-host-one-real-terminal-surface).
-Build the smallest real GTK/libkitty surface and prove it in the desktop VM.
-Do not begin input breadth, product chrome, the Rust model, or browser work
-until that slice's render/lifecycle gate is concrete.
+[Slice 2.2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22-prove-terminal-interaction)
+using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Begin with only
+Slice 2.2A: deterministic keyboard press/release/repeat and GTK focus transfer
+for the existing real terminal host. Do not begin product chrome, the Rust
+model, browser functionality, packaging, or repository migration.

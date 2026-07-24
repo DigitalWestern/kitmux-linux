@@ -1,14 +1,16 @@
 # Kitmux Linux Port Plan
 
-**Status:** planning document for the Linux port only
+**Status:** active dependency plan; completion evidence lives in
+[`PORT_STATUS.md`](PORT_STATUS.md)
 
 **macOS reference:** `../macos/kitmux/`
 
-**Reference commit:** `cc902462a97e35b955884b0f783820ef3d6ad6d4`
+**Reference commit:** `e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4`
 
-**Last reviewed:** 2026-07-23
+**Last reviewed:** 2026-07-24
 
-**Current progress:** [`PORT_STATUS.md`](PORT_STATUS.md)
+**Current progress:** Phase 1 and Slice 2.1 complete; Slice 2.2 is next. See
+[`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 ## Purpose
 
@@ -56,32 +58,34 @@ The live inspection also found an important split inside `libkitty` itself:
 - The Makefile, portable-Python repair, render smoke, relocation audit,
   packaging scripts, and example host are currently Darwin-specific.
 
-The reference checkout was dirty when this plan was reviewed. It contained an
-unfinished `TerminalView` extraction and generated app bundles. The exact
-dated observation is in [`PORT_STATUS.md`](PORT_STATUS.md). No agent should
-discard those changes or freeze parity fixtures from that mixed state.
+The reference checkout was dirty during the original plan review. That
+`TerminalView` extraction was subsequently completed, tested, committed, and
+tagged at `macos-linux-port-baseline-2026-07-23`. The exact evidence is in
+[`PORT_STATUS.md`](PORT_STATUS.md). Future agents must still inspect the live
+macOS status rather than assuming the dated checkpoint remains unchanged.
 
 ## What to inspect first
 
 Before writing Linux code, a future agent should read these files in this order:
 
 1. `PORT_STATUS.md`
-2. `../macos/kitmux/AGENTS.md`
-3. `../macos/kitmux/docs/AGENT_HANDOFF.md`
-4. `../macos/kitmux/docs/IMPLEMENTATION_ROADMAP.md`
-5. `../macos/kitmux/libkitty/README.md`
-6. `../macos/kitmux/libkitty/include/libkitty.h`
-7. `../macos/kitmux/libkitty/Makefile`
-8. `../macos/kitmux/libkitty/src/`
-9. `../macos/kitmux/libkitty/py/glue.py`
-10. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/main.swift`
-11. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/TerminalView.swift`
-12. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/PaneRuntime.swift`
-13. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/LibKitty.swift`
-14. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/ControlDispatcher.swift`
-15. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/SmokeSuite.swift`
-16. `../macos/kitmux/macos/KitmuxApp/Tests/KitmuxCoreTests/`
-17. `../macos/kitmux/macos/KitmuxApp/Makefile`
+2. `NEXT_STEPS.md`
+3. `../macos/kitmux/AGENTS.md`
+4. `../macos/kitmux/docs/AGENT_HANDOFF.md`
+5. `../macos/kitmux/docs/IMPLEMENTATION_ROADMAP.md`
+6. `../macos/kitmux/libkitty/README.md`
+7. `../macos/kitmux/libkitty/include/libkitty.h`
+8. `../macos/kitmux/libkitty/Makefile`
+9. `../macos/kitmux/libkitty/src/`
+10. `../macos/kitmux/libkitty/py/glue.py`
+11. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/main.swift`
+12. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/TerminalView.swift`
+13. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/PaneRuntime.swift`
+14. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/LibKitty.swift`
+15. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/ControlDispatcher.swift`
+16. `../macos/kitmux/macos/KitmuxApp/Sources/Kitmux/SmokeSuite.swift`
+17. `../macos/kitmux/macos/KitmuxApp/Tests/KitmuxCoreTests/`
+18. `../macos/kitmux/macos/KitmuxApp/Makefile`
 
 Those files tell the agent what must stay true even if the Linux stack is
 implemented in a different language or toolkit.
@@ -114,6 +118,9 @@ After Phase 0 freezes the contracts, Phases 1 and 3 can proceed independently.
 The production desktop host waits for the Phase 2 toolkit decision.
 
 ### Phase 0: Freeze the reference and contracts
+
+Status: Slices 0.1–0.3 complete; Slice 0.4 remains open and blocks Phase 3,
+not the active GTK spike.
 
 Goal: make sure Linux work is anchored to a clean macOS baseline.
 
@@ -199,6 +206,9 @@ Exit criteria:
 
 ### Phase 1: Prove headless `libkitty` on Linux
 
+Status: complete through Slice 1.3, including attribution, SBOM, and repeatable
+clean Ubuntu/Fedora ARM64 runtime gates.
+
 Goal: produce a tested, relocatable `libkitty.so` without a GUI.
 
 #### Slice 1.1: Create the Linux build harness
@@ -227,7 +237,7 @@ Cover:
 - Use `$ORIGIN`-relative ELF rpaths.
 - Audit exports, ELF dependencies, rpaths, and embedded paths.
 - Prove the release layout does not import host Python accidentally.
-- Start the license inventory and SBOM.
+- Generate and validate the license inventory and machine-readable SBOM.
 
 Exit criteria:
 
@@ -260,7 +270,7 @@ Build a disposable GTK 4 probe with:
   packaging conflicts.
 - A visible diagnostic when GL initialization fails.
 
-#### Slice 2.1: Host one real terminal surface
+#### Slice 2.1: Host one real terminal surface — complete
 
 - Replace the clear-color smoke with a small GTK executable that owns one
   `GtkGLArea` and one real libkitty session.
@@ -272,7 +282,7 @@ Build a disposable GTK 4 probe with:
   initialization fails.
 - Prove the slice visibly in the desktop VM over X11 before adding more UI.
 
-#### Slice 2.2: Prove terminal interaction
+#### Slice 2.2: Prove terminal interaction — next
 
 - Add key press/release/repeat, Compose, dead-key, AltGr, non-US layout, and
   IME preedit/commit paths.
@@ -549,33 +559,17 @@ These should not be copied blindly:
 - macOS packaging scripts
 - macOS-specific runtime repair scripts
 
-## Suggested repo shape
+## Repository direction
 
-After Slice 0.3, create `kitmux-linux/` for contracts, fixtures, and proof
-code. Only after the engine and rendering proofs pass should the wider checkout
-evolve toward a shared-source shape like this:
+The current Linux and macOS repositories remain separate during the toolkit
+spike. The recommended long-term destination is a private monorepo with
+`platforms/macos`, `platforms/linux`, root `contracts`, and one authoritative
+`engine/libkitty`. Preserve both histories and separate the history import
+from the later shared-source extraction.
 
-```text
-home-kitmux/
-├── operating-system/
-│   ├── macos/
-│   │   └── kitmux/
-│   └── linux/
-│       ├── AGENTS.md
-│       ├── LINUX_PORT_PLAN.md
-│       ├── PORT_STATUS.md
-│       ├── kitmux-linux/
-│       └── support-matrix.yml
-└── shared/
-    ├── libkitty/
-    └── contracts/
-```
-
-That shape is a goal, not a starting requirement.
-
-`shared/` may instead become its own versioned repository or source package.
-The invariant matters more than the folder name: macOS and Linux must consume
-one authoritative libkitty and one authoritative contract-fixture set.
+The complete proposal and migration verification checklist are in
+[`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md). Do not perform the
+migration during an implementation slice.
 
 ## Verification ladder
 
@@ -634,7 +628,8 @@ record and remove it from this list.
 
 ## Immediate next step
 
-Use `PORT_STATUS.md` as the live checkpoint. At the 2026-07-23 handoff, the
-clean macOS reference and initial Linux engine harness exist; Slice 1.2 is the
-next implementation slice. Shared fixtures remain provisional and still block
-the Rust product model.
+Use `PORT_STATUS.md` as the evidence ledger and follow
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2A is next: build a deterministic GTK
+keyboard/focus harness for the real libkitty terminal, run the existing
+headless and desktop baselines, and stop before Compose/IME breadth. Shared
+fixtures remain provisional and still block the Rust product model.

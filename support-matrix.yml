@@ -4,6 +4,7 @@ updated: 2026-07-24
 release_runtime_evidence:
   architecture: aarch64
   approximate_size_mib: 104
+  size_basis: fresh clean-gate output; ignored local build directories may be stale
   sbom: SPDX-2.3 JSON, 24 packages and 876 regular files
   ubuntu_26_04_clean_passes: 2
   ubuntu_26_04_stable_inventory_sha256: c3c0e71fc8dce5e62a07b67ec69247d7bab29690cb8af64243fd6feb0e29e886
@@ -18,6 +19,7 @@ gtk_host_evidence:
   renderer: Mesa llvmpipe
   session: live libkitty shell with GLib PTY source
   verified: [render, tracked-gl-state-restore, resize, diagnostic, child-reap]
+  unproven: [input, ime, clipboard, mouse, search, wayland, scaling, physical-gpu, fairness, webkit, packaging]
   toolkit_decision: pending input, IME, Wayland, scale, fairness, and WebKit checks
 
 toolchain:

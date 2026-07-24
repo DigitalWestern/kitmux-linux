@@ -40,6 +40,7 @@
       "macos_sources": ["libkitty/include/libkitty.h", "macos/KitmuxApp/Sources/Kitmux/TerminalView+TextInput.swift"],
       "macos_tests": ["libkitty/tests/test_keys.py", "libkitty/tests/test_session.c"],
       "linux_acceptance": "GTK key events, paste, dead keys, emoji, and an IME commit produce the expected child bytes on Wayland and X11.",
+      "linux_status": "Slice 2.2 is next; no GTK keyboard, paste, Compose, layout, or IME behavior is currently proven.",
       "dependencies": ["GTK input method context"],
       "translation": "Map GDK key/modifier values to the stable libkitty key contract."
     },
@@ -50,6 +51,7 @@
       "macos_sources": ["libkitty/include/libkitty.h", "libkitty/py/glue.py"],
       "macos_tests": ["libkitty/tests/test_session.c"],
       "linux_acceptance": "Two sessions retain independent scroll, selection, and search state across focus changes.",
+      "linux_status": "Headless libkitty APIs are covered; GTK selection, scrolling, and search wiring are unproven.",
       "dependencies": ["engine.session-lifecycle"],
       "translation": "No platform-specific state."
     },
@@ -60,6 +62,7 @@
       "macos_sources": ["libkitty/include/libkitty.h", "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"],
       "macos_tests": ["libkitty/tests/test_session.c", "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift"],
       "linux_acceptance": "Pointer coordinates remain correct at 100%, 150%, and 200% scale; Shift preserves local selection and scrolling.",
+      "linux_status": "GTK pointer, wheel, URL, and scale-coordinate behavior is unproven.",
       "dependencies": ["GTK coordinate and scale APIs"],
       "translation": "Never assume Retina or a fixed backing scale."
     },
@@ -120,6 +123,7 @@
       "macos_sources": ["libkitty/include/libkitty.h", "libkitty/py/glue.py"],
       "macos_tests": ["libkitty/tests/test_session.c"],
       "linux_acceptance": "Clipboard and freedesktop notifications work under both Wayland and X11 without blocking terminal pumping.",
+      "linux_status": "GTK clipboard belongs to Slice 2.2; notifications and Wayland remain later and unproven.",
       "dependencies": ["GDK clipboard", "freedesktop notification service"],
       "translation": "Portal behavior must be tested in sandboxed packages."
     },
@@ -150,6 +154,7 @@
       "macos_sources": ["macos/KitmuxApp/Sources/Kitmux/PaneRuntime.swift", "macos/KitmuxApp/Sources/Kitmux/BrowserPaneView.swift"],
       "macos_tests": ["macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift"],
       "linux_acceptance": "Only after explicit approval, WebKitGTK surfaces preserve stable pane/surface IDs and isolation without degrading terminal performance.",
+      "linux_status": "No browser feature work is authorized. Slice 2.3 requires only a minimal coexistence probe before the toolkit decision.",
       "dependencies": ["WebKitGTK"],
       "translation": "Omitted from the terminal-first alpha."
     },

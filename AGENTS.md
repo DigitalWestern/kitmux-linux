@@ -1,8 +1,8 @@
 # Kitmux Linux Agent Instructions
 
-This directory is the planning and future implementation home for the Linux
-host. The adjacent macOS checkout is a behavioral reference, not code to
-translate line by line.
+This directory is the implementation home for the experimental Linux host.
+The adjacent macOS checkout is a behavioral reference, not code to translate
+line by line.
 
 ## Read this first
 
@@ -10,9 +10,11 @@ Read these files in order before changing Linux-port code or plans:
 
 1. [`PORT_STATUS.md`](PORT_STATUS.md) — current checkpoint, next slice, and
    blockers.
-2. [`LINUX_PORT_PLAN.md`](LINUX_PORT_PLAN.md) — dependency-ordered work and
+2. [`NEXT_STEPS.md`](NEXT_STEPS.md) — exact implementation sequence from the
+   current checkpoint.
+3. [`LINUX_PORT_PLAN.md`](LINUX_PORT_PLAN.md) — dependency-ordered work and
    exit gates.
-3. [`../macos/kitmux/AGENTS.md`](../macos/kitmux/AGENTS.md) and
+4. [`../macos/kitmux/AGENTS.md`](../macos/kitmux/AGENTS.md) and
    [`../macos/kitmux/docs/AGENT_HANDOFF.md`](../macos/kitmux/docs/AGENT_HANDOFF.md)
    — current macOS behavior and ownership.
 
@@ -31,7 +33,8 @@ observations, not proof that a checkout is still unchanged.
   during a spike is allowed; manually maintained duplicate copies are not.
 - Share schemas, fixtures, command identifiers, and observable behavior before
   attempting to share the Swift product core.
-- Treat Rust plus GTK 4 as a candidate until the rendering spike passes.
+- Treat GTK 4 as a candidate until the complete Slice 2.3 decision gate
+  passes. Slice 2.1 alone did not select it.
 - Keep browser work out of the terminal-first alpha.
 - Start release-layout and clean-machine checks with the engine. A build on a
   developer machine is not packaging proof.

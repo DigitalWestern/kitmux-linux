@@ -1,7 +1,7 @@
 # Kitmux Linux proof workspace
 
-This directory holds proof code until the engine and GTK gates justify a
-production application.
+This directory holds the engine and GTK proof implementation. The Linux port
+is experimental; GTK is not selected for the production application yet.
 
 Current scope:
 
@@ -12,7 +12,9 @@ Current scope:
 5. Run the bounded GTK 4/libkitty toolkit spike.
 
 No browser, package installer, or production navigation shell belongs here
-yet.
+yet. For complete VM lifecycle, gates, release/SBOM commands, loader
+architecture, and limitations, see
+[`../docs/LINUX_DEVELOPMENT.md`](../docs/LINUX_DEVELOPMENT.md).
 
 ## Current Ubuntu workflow
 
@@ -33,6 +35,10 @@ The test command builds the pinned Kitty native extension, builds
 `libkitty.so`, audits its ELF runpath and exports, runs the C/C++ header,
 engine-lifecycle, full session API, Linux flood/close/reaping/resource suites,
 then checks the public struct layout from Rust.
+
+The pinned headless VM definition is `headless/lima.yaml`. Start and stop it
+from the repository root with `limactl start kitmux-linux` and
+`limactl stop kitmux-linux`.
 
 ## Linux desktop VM
 
@@ -76,15 +82,18 @@ fractional scaling, or the final GTK toolkit decision.
 Inside the headless Ubuntu VM:
 
 ```sh
-kitmux-linux/scripts/build-release-runtime.sh
+runtime="kitmux-linux/build/kitmux-engine-runtime-$(date +%Y%m%d-%H%M%S)"
+kitmux-linux/scripts/build-release-runtime.sh "$runtime"
+kitmux-linux/scripts/test-release-runtime.sh "$runtime"
 ```
 
-This creates a roughly 104 MB proof tree under
-`kitmux-linux/build/kitmux-engine-runtime`, packages the pinned Python and
-Kitty runtime, copies only the transitive native-library closure, applies
-relative ELF runpaths, rejects developer checkout paths, and runs the Linux
-stress suite both before and after moving the tree. It does not use
-`LD_LIBRARY_PATH`.
+This creates a release proof tree at the supplied path, packages the pinned
+Python and Kitty runtime, copies only the transitive native-library closure,
+applies relative ELF runpaths, rejects developer checkout paths, and runs the
+Linux stress suite both before and after moving the tree. Fresh clean-gate
+outputs were approximately 104 MiB. Ignored local outputs may be older; use a
+new destination and do not infer release state from an existing build
+directory. The runtime does not use `LD_LIBRARY_PATH`.
 
 The tree includes exact per-component notices, the source/component manifest,
 the resolved system/bundled SONAME report, an SPDX 2.3 JSON SBOM with per-file
@@ -100,6 +109,8 @@ kitmux-linux/scripts/test-clean-containers.sh
 ```
 
 Each distribution's two complete release inventories must be byte-identical.
-The development Kitty bundle uses `LD_LIBRARY_PATH` for its downloaded native
-dependencies. That shortcut is intentionally confined to tests. A release
-runtime must use an isolated, relocatable `$ORIGIN` layout.
+The headless development Kitty bundle uses `LD_LIBRARY_PATH` for its downloaded
+native dependencies. That shortcut is confined to headless engine tests and
+must never enter the GTK process. The GTK host isolates only `libpython` and
+uses distro GTK/text/graphics libraries. A release runtime must use an
+isolated, relocatable `$ORIGIN` layout.
