@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "reference_tag": "macos-linux-port-baseline-2026-07-23",
+  "features": [
+    {
+      "id": "engine.session-lifecycle",
+      "classification": "terminal-alpha",
+      "behavior": "One process-wide engine owns independent PTY-backed terminal sessions.",
+      "macos_sources": ["libkitty/include/libkitty.h", "libkitty/src/engine.c", "libkitty/src/session.c"],
+      "macos_tests": ["libkitty/tests/test_engine.c", "libkitty/tests/test_session.c"],
+      "linux_acceptance": "Create, pump, resize, write to, observe child exit from, and close 20 independent sessions without leaked children or file descriptors.",
+      "dependencies": ["CPython embed API", "POSIX PTY", "Kitty fast_data_types"],
+      "translation": "Use Linux PTY/process semantics; no AppKit dependency."
+    },
+    {
+      "id": "terminal.output-and-damage",
+      "classification": "terminal-alpha",
+      "behavior": "Child output mutates the screen, text extraction reflects it, and damage schedules a redraw.",
+      "macos_sources": ["libkitty/py/glue.py", "libkitty/src/session.c"],
+      "macos_tests": ["libkitty/tests/test_session.c"],
+      "linux_acceptance": "A deterministic child command appears in extracted UTF-8 and fires damage without polling the GUI.",
+      "dependencies": ["engine.session-lifecycle"],
+      "translation": "Host event loop watches kitty_session_fd."
+    },
+    {
+      "id": "terminal.keyboard-paste-ime",
+      "classification": "terminal-alpha",
+      "behavior": "Keyboard protocol encoding, raw writes, bracketed paste, and composed text reach only the focused pane.",
+      "macos_sources": ["libkitty/include/libkitty.h", "macos/KitmuxApp/Sources/Kitmux/TerminalView+TextInput.swift"],
+      "macos_tests": ["libkitty/tests/test_keys.py", "libkitty/tests/test_session.c"],
+      "linux_acceptance": "GTK key events, paste, dead keys, emoji, and an IME commit produce the expected child bytes on Wayland and X11.",
+      "dependencies": ["GTK input method context"],
+      "translation": "Map GDK key/modifier values to the stable libkitty key contract."
+    },
+    {
+      "id": "terminal.scroll-select-search",
+      "classification": "terminal-alpha",
+      "behavior": "Each session independently owns scrollback, selection, extracted text, and search markers.",
+      "macos_sources": ["libkitty/include/libkitty.h", "libkitty/py/glue.py"],
+      "macos_tests": ["libkitty/tests/test_session.c"],
+      "linux_acceptance": "Two sessions retain independent scroll, selection, and search state across focus changes.",
+      "dependencies": ["engine.session-lifecycle"],
+      "translation": "No platform-specific state."
+    },
+    {
+      "id": "terminal.mouse-and-links",
+      "classification": "terminal-alpha",
+      "behavior": "Selection, terminal mouse reporting, wheel routing, and URL hit-testing use visible terminal cells.",
+      "macos_sources": ["libkitty/include/libkitty.h", "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"],
+      "macos_tests": ["libkitty/tests/test_session.c", "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift"],
+      "linux_acceptance": "Pointer coordinates remain correct at 100%, 150%, and 200% scale; Shift preserves local selection and scrolling.",
+      "dependencies": ["GTK coordinate and scale APIs"],
+      "translation": "Never assume Retina or a fixed backing scale."
+    },
+    {
+      "id": "navigation.hierarchy",
+      "classification": "terminal-alpha",
+      "behavior": "Workspaces own groups, groups own tabs, and tabs own stable pane IDs and split trees.",
+      "macos_sources": ["macos/KitmuxApp/Sources/Kitmux/NavigationModels.swift", "macos/KitmuxApp/Sources/KitmuxCore/SplitTree.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/SplitTreeTests.swift"],
+      "linux_acceptance": "Create, select, rename, reorder where supported, and close hierarchy nodes while preserving stable IDs and the non-empty root invariants.",
+      "dependencies": ["contracts.snapshot-v1"],
+      "translation": "Implement as pure Rust before binding GTK widgets."
+    },
+    {
+      "id": "navigation.splits",
+      "classification": "terminal-alpha",
+      "behavior": "Nested horizontal and vertical splits preserve ratios, focus, minimum sizes, and deterministic close order.",
+      "macos_sources": ["macos/KitmuxApp/Sources/KitmuxCore/SplitTree.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/SplitTreeTests.swift"],
+      "linux_acceptance": "Frozen split fixtures produce the same leaf order, divider ownership, ratio clamping, focus successor, and collapse result.",
+      "dependencies": ["navigation.hierarchy"],
+      "translation": "GTK layout is a projection; it must not own the split model."
+    },
+    {
+      "id": "persistence.snapshot-v1",
+      "classification": "terminal-alpha",
+      "behavior": "Crash-safe JSON restores hierarchy, IDs, split ratios, selected nodes, safe cwd, and approved metadata into fresh sessions.",
+      "macos_sources": ["macos/KitmuxApp/Sources/KitmuxCore/StateSnapshot.swift", "macos/KitmuxApp/Sources/Kitmux/ModelSnapshotCoordinator.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift"],
+      "linux_acceptance": "Valid v1 fixtures round-trip; malformed/oversized/duplicate-ID input is rejected or repaired identically; loading never executes resume commands.",
+      "dependencies": ["contracts.snapshot-v1"],
+      "translation": "Use XDG state paths and atomic replace plus fsync semantics."
+    },
+    {
+      "id": "settings.portable-core",
+      "classification": "terminal-alpha",
+      "behavior": "Bounded terminal font, color, opacity, padding, close-confirmation, and scroll settings have stable defaults.",
+      "macos_sources": ["macos/KitmuxApp/Sources/KitmuxCore/SettingsSchema.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsSchemaTests.swift"],
+      "linux_acceptance": "Portable settings fixtures decode to the same values and invalid values fall back per schema.",
+      "dependencies": ["XDG config paths"],
+      "translation": "Exclude macOS window chrome, launch-at-login, and shortcut representations."
+    },
+    {
+      "id": "safety.process-aware-close",
+      "classification": "terminal-alpha",
+      "behavior": "Closing a pane or parent scope warns when a protected foreground job would be terminated and rechecks before acting.",
+      "macos_sources": ["macos/KitmuxApp/Sources/Kitmux/PaneCloseCoordinator.swift", "macos/KitmuxApp/Sources/KitmuxCore/CloseConfirmationPolicy.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/CloseConfirmationPolicyTests.swift", "libkitty/tests/test_session.c"],
+      "linux_acceptance": "Foreground, stopped foreground, and background-only job cases match the fixture matrix; closing reaps every descendant without zombies.",
+      "dependencies": ["Linux tcgetpgrp and process groups"],
+      "translation": "Validate against Linux job-control behavior, not Darwin assumptions."
+    },
+    {
+      "id": "desktop.clipboard-notifications",
+      "classification": "beta",
+      "behavior": "Copy/paste uses the desktop clipboard and terminal notifications surface through the OS service.",
+      "macos_sources": ["libkitty/include/libkitty.h", "libkitty/py/glue.py"],
+      "macos_tests": ["libkitty/tests/test_session.c"],
+      "linux_acceptance": "Clipboard and freedesktop notifications work under both Wayland and X11 without blocking terminal pumping.",
+      "dependencies": ["GDK clipboard", "freedesktop notification service"],
+      "translation": "Portal behavior must be tested in sandboxed packages."
+    },
+    {
+      "id": "control.local-cli",
+      "classification": "beta",
+      "behavior": "A bounded versioned local control protocol addresses stable hierarchy IDs and never trusts ambient callers.",
+      "macos_sources": ["macos/KitmuxApp/Sources/KitmuxCore/ControlProtocol.swift", "macos/KitmuxApp/Sources/Kitmux/ControlDispatcher.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/ControlProtocolTests.swift"],
+      "linux_acceptance": "Unix-socket framing, peer ownership, request/response limits, method IDs, and error codes pass shared fixtures.",
+      "dependencies": ["XDG runtime directory", "Unix peer credentials"],
+      "translation": "Use SO_PEERCRED and mode 0600; do not copy Darwin credential code."
+    },
+    {
+      "id": "ssh.reviewed-profiles",
+      "classification": "beta",
+      "behavior": "Saved SSH profiles expose reviewed host aliases and reconnect only after explicit user action.",
+      "macos_sources": ["macos/KitmuxApp/Sources/KitmuxCore/SSHProfile.swift"],
+      "macos_tests": ["macos/KitmuxApp/Tests/KitmuxCoreTests/SSHProfileTests.swift"],
+      "linux_acceptance": "Portable profile fixtures validate and render an argv preview; fixture import and snapshot restore never connect.",
+      "dependencies": ["system ssh executable"],
+      "translation": "Resolve executable and config through Linux PATH and user config."
+    },
+    {
+      "id": "browser.web-surfaces",
+      "classification": "later",
+      "behavior": "Browser surfaces share pane containers with terminal surfaces.",
+      "macos_sources": ["macos/KitmuxApp/Sources/Kitmux/PaneRuntime.swift", "macos/KitmuxApp/Sources/Kitmux/BrowserPaneView.swift"],
+      "macos_tests": ["macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift"],
+      "linux_acceptance": "Only after explicit approval, WebKitGTK surfaces preserve stable pane/surface IDs and isolation without degrading terminal performance.",
+      "dependencies": ["WebKitGTK"],
+      "translation": "Omitted from the terminal-first alpha."
+    },
+    {
+      "id": "macos-only.desktop-integration",
+      "classification": "intentionally-omitted",
+      "behavior": "AppKit titlebar, Dock, Services, AppleScript, code signing, and macOS login-item behavior.",
+      "macos_sources": ["macos/KitmuxApp/Sources/Kitmux/main.swift"],
+      "macos_tests": [],
+      "linux_acceptance": "No direct parity claim; Linux replacements require separate feature IDs and acceptance tests.",
+      "dependencies": [],
+      "translation": "Use freedesktop/XDG equivalents only where product value justifies them."
+    }
+  ]
+}
+

@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+"""Generate the Linux form of the locked macOS libkitty session suite."""
+
+from pathlib import Path
+import sys
+
+
+source_path = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+source = source_path.read_text().replace("/private/tmp", "/tmp")
+
+# The tagged macOS test checks Kitmux's replacement for Apple's exact stock
+# zsh prompt. Linux distributions ship different defaults, so this is not a
+# portable libkitty contract. Preserve the cwd test cleanup and every test
+# that follows it.
+start_marker = "    char zshrc_path[PATH_MAX];\n"
+end_marker = "    rmdir(test_cwd);\n"
+start = source.find(start_marker)
+end = source.find(end_marker, start)
+if start < 0 or end < 0:
+    raise SystemExit("locked zsh prompt test block changed")
+end += len(end_marker)
+source = (
+    source[:start]
+    + "    // macOS-only stock-zsh-prompt policy intentionally omitted.\n"
+    + end_marker
+    + source[end:]
+)
+
+destination.parent.mkdir(parents=True, exist_ok=True)
+destination.write_text(source)
+print(f"generated {destination}")
+

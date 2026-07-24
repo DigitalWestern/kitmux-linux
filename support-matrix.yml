@@ -1,0 +1,76 @@
+schema_version: 1
+updated: 2026-07-23
+
+toolchain:
+  rust: 1.97.1
+  cmake: 4.2.3
+  c_compiler: GCC 15.2
+  python_development: "3.14"
+  gtk: "4.22"
+  gl_api: "OpenGL 3.3 core minimum; 4.1 target"
+
+environments:
+  - id: ubuntu-26.04-aarch64-headless
+    support: development
+    image: Ubuntu 26.04 LTS cloud image 20260720
+    architecture: aarch64
+    desktop: none
+    display_backends: []
+    gpu: none
+    compiler: GCC 15.2
+    python: 3.14.4
+    toolkit: none
+    packages: []
+    purpose: local engine, PTY, ABI, relocation, and model tests
+
+  - id: ubuntu-26.04-x86_64-gnome
+    support: tier-1
+    image: Ubuntu Desktop 26.04 LTS
+    architecture: x86_64
+    desktop: GNOME 50
+    display_backends: [wayland, x11]
+    gpu: Mesa Intel or AMD
+    compiler: GCC 15.2
+    python: "3.14"
+    toolkit: GTK 4.22
+    packages: [deb, tar-zst]
+    purpose: primary release, GUI, package, and clean-machine gate
+
+  - id: fedora-44-x86_64-gnome
+    support: tier-1
+    image: Fedora Workstation 44
+    architecture: x86_64
+    desktop: GNOME
+    display_backends: [wayland, xwayland]
+    gpu: Mesa Intel or AMD
+    compiler: GCC 16.1.1
+    python: 3.14.3
+    toolkit: GTK 4.22.4
+    packages: [rpm, tar-zst]
+    purpose: secondary release and clean-machine gate
+
+  - id: ubuntu-26.04-aarch64-gnome
+    support: tier-2
+    image: Ubuntu Desktop 26.04 LTS
+    architecture: aarch64
+    desktop: GNOME 50
+    display_backends: [wayland, x11]
+    gpu: Mesa or virtio-gpu
+    compiler: GCC 15.2
+    python: "3.14"
+    toolkit: GTK 4.22
+    packages: [deb, tar-zst]
+    purpose: native Apple-silicon VM GUI coverage
+
+  - id: nvidia-proprietary-x86_64
+    support: exploratory
+    image: Ubuntu Desktop 26.04 LTS
+    architecture: x86_64
+    desktop: GNOME 50
+    display_backends: [wayland, x11]
+    gpu: current supported NVIDIA proprietary driver
+    compiler: GCC 15.2
+    python: "3.14"
+    toolkit: GTK 4.22
+    packages: [deb, tar-zst]
+    purpose: pre-beta renderer confidence; not required for the first alpha

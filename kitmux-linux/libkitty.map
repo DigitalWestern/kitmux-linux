@@ -1,0 +1,6 @@
+LIBKITTY_0 {
+  global:
+    kitty_*;
+  local:
+    *;
+};
