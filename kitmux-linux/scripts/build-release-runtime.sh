@@ -26,6 +26,7 @@ if [[ -e "${output}" ]]; then
   exit 1
 fi
 
+env LD_LIBRARY_PATH="${dependencies}/lib" \
 cmake -S "${workspace}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DPython3_ROOT_DIR="${dependencies}" \
