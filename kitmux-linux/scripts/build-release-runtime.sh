@@ -25,6 +25,7 @@ if [[ -e "${output}" ]]; then
   echo "Pass a new output path or remove the generated tree explicitly." >&2
   exit 1
 fi
+install -d "$(dirname -- "${output}")"
 
 env LD_LIBRARY_PATH="${dependencies}/lib" \
 cmake -S "${workspace}" -B "${build_dir}" \
