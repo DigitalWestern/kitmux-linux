@@ -17,7 +17,8 @@ host commands from the Linux repository root on the macOS machine.
   passed the official `spdx-tools` validator.
 - One real libkitty terminal renders, pumps PTY output, resizes, restores
   tracked GL state, reports initialization failure, closes, and reaps its
-  child in GTK 4.22.4 over X11 with Mesa llvmpipe.
+  child in GTK 4.22.4 over X11 and a native Wayland client path with Mesa
+  llvmpipe.
 - Keyboard input reaches that terminal with exact, fixed byte expectations:
   press, release, and auto-repeat; the kitty keyboard protocol and DECCKM;
   Compose, dead keys, AltGr, a non-US layout, emoji, and a real IBus
@@ -31,8 +32,8 @@ host commands from the Linux repository root on the macOS machine.
 - CJK or other conversion engines with candidate windows, and
   surrounding-text requests; the input-method evidence covers one Latin
   engine.
-- Wayland, fractional/mixed-monitor scaling, physical-GPU behavior, or
-  accessibility.
+- A physical Wayland desktop/libinput path, fractional/mixed-monitor scaling,
+  physical-GPU behavior, or accessibility.
 - Main-loop fairness during sustained PTY output and resize pressure.
 - GTK/libkitty coexistence with WebKitGTK in one process.
 - x86_64 build, GUI, clean-runtime, or package gates.
@@ -108,11 +109,13 @@ limactl shell kitmux-linux-desktop -- \
   "$PWD/kitmux-linux/scripts/test-desktop.sh"
 ```
 
-The gate covers rendering, resize, PTY, clean close, and the Slice 2.2A/2.2B
-keyboard and input-method harness. It writes
+The gate covers rendering, resize, PTY, clean close, the Slice 2.2A/2.2B
+keyboard and input-method harness over X11, and the Slice 2.2C native Wayland
+client path under nested Weston. It writes
 `kitmux-linux/gtk-terminal-host-proof.png`,
 `kitmux-linux/gtk-keyboard-focus-proof.png`, and
-`kitmux-linux/gtk-preedit-proof.png`. While it runs it changes X auto-repeat,
+`kitmux-linux/gtk-preedit-proof.png`, plus
+`kitmux-linux/gtk-wayland-proof.png`. While it runs it changes X auto-repeat,
 the keyboard layout, and the active IBus engine — restoring auto-repeat and
 the US layout on exit — so run it on the project VNC session rather than a
 desktop you are using.
@@ -133,6 +136,11 @@ The keyboard harness has two halves:
   keysym, and this session's XKB map puts `XF86Switch_VT_*` on higher levels
   of the same keycode, so `xdotool key F1` arrives as Alt+F1 and XFCE
   consumes it.
+- The Wayland run starts Weston without Xwayland and asserts that the GTK host
+  reports `GdkWaylandDisplay`. Weston is nested in the visible X11 desktop.
+  XTEST drives only Weston's outer window; Weston delivers native
+  `wl_keyboard` events to GTK. This is intentionally display-bound
+  compositor-bridge evidence, not a physical libinput/evdev claim.
 
 Stop desktop services and the VM without deleting either:
 
@@ -212,16 +220,15 @@ separate process. Do not repair the problem with a global `LD_LIBRARY_PATH`.
 
 ## Known limitations and decision boundary
 
-The local desktop VM is ARM64, X11-only XFCE, and software-rendered with
-llvmpipe. It is excellent deterministic lifecycle proof but weak evidence for
-latency, frame pacing, Wayland, fractional scaling, mixed-DPI monitors, or
-vendor GPU drivers.
+The local desktop VM is ARM64, XFCE/X11, and software-rendered with llvmpipe.
+Nested Weston now proves the GTK client's native Wayland GL/input/IME path,
+but not a physical Wayland desktop, libinput device, latency, frame pacing,
+fractional scaling, mixed-DPI monitors, or vendor GPU drivers.
 
-Slice 2.2 must prove terminal interaction without product chrome. Slice 2.3
-must then prove Wayland/X11, scaling, physical GPU, PTY/frame fairness, and a
-minimal adjacent WebKitGTK conflict probe. WebKit is not part of the
-terminal-first alpha; the probe exists only to expose loader, GL, focus, and
-packaging conflicts early.
+The remaining Phase 2 checks are scaling, PTY/frame fairness, and a minimal
+adjacent WebKitGTK conflict probe under both display backends. WebKit is not
+part of the terminal-first alpha; the probe exists only to expose loader, GL,
+focus, and packaging conflicts early.
 
 GTK becomes the production choice only after the complete decision gate
 passes on the support matrix. A concrete technical failure triggers one

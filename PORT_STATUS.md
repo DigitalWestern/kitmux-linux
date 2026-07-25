@@ -2,20 +2,20 @@
 
 **Last inspected:** 2026-07-25
 
-**Implementation state:** Phase 1, GTK Slice 2.1, Slice 2.2A, and Slice 2.2B
-are closed. Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF
-`libkitty.so`, a relocatable 104 MB attributed engine runtime, Linux stress
-tests, a real one-session GTK 4 terminal host, and a deterministic keyboard
-and input-method harness exist. No product navigation UI or native package
-exists yet.
+**Implementation state:** Phase 1 and GTK Slices 2.1 through 2.2C are closed.
+Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a
+relocatable 104 MB attributed engine runtime, Linux stress tests, a real
+one-session GTK 4 terminal host over X11 and native Wayland client paths, and
+a deterministic keyboard and input-method harness exist. No product
+navigation UI or native package exists yet.
 
 **Active phase:** Phase 2 — rendering and toolkit kill spike.
 
-**Next slice:** Slice 2.2C — **native Wayland**. Phase 2 was reordered on
-2026-07-25 so the checks that could disqualify GTK run before the expensive
-ones that almost certainly cannot. Selection, clipboard, safe paste, mouse,
-wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
-Phase 2 slices are Wayland, the WebKitGTK conflict probe, scaling, and event
+**Next slice:** Slice 2.2D — **WebKitGTK conflict probe**. Phase 2 was
+reordered on 2026-07-25 so the checks that could disqualify GTK run before the
+expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
+mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The
+remaining Phase 2 slices are the WebKitGTK conflict probe, scaling, and event
 fairness. Phase 0.4 shared fixture promotion remains open and blocks the Rust
 product model, not this GTK spike.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
@@ -62,6 +62,45 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — Slice 2.2C native Wayland client path
+
+- Extended the existing disposable GTK desktop harness rather than adding a
+  second host. It starts Weston 14.0.2 with its GL renderer and kiosk shell,
+  without Xwayland, then launches the existing GTK host with
+  `GDK_BACKEND=wayland`. The host reports `GdkWaylandDisplay`, so the GTK,
+  `GtkGLArea`, input, and IME paths are native Wayland even though Weston is
+  nested visibly in the dedicated X11 VNC desktop.
+- The Wayland run rendered the real libkitty recorder session with Mesa
+  llvmpipe, reported exact host-framebuffer sizes `1024x650`, `760x450`, and
+  `980x590`, and byte-compared the tracked host GL state after Kitty drawing.
+  The recorder child exited on its sentinel and its PID was dead after the
+  GTK window closed.
+- One ordinary `a` press/release and a held `a` reached GTK as native Wayland
+  key events. Every repeat encoded to `61`; the count remains timing-bounded,
+  as on X11. The exact recorder stream also contained the IBus result and
+  close sentinel: `61(61)+c3a10d1b5b32347e`.
+- A real `m17n:t:latn-post` IBus flow produced the visible preedit `a`, updated
+  it in place to `á`, committed `c3a1` through the direct-write route, ended
+  preedit, and encoded the composition-ending Return exactly once as `0d`.
+  The nested compositor needs an explicit `IBUS_ADDRESS` because it owns a
+  separate `XDG_RUNTIME_DIR`.
+- XTEST is not used against the Wayland client. The existing injector drives
+  only Weston's outer X11 window; Weston translates those events into
+  `wl_keyboard` input for the native client. This is deliberately recorded as
+  display-bound compositor-bridge evidence, not physical libinput/evdev or a
+  general Wayland injection API.
+- Visible evidence is `kitmux-linux/gtk-wayland-proof.png`.
+- Source-tested: `kitmux-linux/scripts/test-headless.sh` — six tests passed in
+  6.44 seconds plus the Rust/C header layout check.
+- GUI-tested: `kitmux-linux/scripts/test-desktop.sh` — all existing X11,
+  keyboard, Compose/layout, and IBus proofs remained green, followed by the
+  native Wayland render/resize/GL/input/IME/clean-close gate.
+- Not proven by this slice: a physical Wayland desktop or libinput device,
+  physical GPUs, fractional/mixed-monitor scaling, WebKitGTK coexistence,
+  event fairness, CJK candidate windows, surrounding-text, accessibility,
+  selection, clipboard/paste, mouse/wheel, or search.
+- Package-tested: none.
 
 ### 2026-07-25 — plan audit, licence decision, and Phase 2 reorder
 
@@ -410,13 +449,15 @@ clean-machine release evidence.
 
 ## Current blockers and limits
 
-- The local desktop VM proves a real GTK/libkitty session over X11 with
-  llvmpipe, including physical key press/release/repeat routing, focus
-  transfer to an ordinary GTK control, Compose, dead keys, AltGr, a non-US
-  layout, and a real IBus preedit/commit flow. It does not prove performance
-  or driver behavior. Wayland, physical GPU, selection, clipboard/paste,
-  mouse/wheel, search, fractional or mixed-monitor scaling, accessibility, PTY
-  and frame fairness, and WebKitGTK coexistence remain untested.
+- The local desktop VM proves a real GTK/libkitty session over X11 and a
+  native Wayland client path under nested Weston, both with llvmpipe. It
+  includes press/release/repeat routing, focus transfer to an ordinary GTK
+  control on X11, Compose, dead keys, AltGr, a non-US layout, and a real IBus
+  preedit/commit flow on both display backends. It does not prove performance
+  or driver behavior. A physical Wayland desktop/libinput path, physical GPU,
+  selection, clipboard/paste, mouse/wheel, search, fractional or mixed-monitor
+  scaling, accessibility, PTY/frame fairness, and WebKitGTK coexistence remain
+  untested.
 - Input-method evidence covers one Latin conversion engine. CJK engines,
   candidate windows, and surrounding-text requests are unproven; IBus already
   warns that the host has no surrounding-text capability.
@@ -477,17 +518,16 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22c-prove-wayland--next)
+Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22d-prove-the-webkitgtk-conflict-probe--next)
 using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-Phase 2 was reordered on 2026-07-25. Slices 2.2A and 2.2B are closed; begin
-with only Slice 2.2C, which is now **native Wayland**, not selection and
-clipboard. Run the existing GTK host under a real Wayland compositor and prove
-`GtkGLArea` context creation, framebuffer ownership, tracked GL state
-restoration, resize, clean close, key press/release/repeat, and one
-input-method preedit/commit flow. XTEST is X11-only and will not work there —
-either substitute an injection mechanism or mark the affected assertions
-display-bound explicitly rather than dropping them.
+Phase 2 was reordered on 2026-07-25. Slices 2.2A through 2.2C are closed;
+begin with only Slice 2.2D, the bounded **WebKitGTK conflict probe**. Add one
+minimal `WebKitWebView` beside the live terminal in the disposable GTK host
+and look for GL context, loader/symbol, focus, and dependency-closure
+conflicts. Run the same probe under both the existing X11 and native Wayland
+paths. Do not add navigation, browser chrome, a data session, or workarounds
+that obscure an ambiguous result.
 
 Classify every new file as durable or disposable per ADR 0007 before writing
 it. Do not begin selection, clipboard, mouse, or search — those are Phase 4

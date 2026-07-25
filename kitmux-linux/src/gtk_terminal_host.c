@@ -708,6 +708,11 @@ static void activate(GtkApplication *application, gpointer userdata) {
     gtk_window_present(GTK_WINDOW(state->window));
     return;
   }
+  GdkDisplay *display = gdk_display_get_default();
+  printf("GTK display backend: %s\n",
+         display ? G_OBJECT_TYPE_NAME(display) : "none");
+  fflush(stdout);
+
   GtkCssProvider *provider = gtk_css_provider_new();
   gtk_css_provider_load_from_string(
       provider,

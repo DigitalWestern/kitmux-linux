@@ -277,7 +277,7 @@
       "linux_tests": [
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven GTK 4.22.4 / X11 / llvmpipe (Slice 2.1); Wayland and physical GPU unproven"
+      "linux_status": "proven GTK 4.22.4 / llvmpipe over X11 (Slice 2.1) and a native Wayland client under nested Weston without Xwayland (Slice 2.2C); physical GPU unproven"
     },
     {
       "id": "render.gl-state-isolation",
@@ -295,7 +295,7 @@
         "render.live-frame"
       ],
       "translation": "The host owns the framebuffer; the engine must never assume it owns the context.",
-      "linux_status": "proven over X11; Wayland GL path unproven (Slice 2.2C)"
+      "linux_status": "proven over X11 and native Wayland client GL paths (Slices 2.1 and 2.2C)"
     },
     {
       "id": "render.resize-without-loss",
@@ -314,7 +314,7 @@
         "engine.resize"
       ],
       "translation": "None.",
-      "linux_status": "proven over X11 at scale 1"
+      "linux_status": "proven over X11 and native Wayland at scale 1"
     },
     {
       "id": "render.scale-correctness",
@@ -410,7 +410,7 @@
         "kitmux-linux/tests/gtk_key_matrix.c",
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven: 32 events x 3 live terminal states, display-free, plus two windowed X11 runs (Slice 2.2A)"
+      "linux_status": "proven: 32 events x 3 live terminal states display-free, two windowed X11 runs, and one legacy-state native Wayland run (Slices 2.2A and 2.2C)"
     },
     {
       "id": "keyboard.press-release-repeat",
@@ -432,7 +432,7 @@
         "kitmux-linux/tests/gtk_key_matrix.c",
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven over X11 (Slice 2.2A/2.2B)"
+      "linux_status": "proven over X11 and native Wayland client paths (Slices 2.2A through 2.2C)"
     },
     {
       "id": "keyboard.layouts-and-altgr",
@@ -476,7 +476,7 @@
         "kitmux-linux/tests/gtk_key_matrix.c",
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven for one Latin engine (m17n:t:latn-post) plus GTK's built-in Compose over X11; CJK candidate windows and surrounding-text are unproven"
+      "linux_status": "proven for one Latin engine (m17n:t:latn-post) over X11 and native Wayland, plus GTK's built-in Compose over X11; CJK candidate windows and surrounding-text are unproven"
     },
     {
       "id": "keyboard.focus-ownership",

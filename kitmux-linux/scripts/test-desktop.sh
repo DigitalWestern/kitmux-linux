@@ -18,6 +18,7 @@ host_binary="${build_dir}/kitmux_gtk_host"
 proof_image="${source_root}/gtk-terminal-host-proof.png"
 keyboard_proof_image="${source_root}/gtk-keyboard-focus-proof.png"
 preedit_proof_image="${source_root}/gtk-preedit-proof.png"
+wayland_proof_image="${source_root}/gtk-wayland-proof.png"
 export DISPLAY=":${display_number}"
 
 case "$(uname -m)" in
@@ -78,14 +79,24 @@ echo "X11 DISPLAY=${DISPLAY} and noVNC are responding"
 proof_log="$(mktemp /tmp/kitmux-gtk-host.XXXXXX.log)"
 error_log="$(mktemp /tmp/kitmux-gtk-error.XXXXXX.log)"
 key_dir="$(mktemp -d /tmp/kitmux-gtk-keys.XXXXXX)"
+wayland_runtime_dir="$(mktemp -d /tmp/kitmux-wayland-runtime.XXXXXX)"
+wayland_host_log="$(mktemp /tmp/kitmux-gtk-wayland-host.XXXXXX.log)"
+wayland_child_log="$(mktemp /tmp/kitmux-gtk-wayland-child.XXXXXX.log)"
+weston_log="$(mktemp /tmp/kitmux-weston.XXXXXX.log)"
 cleanup() {
   if [[ -n "${host_pid:-}" ]] && kill -0 "${host_pid}" 2>/dev/null; then
     kill "${host_pid}" 2>/dev/null || true
     wait "${host_pid}" 2>/dev/null || true
   fi
+  if [[ -n "${weston_pid:-}" ]] && kill -0 "${weston_pid}" 2>/dev/null; then
+    kill "${weston_pid}" 2>/dev/null || true
+    wait "${weston_pid}" 2>/dev/null || true
+  fi
   xset r on 2>/dev/null || true
   setxkbmap -layout us 2>/dev/null || true
-  rm -rf -- "${proof_log}" "${error_log}" "${key_dir}"
+  rm -rf -- "${proof_log}" "${error_log}" "${key_dir}" \
+    "${wayland_runtime_dir}" "${wayland_host_log}" "${wayland_child_log}" \
+    "${weston_log}"
 }
 trap cleanup EXIT
 
@@ -433,6 +444,152 @@ key_host_env=()
 
 xset r on
 
+# ---------------------------------------------------------------------------
+# Slice 2.2C native Wayland client path
+# ---------------------------------------------------------------------------
+
+# This remains disposable spike harness code under ADR 0007. Weston runs
+# nested in the dedicated X11 development desktop so the result stays visible,
+# but the GTK host is a native Wayland client and Weston is started without
+# Xwayland. XTEST drives only Weston's outer X11 window; Weston translates
+# those events into wl_keyboard events for GTK. The injection evidence is
+# therefore intentionally display-bound and is not physical-libinput proof.
+wayland_socket="${KITMUX_WAYLAND_DISPLAY:-wayland-kitmux-test}"
+if [[ -z "${wayland_socket}" || "${wayland_socket}" == */* ]]; then
+  echo "KITMUX_WAYLAND_DISPLAY must be a non-empty Wayland socket name." >&2
+  exit 1
+fi
+chmod 700 "${wayland_runtime_dir}"
+env \
+  DISPLAY="${DISPLAY}" \
+  XDG_RUNTIME_DIR="${wayland_runtime_dir}" \
+  weston \
+    --backend=x11 \
+    --renderer=gl \
+    --width=1024 \
+    --height=700 \
+    --socket="${wayland_socket}" \
+    --shell=kiosk \
+    --no-config \
+    --idle-time=0 \
+    --log="${weston_log}" \
+    >/dev/null 2>&1 &
+weston_pid=$!
+
+wayland_window_id=""
+for _ in $(seq 1 120); do
+  if ! kill -0 "${weston_pid}" 2>/dev/null; then
+    echo "Weston exited before its Wayland socket became ready." >&2
+    cat "${weston_log}" >&2
+    exit 1
+  fi
+  if [[ -S "${wayland_runtime_dir}/${wayland_socket}" ]]; then
+    wayland_window_id="$(
+      sed -n 's/.*window id \([0-9][0-9]*\)$/\1/p' "${weston_log}" \
+        | tail -n 1
+    )"
+    if [[ -n "${wayland_window_id}" ]]; then break; fi
+  fi
+  sleep 0.1
+done
+if [[ -z "${wayland_window_id}" ]]; then
+  echo "Weston did not report a ready nested output." >&2
+  cat "${weston_log}" >&2
+  exit 1
+fi
+grep -q 'Using GL renderer' "${weston_log}"
+
+use_ibus_engine xkb:us::eng
+ibus_address="$(ibus address)"
+if [[ -z "${ibus_address}" ]]; then
+  echo "IBus did not report an address for the Wayland host." >&2
+  exit 1
+fi
+
+key_label="wayland"
+child_log="${wayland_child_log}"
+host_log="${wayland_host_log}"
+rm -f -- "${child_log}" "${host_log}"
+env "${libkitty_environment[@]}" \
+  DISPLAY="${DISPLAY}" \
+  XDG_RUNTIME_DIR="${wayland_runtime_dir}" \
+  WAYLAND_DISPLAY="${wayland_socket}" \
+  GDK_BACKEND=wayland \
+  GTK_IM_MODULE=ibus \
+  IBUS_ADDRESS="${ibus_address}" \
+  NO_AT_BRIDGE=1 \
+  GTK_THEME=Adwaita \
+  GSK_RENDERER=gl \
+  KITMUX_GTK_CHILD="${recorder}" \
+  KITMUX_RECORDER_LOG="${child_log}" \
+  KITMUX_RECORDER_QUIT=1b5b32347e \
+  KITMUX_GTK_CLOSE_ON_CHILD_EXIT=1 \
+  KITMUX_GTK_AUTO_CLOSE_MS=90000 \
+  "${host_binary}" >"${host_log}" 2>&1 &
+host_pid=$!
+
+wait_for_line "${host_log}" '^GTK display backend: GdkWaylandDisplay$' \
+  "a native Wayland GDK display"
+wait_for_line "${host_log}" '^GTK terminal PTY output:' "Wayland child startup"
+wait_for_line "${host_log}" '^GTK terminal GL state restoration: OK$' \
+  "Wayland GL state restoration"
+wait_for_line "${host_log}" '^GTK focus: terminal$' \
+  "initial Wayland terminal focus"
+
+xdotool windowactivate --sync "${wayland_window_id}"
+xdotool windowsize --sync "${wayland_window_id}" 760 500
+wait_for_line "${host_log}" '^GTK terminal viewport: 760x450 scale=1$' \
+  "the first Wayland framebuffer resize"
+xdotool windowsize --sync "${wayland_window_id}" 980 640
+wait_for_line "${host_log}" '^GTK terminal viewport: 980x590 scale=1$' \
+  "the second Wayland framebuffer resize"
+
+# One ordinary press/release plus a real compositor-generated repeat series.
+xset r off
+"${inject}" tap a
+wait_for_line "${host_log}" \
+  '^GTK key press: key=0x61 .*text="a" bytes=61$' \
+  "a Wayland key press"
+wait_for_line "${host_log}" \
+  '^GTK key release: key=0x61 .*bytes=$' \
+  "a Wayland key release"
+hold_key_for_repeats a
+wait_for_count "${host_log}" '^GTK key repeat: key=0x61 .*bytes=61$' 1 \
+  "a Wayland auto-repeat encoded as 0x61"
+
+# Reuse the deterministic m17n engine from Slice 2.2B. The explicit IBus
+# address is necessary because the nested compositor has its own runtime dir.
+use_ibus_engine m17n:t:latn-post
+sleep 1
+"${inject}" tap a
+wait_for_line "${host_log}" '^GTK preedit: "a" cursor=1 bytes=61$' \
+  "a real IBus preedit under Wayland"
+sleep 1
+scrot --overwrite --focused "${wayland_proof_image}"
+"${inject}" tap apostrophe
+wait_for_line "${host_log}" '^GTK preedit: "á" cursor=1 bytes=c3a1$' \
+  "the Wayland IBus preedit updating in place"
+"${inject}" tap Return
+wait_for_line "${host_log}" \
+  '^GTK input method commit: "á" bytes=c3a1 route=direct-write$' \
+  "the Wayland IBus commit bypassing the key encoder"
+wait_for_line "${host_log}" '^GTK preedit end$' \
+  "the Wayland IBus preedit ending"
+wait_for_line "${host_log}" '^GTK key press: key=0xE001 .*bytes=0d$' \
+  "the Wayland composition-ending key encoded once"
+
+use_ibus_engine xkb:us::eng
+"${inject}" tap F12
+finish_key_host '^61(61)+c3a10d1b5b32347e$'
+xset r on
+
+if [[ "$(grep -c '^GTK terminal viewport:' "${host_log}")" -lt 3 ]]; then
+  echo "Wayland host did not report its initial and two resized viewports." >&2
+  exit 1
+fi
+echo "Native Wayland render, resize, GL, keyboard, IBus, and clean-close proof: OK"
+echo "Wayland injection boundary: XTEST -> Weston X11 backend -> wl_keyboard"
+
 env -u PYTHONHOME -u KITTY_SRC -u LIBKITTY_PY -u LIBKITTY_TEST_CONFIG \
   GTK_THEME=Adwaita \
   GSK_RENDERER=gl \
@@ -445,3 +602,4 @@ echo "GTK terminal host binary: ${host_binary}"
 echo "Visible proof: ${proof_image}"
 echo "Visible keyboard proof: ${keyboard_proof_image}"
 echo "Visible preedit proof: ${preedit_proof_image}"
+echo "Visible Wayland proof: ${wayland_proof_image}"

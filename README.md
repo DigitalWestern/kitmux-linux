@@ -14,7 +14,7 @@ reviewed session.
 | Platform | Current state |
 | --- | --- |
 | macOS | Daily-driver application for macOS 13+ on Apple silicon. Terminal, navigation, persistence, settings, local control, SSH, browser panes, reliability gates, and local arm64 packaging exist. Public distribution still needs Developer ID signing, notarization, stapling, and real macOS 13 hardware qualification. |
-| Linux | Experimental, GPL-3.0-only. Phase 1 and GTK Slices 2.1, 2.2A, and 2.2B are complete: the engine passes headless and clean-runtime gates, one real terminal renders and closes correctly in GTK 4 over X11 with Mesa llvmpipe, and keyboard input reaches it with fixed byte expectations including Compose, dead keys, AltGr, a non-US layout, and a real IME preedit/commit flow. Wayland, scaling, fairness, WebKit coexistence, selection/clipboard/mouse/search, x86_64, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. |
+| Linux | Experimental, GPL-3.0-only. Phase 1 and GTK Slices 2.1 through 2.2C are complete: the engine passes headless and clean-runtime gates, one real terminal renders and closes correctly in GTK 4 over X11 and a native Wayland client path with Mesa llvmpipe, and keyboard input reaches it with fixed byte expectations including Compose, dead keys, AltGr, a non-US layout, and a real IME preedit/commit flow. Scaling, fairness, WebKit coexistence, selection/clipboard/mouse/search, x86_64, physical-GPU behavior, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. |
 
 Linux is not yet a production application or downloadable desktop package.
 GTK is the leading toolkit candidate, not a final selection.
@@ -75,9 +75,8 @@ control, SSH, reliability, and soak gates required for changes in those areas.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK
 run before the expensive ones that almost certainly cannot.
 
-1. Finish the Phase 2 kill tests: native Wayland, the bounded WebKitGTK
-   coexistence probe, scaling, and event fairness. Select GTK only if they
-   pass.
+1. Finish the remaining Phase 2 kill tests: the bounded WebKitGTK coexistence
+   probe, scaling, and event fairness. Select GTK only if they pass.
 2. Freeze shared portable fixtures, then build the pure Linux product model.
    This is the critical path to a shippable alpha and it is currently the
    longest-open item.

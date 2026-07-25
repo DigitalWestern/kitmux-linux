@@ -11,10 +11,9 @@
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phase 1, Slice 2.1, Slice 2.2A, and Slice 2.2B
-complete. Slice 2.2C is Wayland — the reordered kill tests, not the former
-selection/clipboard slice. See [`PORT_STATUS.md`](PORT_STATUS.md) and
-[`NEXT_STEPS.md`](NEXT_STEPS.md).
+**Current progress:** Phase 1 and Slices 2.1 through 2.2C are complete. Slice
+2.2D, the bounded WebKitGTK conflict probe, is next. See
+[`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
 disqualify GTK run before the expensive ones that almost certainly cannot;
@@ -300,7 +299,7 @@ Failure here blocks all product UI work.
 
 Goal: prove or reject GTK before product UI depends on it.
 
-Status: Slices 2.1, 2.2A, and 2.2B complete. Slice 2.2C is next. Slices
+Status: Slices 2.1 through 2.2C complete. Slice 2.2D is next. Slices
 2.2C–2.2F are the reordered kill tests; see
 [Why Slice 2.2 was cut short](#why-slice-22-was-cut-short).
 
@@ -380,7 +379,7 @@ The dangerous checks now run first. Product interaction behavior moves to
 Phase 4, where it is written once, in the chosen host language, against a
 toolkit that has already survived.
 
-#### Slice 2.2C: Prove Wayland — next
+#### Slice 2.2C: Prove Wayland — complete
 
 - Run the existing host under a native Wayland compositor, not Xwayland.
 - Prove `GtkGLArea` context creation, framebuffer ownership, and the tracked
@@ -393,7 +392,16 @@ toolkit that has already survived.
 Gate: the Slice 2.1 render, resize, GL-state, and clean-close proofs plus one
 Slice 2.2A keyboard run, all green under native Wayland.
 
-#### Slice 2.2D: Prove the WebKitGTK conflict probe
+The 2026-07-25 gate passed under Weston 14.0.2 without Xwayland. GTK reported
+`GdkWaylandDisplay`; the live libkitty recorder rendered and resized through
+three exact framebuffers, restored tracked GL state, received native Wayland
+press/release/repeat and IBus preedit/commit events, and was reaped on close.
+Weston was nested visibly in the dedicated X11 VNC desktop. XTEST drove only
+the compositor's outer window and Weston translated the input to
+`wl_keyboard`, so this is explicitly display-bound and not physical-libinput
+evidence. Exact results and limits are in `PORT_STATUS.md`.
+
+#### Slice 2.2D: Prove the WebKitGTK conflict probe — next
 
 - Instantiate a minimal `WebKitWebView` adjacent to the live terminal in one
   process. This is a conflict probe, not browser product work.
@@ -849,7 +857,8 @@ items that unblock everything else stay open.
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2C is next under the reordered
-Phase 2: prove the existing GTK host under a native Wayland compositor. Do not
-start selection, clipboard, mouse, or search — those moved to Phase 4. Shared
-fixtures remain provisional and still block the Rust product model.
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2D is next under the reordered
+Phase 2: run the bounded WebKitGTK coexistence probe under both proven display
+backends. Do not start browser product behavior, selection, clipboard, mouse,
+or search — those belong to later phases. Shared fixtures remain provisional
+and still block the Rust product model.

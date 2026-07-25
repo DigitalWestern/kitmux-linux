@@ -18,7 +18,8 @@ libkitty shell rendered, PTY output arrived through a GLib file-descriptor
 source, two framebuffer resizes applied, tracked OpenGL state restored after
 draw, and close reaped the terminal child. This closes only the rendering and
 lifecycle slice; GTK is not chosen until input, IME, Wayland, scale, fairness,
-and the bounded WebKit conflict checks pass.
+and the bounded WebKit conflict checks pass. Input/IME and native Wayland have
+since passed; scaling, fairness, and WebKit coexistence remain open.
 
 ## 2026-07-25 scope correction
 
@@ -41,6 +42,21 @@ answer turned out to be yes only after non-obvious work.
 "Disposable" also needed qualification. See ADR 0007: the display-free key
 translation and its fixtures are durable and stay C behind FFI; only
 `src/gtk_terminal_host.c` is disposable.
+
+## 2026-07-25 native Wayland result
+
+Slice 2.2C passed. Weston 14.0.2 ran without Xwayland, and the existing host
+reported `GdkWaylandDisplay` before rendering a live libkitty recorder
+session. Three exact framebuffer sizes, tracked GL-state restoration,
+press/release/repeat, one real IBus preedit/direct commit, and clean child
+reaping all passed.
+
+Weston was nested with its X11 backend in the dedicated VNC development
+desktop so the result stayed visible. XTEST targeted only the compositor's
+outer window; Weston converted those events to `wl_keyboard` events for the
+native client. This closes the GTK Wayland-client kill check but does not
+claim a physical Wayland desktop, libinput/evdev injection, GPU performance,
+or driver behavior.
 
 The spike also established a loader boundary for the eventual native package.
 The GTK process must not add Kitty's full private dependency directory to its

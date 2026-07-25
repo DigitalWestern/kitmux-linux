@@ -1,6 +1,7 @@
 # Kitmux Linux next steps
 
-Start with Slice 2.2C — **Wayland**. Slices 2.2A and 2.2B are closed.
+Start with Slice 2.2D — the **WebKitGTK conflict probe**. Slices 2.2A through
+2.2C are closed.
 
 Phase 2 was reordered on 2026-07-25. Slice 2.2C is no longer selection and
 clipboard: those, along with mouse, wheel, and search, moved to Phase 4 as
@@ -17,7 +18,7 @@ functionality, packaging, or the monorepo migration.
 1. Read `PORT_STATUS.md`, this file, the Phase 2 section of
    `LINUX_PORT_PLAN.md`, and ADRs 0006, 0007, and 0008.
 2. Confirm `git status --short` is clean and inspect commits newer than the
-   Slice 2.2B entry in `PORT_STATUS.md`.
+   Slice 2.2C entry in `PORT_STATUS.md`.
 3. Run:
 
    ```sh
@@ -75,8 +76,10 @@ later work inherits:
   state reached kitty's Screen.
 - `tests/x11_key_injector.c` replaces `xdotool` for key synthesis. Do not go
   back to `xdotool` for function keys; the reason is recorded in
-  `PORT_STATUS.md` and in the tool's own header comment. It is X11-only, which
-  Slice 2.2C has to work around.
+  `PORT_STATUS.md` and in the tool's own header comment. It is X11-only. Slice
+  2.2C reused it only against Weston's outer X11 window, with Weston delivering
+  native `wl_keyboard` events to the GTK client; that bridge remains
+  display-bound evidence.
 - The host reports every translated event with its exact bytes, plus focus
   ownership and widget bounds, on stdout. Keep that contract: the desktop gate
   asserts against it.
@@ -104,33 +107,26 @@ and AltGr live in `tests/gtk_key_matrix.c` and need no display. Every Compose,
 dead-key, preedit, and commit assertion needs the desktop session, because
 only a live `GtkIMContext` produces them.
 
+### 2.2C — Native Wayland client path — done 2026-07-25
+
+- The disposable desktop harness starts Weston 14.0.2 without Xwayland and
+  launches the existing host with `GDK_BACKEND=wayland`; the host asserts
+  `GdkWaylandDisplay`.
+- The live libkitty recorder rendered and resized through three exact
+  framebuffer sizes, kept the tracked host GL state intact, and reaped its
+  child on close.
+- Press, release, compositor-generated repeat, and a real
+  `m17n:t:latn-post` preedit/commit flow passed with exact child bytes.
+- Weston is nested in the dedicated X11 VNC desktop for visible automation.
+  XTEST targets only the compositor's outer window; Weston emits the native
+  Wayland input events. This proves GTK's Wayland path, not physical
+  libinput/evdev or a general-purpose Wayland injection API.
+- The gate and exact limits are recorded in `PORT_STATUS.md`; visible evidence
+  is `kitmux-linux/gtk-wayland-proof.png`.
+
 ## Remaining Phase 2 sequence
 
-### 2.2C — Wayland — next
-
-The existing host, unchanged in behavior, running under a native Wayland
-compositor rather than Xwayland.
-
-- Prove `GtkGLArea` context creation, framebuffer ownership, and the tracked
-  GL state restoration on the Wayland GL path. GTK's GL backend differs enough
-  from X11 that Slice 2.1's evidence does not transfer.
-- Prove key press/release/repeat and at least one input-method preedit/commit
-  flow. Key routing and IME differ between the backends; this is not a rerun.
-- `tests/x11_key_injector.c` is XTEST and will not work here. Either find a
-  substitute injection mechanism — a virtual input device, or the compositor's
-  own testing interface — or mark the affected assertions display-bound and
-  say so explicitly rather than quietly dropping them.
-- Weston is already installed in the desktop VM. Prefer it over adding a new
-  environment.
-
-Gate: the Slice 2.1 render, resize, GL-state, and clean-close proofs plus one
-Slice 2.2A keyboard run, all green under native Wayland.
-
-If GTK's Wayland GL path cannot host Kitty's renderer, stop and record it.
-That is a toolkit-disqualifying result and it is exactly what this slice is
-for.
-
-### 2.2D — WebKitGTK conflict probe
+### 2.2D — WebKitGTK conflict probe — next
 
 A minimal `WebKitWebView` adjacent to the live terminal, in one process. This
 is a conflict probe, not browser product work — no navigation, no chrome, no
@@ -225,14 +221,13 @@ toolkit decision. It moved to Phase 6.
 ```text
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, the Phase 2 section of
 LINUX_PORT_PLAN.md, and ADRs 0006 through 0008. Note that Phase 2 was
-reordered: Slice 2.2C is Wayland, not selection/clipboard. Confirm the
-worktree and both VM baselines. Implement only Slice 2.2C: run the existing
-GTK host under a native Wayland compositor and prove GtkGLArea context
-creation, framebuffer ownership, tracked GL state restoration, resize, clean
-close, key press/release/repeat, and one input-method preedit/commit flow.
-XTEST will not work there — either substitute an injection mechanism or mark
-the affected assertions display-bound explicitly. Extend the existing harness
-rather than replacing it, classify any new file as durable or disposable per
-ADR 0007, run the headless and desktop gates, update evidence docs, and stop
-before Slice 2.2D.
+reordered and Slice 2.2C native Wayland is closed. Confirm the worktree and
+both VM baselines. Implement only Slice 2.2D: add one minimal
+WebKitWebView adjacent to the live terminal in the disposable GTK host, with
+no navigation, browser chrome, or data-session product work. Probe GL context,
+loader/symbol, focus, and dependency-closure conflicts against the isolated
+libpython boundary, and run the same bounded probe under both X11 and native
+Wayland. Treat an ambiguous result as failure to narrow, not permission to
+work around it. Classify any new file per ADR 0007, run the headless and
+desktop gates, update evidence docs, and stop before Slice 2.2E.
 ```
