@@ -102,6 +102,26 @@ limactl shell kitmux-linux-desktop -- \
   "$PWD/kitmux-linux/scripts/test-desktop.sh"
 ```
 
+The gate covers rendering, resize, PTY, clean close, and the Slice 2.2A
+keyboard harness. It writes `kitmux-linux/gtk-terminal-host-proof.png` and
+`kitmux-linux/gtk-keyboard-focus-proof.png`, and it briefly disables X
+auto-repeat, so run it on the project VNC session rather than a desktop you
+are using.
+
+The keyboard harness has two halves:
+
+- `gtk_key_matrix` needs no display. It drives the GDK-to-libkitty
+  translation and kitty's encoder over a fixed key table in three live
+  terminal states (default, DECCKM, and kitty keyboard protocol flags 15),
+  then checks the bytes a real PTY child (`pty_input_recorder`) actually
+  read.
+- Two windowed runs replay a fixed key script through real GDK events using
+  `x11_key_injector`, a small XTEST tool. `xdotool` cannot be used for the
+  function keys: it infers modifiers from the shift level where it finds a
+  keysym, and this session's XKB map puts `XF86Switch_VT_*` on higher levels
+  of the same keycode, so `xdotool key F1` arrives as Alt+F1 and XFCE
+  consumes it.
+
 Stop desktop services and the VM without deleting either:
 
 ```sh

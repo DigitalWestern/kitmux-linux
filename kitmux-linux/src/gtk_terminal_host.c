@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "gtk_key_translation.h"
 #include "libkitty.h"
 
 typedef struct {
@@ -14,14 +15,18 @@ typedef struct {
   GtkWidget *gl_area;
   GtkWidget *status_label;
   GtkWidget *error_label;
+  GtkWidget *adjacent_entry;
   kitty_engine *engine;
   kitty_session *session;
+  kitmux_key_tracker keys;
   guint pty_source;
   int framebuffer_width;
   int framebuffer_height;
   bool first_frame_reported;
   bool pty_output_reported;
   bool gl_state_reported;
+  bool layout_reported;
+  bool close_on_child_exit;
 } AppState;
 
 typedef struct {
@@ -157,6 +162,171 @@ static void on_child_exit(void *userdata, int status) {
   char message[96];
   snprintf(message, sizeof(message), "Shell exited with status %d", status);
   gtk_label_set_text(GTK_LABEL(state->status_label), message);
+  printf("GTK terminal child exit: status=%d\n", status);
+  fflush(stdout);
+  if (state->close_on_child_exit && state->window) {
+    gtk_window_close(GTK_WINDOW(state->window));
+  }
+}
+
+static const char *action_name(int action) {
+  switch (action) {
+    case KITMUX_KEY_ACTION_RELEASE: return "release";
+    case KITMUX_KEY_ACTION_REPEAT: return "repeat";
+    default: return "press";
+  }
+}
+
+// Every key the focused terminal sees is reported here: the translated event
+// metadata plus the exact bytes libkitty produced for it. Keys that encode to
+// nothing (a release under the legacy protocol) are still reported, so the
+// harness can tell "no bytes" from "no event".
+static void route_key_to_terminal(AppState *state,
+                                  const kitmux_gdk_key_input *input) {
+  kitmux_key_translation translated;
+  if (!kitmux_translate_gdk_key(input, &translated)) {
+    printf("GTK key ignored: action=%s keyval=0x%X\n",
+           action_name(input->action), input->keyval);
+    fflush(stdout);
+    return;
+  }
+  char encoded[256];
+  size_t written = 0;
+  if (state->session) {
+    written = kitty_session_encode_key(state->session, &translated.event,
+                                       encoded, sizeof(encoded));
+  }
+  char hex[2 * sizeof(encoded) + 1];
+  size_t used = 0;
+  for (size_t i = 0; i < written && used + 2 < sizeof(hex); ++i) {
+    used += (size_t)snprintf(hex + used, sizeof(hex) - used, "%02x",
+                             (unsigned char)encoded[i]);
+  }
+  hex[used] = '\0';
+  printf("GTK key %s: key=0x%X shifted=0x%X mods=0x%X text=\"%s\" bytes=%s\n",
+         action_name(translated.event.action), translated.event.key,
+         translated.event.shifted_key, translated.event.mods,
+         translated.event.text, hex);
+  fflush(stdout);
+  if (written > 0 && state->session) {
+    kitty_session_write(state->session, (const uint8_t *)encoded, written);
+  }
+}
+
+// GDK reports the keyval already resolved for the active layout and level;
+// kitty wants the base-layout value as the key identity, so ask GDK for the
+// unmodified keyval of the same hardware key in the event's own layout.
+static guint base_layout_keyval(GtkWidget *widget,
+                                GtkEventController *controller,
+                                guint keycode) {
+  GdkDisplay *display = gtk_widget_get_display(widget);
+  if (!display) return 0;
+  GdkEvent *event = gtk_event_controller_get_current_event(controller);
+  int group = event ? gdk_key_event_get_layout(event) : 0;
+  guint keyval = 0;
+  if (!gdk_display_translate_key(display, keycode, GDK_NO_MODIFIER_MASK, group,
+                                 &keyval, NULL, NULL, NULL)) {
+    return 0;
+  }
+  return keyval;
+}
+
+static gboolean key_pressed(GtkEventControllerKey *controller, guint keyval,
+                            guint keycode, GdkModifierType state,
+                            gpointer userdata) {
+  AppState *app = userdata;
+  kitmux_gdk_key_input input = {
+      .keyval = keyval,
+      .unshifted_keyval = base_layout_keyval(
+          app->gl_area, GTK_EVENT_CONTROLLER(controller), keycode),
+      .state = state,
+      .action = kitmux_key_tracker_press(&app->keys, keycode),
+  };
+  route_key_to_terminal(app, &input);
+  // The terminal owns every key while it is focused, including Tab: GTK must
+  // not turn it into focus navigation.
+  return TRUE;
+}
+
+static void key_released(GtkEventControllerKey *controller, guint keyval,
+                         guint keycode, GdkModifierType state,
+                         gpointer userdata) {
+  AppState *app = userdata;
+  kitmux_key_tracker_release(&app->keys, keycode);
+  kitmux_gdk_key_input input = {
+      .keyval = keyval,
+      .unshifted_keyval = base_layout_keyval(
+          app->gl_area, GTK_EVENT_CONTROLLER(controller), keycode),
+      .state = state,
+      .action = KITMUX_KEY_ACTION_RELEASE,
+  };
+  route_key_to_terminal(app, &input);
+}
+
+static void terminal_focus_entered(GtkEventControllerFocus *controller,
+                                   gpointer userdata) {
+  (void)controller;
+  (void)userdata;
+  printf("GTK focus: terminal\n");
+  fflush(stdout);
+}
+
+static void terminal_focus_left(GtkEventControllerFocus *controller,
+                                gpointer userdata) {
+  (void)controller;
+  AppState *state = userdata;
+  // Keys held when focus moves away never produce a release the terminal can
+  // see, so the held-key set ends with the focus.
+  size_t held = kitmux_key_tracker_held(&state->keys);
+  kitmux_key_tracker_reset(&state->keys);
+  printf("GTK focus: terminal released %zu held key(s)\n", held);
+  fflush(stdout);
+}
+
+static void adjacent_focus_entered(GtkEventControllerFocus *controller,
+                                   gpointer userdata) {
+  (void)controller;
+  (void)userdata;
+  printf("GTK focus: adjacent-control\n");
+  fflush(stdout);
+}
+
+static void adjacent_text_changed(GtkEditable *editable, gpointer userdata) {
+  (void)userdata;
+  printf("GTK adjacent control text: %s\n", gtk_editable_get_text(editable));
+  fflush(stdout);
+}
+
+static void terminal_clicked(GtkGestureClick *gesture, int n_press, double x,
+                             double y, gpointer userdata) {
+  (void)gesture;
+  (void)n_press;
+  (void)x;
+  (void)y;
+  AppState *state = userdata;
+  gtk_widget_grab_focus(state->gl_area);
+}
+
+// Widget geometry inside the window, so an automated run can put the pointer
+// on the terminal or on the ordinary GTK control without guessing.
+static void report_layout(AppState *state) {
+  struct {
+    const char *label;
+    GtkWidget *widget;
+  } items[] = {
+      {"terminal", state->gl_area},
+      {"adjacent-control", state->adjacent_entry},
+  };
+  for (size_t i = 0; i < G_N_ELEMENTS(items); ++i) {
+    graphene_rect_t bounds;
+    if (!gtk_widget_compute_bounds(items[i].widget, state->window, &bounds)) {
+      continue;
+    }
+    printf("GTK bounds %s: x=%d y=%d w=%d h=%d\n", items[i].label,
+           (int)bounds.origin.x, (int)bounds.origin.y, (int)bounds.size.width,
+           (int)bounds.size.height);
+  }
+  fflush(stdout);
 }
 
 static gboolean pump_pty(gint fd, GIOCondition condition, gpointer userdata) {
@@ -227,12 +397,18 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
       .on_bell = on_bell,
       .on_child_exit = on_child_exit,
   };
-  state->session = kitty_session_create(state->engine, 24, 80, NULL,
+  // An automated run replaces the login shell with a fixture that records the
+  // exact bytes it receives; the child inherits this process's environment.
+  const char *child = g_getenv("KITMUX_GTK_CHILD");
+  const char *const child_argv[] = {child, NULL};
+  state->session = kitty_session_create(state->engine, 24, 80,
+                                        (child && *child) ? child_argv : NULL,
                                         &callbacks, error, sizeof(error));
   if (!state->session) {
     show_error(state, "Terminal session creation failed: %s", error);
     return;
   }
+  gtk_widget_grab_focus(GTK_WIDGET(area));
   int fd = kitty_session_fd(state->session);
   state->pty_source = g_unix_fd_add_full(
       G_PRIORITY_DEFAULT, fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
@@ -327,6 +503,10 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context,
            kitty_session_child_pid(state->session));
     fflush(stdout);
   }
+  if (!state->layout_reported) {
+    state->layout_reported = true;
+    report_layout(state);
+  }
   return TRUE;
 }
 
@@ -362,6 +542,19 @@ static void activate(GtkApplication *application, gpointer userdata) {
   gtk_label_set_xalign(GTK_LABEL(state->status_label), 0.0f);
   gtk_widget_set_hexpand(state->status_label, TRUE);
   gtk_box_append(GTK_BOX(header), state->status_label);
+  // An ordinary GTK control beside the terminal: focus transfer and key
+  // ownership stay observable for the whole spike.
+  state->adjacent_entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(state->adjacent_entry),
+                                 "Adjacent GTK entry");
+  gtk_widget_set_size_request(state->adjacent_entry, 220, -1);
+  g_signal_connect(state->adjacent_entry, "changed",
+                   G_CALLBACK(adjacent_text_changed), state);
+  GtkEventController *adjacent_focus = gtk_event_controller_focus_new();
+  g_signal_connect(adjacent_focus, "enter",
+                   G_CALLBACK(adjacent_focus_entered), state);
+  gtk_widget_add_controller(state->adjacent_entry, adjacent_focus);
+  gtk_box_append(GTK_BOX(header), state->adjacent_entry);
   GtkWidget *close_button = gtk_button_new_with_label("Close");
   g_signal_connect(close_button, "clicked", G_CALLBACK(close_clicked), state);
   gtk_box_append(GTK_BOX(header), close_button);
@@ -375,6 +568,26 @@ static void activate(GtkApplication *application, gpointer userdata) {
   gtk_gl_area_set_has_stencil_buffer(GTK_GL_AREA(state->gl_area), FALSE);
   gtk_widget_set_hexpand(state->gl_area, TRUE);
   gtk_widget_set_vexpand(state->gl_area, TRUE);
+  gtk_widget_set_focusable(state->gl_area, TRUE);
+
+  GtkEventController *key_controller = gtk_event_controller_key_new();
+  g_signal_connect(key_controller, "key-pressed", G_CALLBACK(key_pressed),
+                   state);
+  g_signal_connect(key_controller, "key-released", G_CALLBACK(key_released),
+                   state);
+  gtk_widget_add_controller(state->gl_area, key_controller);
+
+  GtkEventController *terminal_focus = gtk_event_controller_focus_new();
+  g_signal_connect(terminal_focus, "enter",
+                   G_CALLBACK(terminal_focus_entered), state);
+  g_signal_connect(terminal_focus, "leave", G_CALLBACK(terminal_focus_left),
+                   state);
+  gtk_widget_add_controller(state->gl_area, terminal_focus);
+
+  GtkGesture *click = gtk_gesture_click_new();
+  g_signal_connect(click, "pressed", G_CALLBACK(terminal_clicked), state);
+  gtk_widget_add_controller(state->gl_area, GTK_EVENT_CONTROLLER(click));
+
   g_signal_connect(state->gl_area, "realize", G_CALLBACK(realized), state);
   g_signal_connect(state->gl_area, "unrealize", G_CALLBACK(unrealized), state);
   g_signal_connect(state->gl_area, "render", G_CALLBACK(render), state);
@@ -392,6 +605,13 @@ static void activate(GtkApplication *application, gpointer userdata) {
   gtk_box_append(GTK_BOX(root), overlay);
   gtk_window_set_child(GTK_WINDOW(state->window), root);
   gtk_window_present(GTK_WINDOW(state->window));
+  // The terminal, not the adjacent entry, owns the keyboard when the window
+  // opens; GTK would otherwise focus the first focusable child.
+  gtk_window_set_focus(GTK_WINDOW(state->window), state->gl_area);
+
+  const char *close_on_exit = g_getenv("KITMUX_GTK_CLOSE_ON_CHILD_EXIT");
+  state->close_on_child_exit = close_on_exit && *close_on_exit &&
+                               g_strcmp0(close_on_exit, "0") != 0;
 
   const char *auto_close_ms = g_getenv("KITMUX_GTK_AUTO_CLOSE_MS");
   if (auto_close_ms && *auto_close_ms) {

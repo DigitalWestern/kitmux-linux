@@ -7,10 +7,11 @@
 
 **Reference commit:** `e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4`
 
-**Last reviewed:** 2026-07-24
+**Last reviewed:** 2026-07-25
 
-**Current progress:** Phase 1 and Slice 2.1 complete; Slice 2.2 is next. See
-[`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
+**Current progress:** Phase 1, Slice 2.1, and Slice 2.2A complete; Slice 2.2B
+is next. See [`PORT_STATUS.md`](PORT_STATUS.md) and
+[`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 ## Purpose
 
@@ -282,10 +283,11 @@ Build a disposable GTK 4 probe with:
   initialization fails.
 - Prove the slice visibly in the desktop VM over X11 before adding more UI.
 
-#### Slice 2.2: Prove terminal interaction — next
+#### Slice 2.2: Prove terminal interaction — in progress
 
 - Add key press/release/repeat, Compose, dead-key, AltGr, non-US layout, and
-  IME preedit/commit paths.
+  IME preedit/commit paths. Physical press/release/repeat routing and focus
+  transfer closed in Slice 2.2A; Compose/layouts/IME are Slice 2.2B.
 - Add focus, selection, clipboard, safe paste, mouse reporting, wheel, and
   search behavior.
 - Keep ordinary GTK controls beside the terminal so focus transfer and

@@ -40,7 +40,8 @@
       "macos_sources": ["libkitty/include/libkitty.h", "macos/KitmuxApp/Sources/Kitmux/TerminalView+TextInput.swift"],
       "macos_tests": ["libkitty/tests/test_keys.py", "libkitty/tests/test_session.c"],
       "linux_acceptance": "GTK key events, paste, dead keys, emoji, and an IME commit produce the expected child bytes on Wayland and X11.",
-      "linux_status": "Slice 2.2 is next; no GTK keyboard, paste, Compose, layout, or IME behavior is currently proven.",
+      "linux_tests": ["kitmux-linux/tests/gtk_key_matrix.c", "kitmux-linux/scripts/test-desktop.sh"],
+      "linux_status": "Slice 2.2A is closed: GDK press/release/repeat routing, kitty's encoder over live DECCKM and keyboard-protocol state, and focus transfer to an adjacent GTK control pass over X11 against fixed byte expectations. Compose, dead keys, AltGr, non-US layouts, IME preedit/commit, paste, and Wayland remain unproven, and the host still synthesizes committed text from key symbols.",
       "dependencies": ["GTK input method context"],
       "translation": "Map GDK key/modifier values to the stable libkitty key contract."
     },

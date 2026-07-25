@@ -1,5 +1,5 @@
 schema_version: 1
-updated: 2026-07-24
+updated: 2026-07-25
 
 release_runtime_evidence:
   architecture: aarch64
@@ -18,9 +18,20 @@ gtk_host_evidence:
   display_backend: x11
   renderer: Mesa llvmpipe
   session: live libkitty shell with GLib PTY source
-  verified: [render, tracked-gl-state-restore, resize, diagnostic, child-reap]
-  unproven: [input, ime, clipboard, mouse, search, wayland, scaling, physical-gpu, fairness, webkit, packaging]
-  toolkit_decision: pending input, IME, Wayland, scale, fairness, and WebKit checks
+  verified: [render, tracked-gl-state-restore, resize, diagnostic, child-reap,
+             key-press-release-repeat, key-encoding-live-terminal-state,
+             focus-transfer]
+  unproven: [compose, dead-keys, altgr, non-us-layout, ime, clipboard, paste,
+             mouse, search, wayland, scaling, physical-gpu, fairness, webkit,
+             packaging]
+  keyboard_evidence:
+    translation: kitmux-linux/src/gtk_key_translation.c
+    matrix: 30 events x 3 live terminal states, fixed expected bytes, no display
+    windowed_runs: [default-terminal-state, kitty-keyboard-protocol-flags-15]
+    injector: XTEST; xdotool infers modifiers from XKB shift levels and is unusable for function keys here
+    repeat_source: X auto-repeat; per-event bytes fixed, repeat count bounded
+    text_source: synthesized from key symbols until Slice 2.2B replaces it with GtkIMContext
+  toolkit_decision: pending IME, Wayland, scale, fairness, and WebKit checks
 
 toolchain:
   rust: 1.97.1
@@ -55,6 +66,7 @@ environments:
     python: 3.14.6
     toolkit: GTK 4.22.4
     packages: []
+    input_tools: [xdotool, libxtst-dev, ibus]
     purpose: local visible GTK, GtkGLArea, input, and desktop integration tests
 
   - id: ubuntu-26.04-x86_64-gnome

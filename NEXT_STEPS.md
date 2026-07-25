@@ -1,14 +1,15 @@
 # Kitmux Linux next steps
 
-Start with Slice 2.2. Do not begin product navigation UI, the Rust product
-model, browser functionality, packaging, or the monorepo migration.
+Start with Slice 2.2B. Slice 2.2A is closed; do not begin product navigation
+UI, the Rust product model, browser functionality, packaging, or the monorepo
+migration.
 
 ## Preconditions
 
 1. Read `PORT_STATUS.md`, this file, and the Slice 2.2/2.3 sections of
    `LINUX_PORT_PLAN.md`.
 2. Confirm `git status --short` is clean and inspect commits newer than the
-   recorded Slice 2.1 implementation checkpoint, `131273c`.
+   Slice 2.2A entry in `PORT_STATUS.md`.
 3. Run:
 
    ```sh
@@ -31,22 +32,31 @@ model, browser functionality, packaging, or the monorepo migration.
 Keep each step independently reviewable and keep a normal GTK control beside
 the terminal throughout the spike.
 
-### 2.2A — Deterministic keyboard harness
+### 2.2A — Deterministic keyboard harness — done 2026-07-25
 
-- Add an automated child fixture that records exact terminal input bytes and
-  enough event metadata to distinguish press, release, and repeat behavior.
-- Route focused GTK key events through the public libkitty encoding API.
-- Cover printable ASCII, Enter, Tab, Backspace, Escape, arrows, function keys,
-  modifiers, press/release, and repeat.
-- Prove the ordinary GTK control receives its own keys after focus transfer.
+Exact commands, byte expectations, and limits are in `PORT_STATUS.md`. What
+later sub-slices inherit:
 
-Gate: an automated X11 run compares exact bytes/events with fixed expectations
-and the existing render/lifecycle gate remains green.
+- `src/gtk_key_translation.{c,h}` is the display-free GDK-to-libkitty key
+  translation and held-key tracker. It has no GdkDisplay dependency on
+  purpose, so `tests/gtk_key_matrix.c` can assert fixed bytes without a
+  display.
+- `tests/pty_input_recorder.c` is the child fixture. `KITMUX_RECORDER_INIT`
+  puts the terminal into a known live state before any key is sent, and the
+  host's first `GTK terminal PTY output:` line is the harness's proof that the
+  state reached kitty's Screen.
+- `tests/x11_key_injector.c` replaces `xdotool` for key synthesis. Do not go
+  back to `xdotool` for function keys; the reason is recorded in
+  `PORT_STATUS.md` and in the tool's own header comment.
+- The host reports every translated event with its exact bytes, plus focus
+  ownership and widget bounds, on stdout. Keep that contract: the desktop gate
+  asserts against it.
 
-### 2.2B — Compose, layouts, and IME
+### 2.2B — Compose, layouts, and IME — next
 
 - Use GTK's input-method context rather than synthesizing committed Unicode
-  from key symbols.
+  from key symbols. Slice 2.2A deliberately left that synthesis in
+  `kitmux_translate_gdk_key`; replacing it is this sub-slice's first job.
 - Wire preedit start/change/end and commit without double-sending the physical
   key event.
 - Test Compose, a dead key, AltGr, one non-US layout, emoji, and a real IBus
@@ -132,8 +142,11 @@ and redesign that boundary rather than accumulating workarounds.
 ```text
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, and the Slice 2.2 section of
 LINUX_PORT_PLAN.md. Confirm the worktree and both VM baselines. Implement only
-Slice 2.2A: a deterministic keyboard-input harness and GTK focus/key routing
-for the real libkitty terminal. Cover exact press/release/repeat bytes and
-focus transfer to the adjacent GTK control. Run the headless and desktop
-gates, update evidence docs, and stop before Compose/IME or Slice 2.2B.
+Slice 2.2B: replace the Slice 2.2A key-symbol text synthesis with a real
+GtkIMContext, wire preedit start/change/end and commit without double-sending
+the physical key event, and cover Compose, a dead key, AltGr, one non-US
+layout, emoji, and an IBus preedit/commit flow. Extend the existing keyboard
+harness rather than replacing it. Run the headless and desktop gates, record
+which assertions need the desktop session, update evidence docs, and stop
+before Slice 2.2C.
 ```

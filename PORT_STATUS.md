@@ -1,18 +1,21 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-07-24
+**Last inspected:** 2026-07-25
 
-**Implementation state:** Phase 1 and GTK Slice 2.1 are closed. Separate Ubuntu
-ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB
-attributed engine runtime, Linux stress tests, and a real one-session GTK 4
-terminal host exist. No product navigation UI or native package exists yet.
+**Implementation state:** Phase 1, GTK Slice 2.1, and Slice 2.2A are closed.
+Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a
+relocatable 104 MB attributed engine runtime, Linux stress tests, a real
+one-session GTK 4 terminal host, and a deterministic keyboard-input harness
+exist. No product navigation UI or native package exists yet.
 
 **Active phase:** Phase 2 — rendering and toolkit kill spike.
 
-**Next slice:** Slice 2.2 — prove GTK terminal interaction: keyboard
-press/release/repeat, Compose/dead-key/AltGr/non-US/IME, focus transfer,
-selection, clipboard/paste, mouse/wheel, and search. Phase 0.4 shared fixture
-promotion remains open and blocks the Rust product model, not this GTK spike.
+**Next slice:** Slice 2.2B — Compose, dead keys, AltGr, a non-US layout, and a
+real IBus preedit/commit flow through `GtkIMContext`. Slice 2.2A proved
+physical key press/release/repeat routing and focus transfer only; the host
+still synthesizes committed text from key symbols, which 2.2B must replace.
+Phase 0.4 shared fixture promotion remains open and blocks the Rust product
+model, not this GTK spike.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 Operational VM, gate, runtime, and SBOM commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
@@ -54,6 +57,66 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — Slice 2.2A deterministic keyboard input and focus
+
+- Added `src/gtk_key_translation.{c,h}`: a display-free translation from GDK
+  key vocabulary to the public `kitty_key_event` contract (functional-key
+  numbering, kitty's GLFW-fork modifier bits, base-layout key identity with
+  the shifted codepoint alongside, and kitty's text-suppression rules), plus
+  a held-key tracker that separates press from auto-repeat. Encoding itself
+  stays in kitty through `kitty_session_encode_key`, so DECCKM and the
+  keyboard-protocol flag stack come from the live session.
+- The GTK host now routes focused key events through that path, keeps an
+  ordinary `GtkEntry` beside the terminal, reports focus ownership, widget
+  bounds, and every translated event with its exact encoded bytes, can run a
+  fixture child instead of a login shell, and can close on child exit.
+- Added `tests/pty_input_recorder.c`, a raw-mode PTY child that records the
+  exact bytes it receives, can emit a fixed escape sequence at startup to put
+  the terminal in a known state, and echoes each read back as hex so the
+  rendered screen shows what arrived.
+- Added `tests/gtk_key_matrix.c`: 30 key events × 3 live terminal states, with
+  expectations written from kitty's documented protocol and its pinned
+  `key_encoding.c` rather than captured from this host. It asserts the
+  translated event metadata, the exact encoded bytes, and the bytes the real
+  PTY child read: 71 bytes in the default and DECCKM states, 186 with kitty
+  keyboard-protocol flags 15.
+- Added `tests/x11_key_injector.c` (XTEST) and `libxtst-dev` to desktop
+  provisioning. `xdotool` is unusable for the function keys here: it infers
+  modifiers from the shift level where it finds a keysym, and this session's
+  XKB map places `XF86Switch_VT_*` on higher levels of the same keycode, so
+  `xdotool key F1` injects keycode 64 (Alt_L) before keycode 67 and XFCE
+  consumes the result as Alt+F1. `xinput test-xi2 --root` confirmed the
+  injected keycodes; flattening the keymap with `xmodmap` did not fix it.
+- GUI-tested on GTK 4.22.4, X11, Mesa llvmpipe, via two windowed runs whose
+  child byte streams are matched against fixed expectations:
+  - default terminal state — `a`, Shift+`b`, Ctrl+`c`, Alt+`d`, Enter, Tab,
+    Backspace, Escape, four arrows, and F1 produced
+    `61 42 03 1b64 0d 09 7f 1b 1b5b41 1b5b42 1b5b44 1b5b43 1b4f50`; releases
+    correctly produced no bytes; a held `a` produced one press and nine real
+    GDK auto-repeats, each encoding to `61`.
+  - kitty keyboard protocol (`CSI > 15 u`, set by the child at startup) —
+    press, repeat, and release each carried distinct bytes end to end, for
+    example `a` as `1b5b393775`, `1b5b39373b313a3275`, and
+    `1b5b39373b313a3375`.
+- Focus transfer is automated: clicking the adjacent `GtkEntry` moves focus,
+  the entry receives `xy`, the terminal child receives nothing while it is
+  unfocused, clicking back returns focus, and the next key (`z` → `7a`)
+  reaches the terminal again. Both runs ended by the fixture exiting on a
+  sentinel, and both left their recorded child PID dead.
+- Visible evidence is `kitmux-linux/gtk-keyboard-focus-proof.png`: the
+  terminal rendering the exact received bytes, the entry holding `xy`, and the
+  ordinary GTK controls.
+- Source-tested: `kitmux-linux/scripts/test-headless.sh` — six tests passed in
+  6.32 seconds plus the Rust/C header layout check.
+- GUI-tested: `kitmux-linux/scripts/test-desktop.sh` — the Slice 2.1 render,
+  resize, PTY, GL-state, and clean-close proofs stayed green alongside the new
+  keyboard matrix and both windowed key runs.
+- Not proven by this slice: Compose, dead keys, AltGr, non-US layouts, IME
+  preedit/commit, clipboard, paste, mouse, wheel, search, Wayland, scaling,
+  and physical GPUs. The host still synthesizes committed text from key
+  symbols; Slice 2.2B must replace that with `GtkIMContext`.
+- Package-tested: none.
 
 ### 2026-07-24 — durable Slice 2.1 handoff
 
@@ -241,10 +304,19 @@ clean-machine release evidence.
 ## Current blockers and limits
 
 - The local desktop VM proves a real GTK/libkitty session over X11 with
-  llvmpipe. It does not prove performance or driver behavior. Wayland,
-  physical GPU, keyboard/IME, focus breadth, selection, clipboard/paste,
-  mouse/wheel, search, fractional or mixed-monitor scaling, accessibility, PTY
-  and frame fairness, and WebKitGTK coexistence remain untested.
+  llvmpipe, including physical key press/release/repeat routing and focus
+  transfer to an ordinary GTK control. It does not prove performance or driver
+  behavior. Wayland, physical GPU, Compose/dead keys/AltGr/non-US layouts/IME,
+  selection, clipboard/paste, mouse/wheel, search, fractional or
+  mixed-monitor scaling, accessibility, PTY and frame fairness, and WebKitGTK
+  coexistence remain untested.
+- The GUI keyboard runs assert exact bytes per event but bound, rather than
+  fix, the number of auto-repeats: X auto-repeat is the only way to produce a
+  real GDK repeat event, and its count is timing-dependent. The fixed
+  press/repeat/release expectations live in the display-free key matrix.
+- The desktop gate disables X auto-repeat for its keyboard runs and restores
+  it on exit. It is a project VNC session control, not something to run
+  against a desktop in use.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
 - Shared portable fixtures are still provisional. Do not start the Rust model
@@ -264,7 +336,9 @@ clean-machine release evidence.
 
 Continue
 [Slice 2.2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22-prove-terminal-interaction)
-using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Begin with only
-Slice 2.2A: deterministic keyboard press/release/repeat and GTK focus transfer
-for the existing real terminal host. Do not begin product chrome, the Rust
-model, browser functionality, packaging, or repository migration.
+using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2A is
+closed; begin with only Slice 2.2B: replace the host's key-symbol text
+synthesis in `kitmux_translate_gdk_key` with a real `GtkIMContext`, and prove
+Compose, a dead key, AltGr, one non-US layout, emoji, and an IBus
+preedit/commit flow. Do not begin product chrome, the Rust model, browser
+functionality, packaging, or repository migration.

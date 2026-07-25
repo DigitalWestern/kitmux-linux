@@ -92,12 +92,36 @@ add_executable(linux_session_stress tests/linux_session_stress.c)
 target_link_libraries(linux_session_stress PRIVATE kitty)
 target_compile_options(linux_session_stress PRIVATE -UNDEBUG)
 
+add_executable(pty_input_recorder tests/pty_input_recorder.c)
+target_compile_options(pty_input_recorder PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+
 if(KITMUX_BUILD_GTK_HOST)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4 epoxy)
+
+  # The GDK -> libkitty key translation carries no display state, so the GTK
+  # host and the headless key matrix share one implementation.
+  add_library(kitmux_key_translation STATIC src/gtk_key_translation.c)
+  target_include_directories(kitmux_key_translation PUBLIC src)
+  target_link_libraries(kitmux_key_translation PUBLIC kitty PkgConfig::GTK4)
+  target_compile_options(kitmux_key_translation PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
   add_executable(kitmux_gtk_host src/gtk_terminal_host.c)
-  target_link_libraries(kitmux_gtk_host PRIVATE kitty PkgConfig::GTK4)
+  target_link_libraries(kitmux_gtk_host PRIVATE kitmux_key_translation)
   target_compile_options(kitmux_gtk_host PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
+  pkg_check_modules(XTST REQUIRED IMPORTED_TARGET x11 xtst)
+  add_executable(x11_key_injector tests/x11_key_injector.c)
+  target_link_libraries(x11_key_injector PRIVATE PkgConfig::XTST)
+  target_compile_options(x11_key_injector PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
+  add_executable(gtk_key_matrix tests/gtk_key_matrix.c)
+  target_link_libraries(gtk_key_matrix PRIVATE kitmux_key_translation)
+  target_compile_options(gtk_key_matrix PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
 endif()
 

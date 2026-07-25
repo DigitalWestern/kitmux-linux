@@ -14,6 +14,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ibus \
   ibus-gtk4 \
   libgtk-4-dev \
+  libxtst-dev \
   mesa-utils \
   ninja-build \
   novnc \
