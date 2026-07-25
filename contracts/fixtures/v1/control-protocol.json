@@ -1,0 +1,76 @@
+{
+  "fixtureVersion": 1,
+  "bounds": {
+    "requestBytes": 65536,
+    "responseBytes": 524288,
+    "requestIDUtf8Bytes": 256,
+    "methodUtf8Bytes": 128
+  },
+  "cases": [
+    {
+      "id": "valid-request",
+      "disposition": "accept",
+      "input": {
+        "version": 1,
+        "id": "fixture-request-1",
+        "method": "pane.focus",
+        "params": {
+          "id": "11111111-1111-1111-1111-111111111111"
+        }
+      }
+    },
+    {
+      "id": "reject-newer-version",
+      "disposition": "reject",
+      "errorCode": "unsupported_version",
+      "input": {
+        "version": 2,
+        "id": "fixture-request-2",
+        "method": "ping",
+        "params": {}
+      }
+    },
+    {
+      "id": "reject-empty-id",
+      "disposition": "reject",
+      "errorCode": "invalid_request",
+      "input": {
+        "version": 1,
+        "id": "",
+        "method": "ping",
+        "params": {}
+      }
+    },
+    {
+      "id": "reject-oversized-method",
+      "disposition": "reject",
+      "errorCode": "invalid_request",
+      "generate": {
+        "base": {
+          "version": 1,
+          "id": "fixture-request-3",
+          "method": "ping",
+          "params": {}
+        },
+        "field": "method",
+        "utf8Bytes": 129,
+        "scalar": "x"
+      }
+    },
+    {
+      "id": "reject-oversized-frame",
+      "disposition": "reject",
+      "errorCode": "request_too_large",
+      "generate": {
+        "rawUtf8Bytes": 65537,
+        "scalar": " "
+      }
+    },
+    {
+      "id": "reject-malformed-json",
+      "disposition": "reject",
+      "errorCode": "malformed_request",
+      "raw": "{"
+    }
+  ]
+}

@@ -18,9 +18,11 @@ Nonportable values stay out of shared fixtures: absolute user paths, installed
 font names, AppKit shortcut encodings, browser cookies/data, shell commands,
 agent sockets, keychain references, and platform package paths.
 
-Concrete JSON fixtures will be added under `fixtures/v1/` (Slice 0.4) and
-become authoritative only when both hosts consume them. Until then they are
-provisional and block the Rust product model.
+The authoritative JSON corpus is under `fixtures/v1/`. Its envelopes,
+malformed-input rules, temporary macOS resource mirror, and exact gates are
+documented in [`PORTABLE_FIXTURES.md`](PORTABLE_FIXTURES.md). Slice 0.4 freezes
+the macOS producer/consumer side; Phase 3 adds the Linux model consumer
+without changing fixture expectations.
 
 ## The feature inventory
 

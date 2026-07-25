@@ -1,0 +1,124 @@
+{
+  "fixtureVersion": 1,
+  "bounds": {
+    "knownKeys": 17,
+    "pasteConfirmationThresholdBytesMaximum": 10485760,
+    "sidebarWidthPointsMaximum": 320,
+    "tabWidthPointsMaximum": 400
+  },
+  "cases": [
+    {
+      "id": "defaults",
+      "disposition": "accept",
+      "input": {
+        "version": 1
+      },
+      "expectedResolved": {
+        "restoreScrollback": false,
+        "restoreLayout": "always",
+        "sidebarVisibleOnLaunch": true,
+        "pasteConfirmationThresholdBytes": 8192,
+        "tabTitleShowsCwd": true,
+        "tabTitleShowsProcess": true,
+        "showTabCloseButtonOnHover": true,
+        "newPaneInheritsCwd": false,
+        "notifyOnBell": false,
+        "notifyOnTerminalNotification": true,
+        "confirmCloseWithRunningProcess": false,
+        "browserSearchEngine": "google",
+        "workspaceColorStyle": "stripe",
+        "workspaceActiveStyle": "outline",
+        "sidebarWidthPoints": 180,
+        "tabMinWidthPoints": 90,
+        "tabMaxWidthPoints": 220
+      }
+    },
+    {
+      "id": "valid-overrides-and-unknown-key",
+      "disposition": "accept",
+      "input": {
+        "restoreScrollback": true,
+        "restoreLayout": "never",
+        "sidebarVisibleOnLaunch": false,
+        "pasteConfirmationThresholdBytes": 4096,
+        "tabTitleShowsCwd": false,
+        "tabTitleShowsProcess": false,
+        "showTabCloseButtonOnHover": false,
+        "newPaneInheritsCwd": true,
+        "notifyOnBell": true,
+        "notifyOnTerminalNotification": false,
+        "confirmCloseWithRunningProcess": true,
+        "browserSearchEngine": "kagi",
+        "workspaceColorStyle": "dot",
+        "workspaceActiveStyle": "fill",
+        "sidebarWidthPoints": 300,
+        "tabMinWidthPoints": 90,
+        "tabMaxWidthPoints": 320,
+        "futureKey": true
+      },
+      "expectedValidated": {
+        "restoreScrollback": true,
+        "restoreLayout": "never",
+        "sidebarVisibleOnLaunch": false,
+        "pasteConfirmationThresholdBytes": 4096,
+        "tabTitleShowsCwd": false,
+        "tabTitleShowsProcess": false,
+        "showTabCloseButtonOnHover": false,
+        "newPaneInheritsCwd": true,
+        "notifyOnBell": true,
+        "notifyOnTerminalNotification": false,
+        "confirmCloseWithRunningProcess": true,
+        "browserSearchEngine": "kagi",
+        "workspaceColorStyle": "dot",
+        "workspaceActiveStyle": "fill",
+        "sidebarWidthPoints": 300,
+        "tabMinWidthPoints": 90,
+        "tabMaxWidthPoints": 320
+      }
+    },
+    {
+      "id": "ignore-invalid-values",
+      "disposition": "ignore",
+      "input": {
+        "restoreScrollback": "yes",
+        "restoreLayout": "sometimes",
+        "sidebarVisibleOnLaunch": 1,
+        "pasteConfirmationThresholdBytes": -1,
+        "tabTitleShowsCwd": "yes",
+        "tabTitleShowsProcess": 1,
+        "showTabCloseButtonOnHover": 0,
+        "newPaneInheritsCwd": "yes",
+        "notifyOnBell": "yes",
+        "notifyOnTerminalNotification": "no",
+        "confirmCloseWithRunningProcess": "yes",
+        "browserSearchEngine": "ask-jeeves",
+        "workspaceColorStyle": "rainbow",
+        "workspaceActiveStyle": "glow",
+        "sidebarWidthPoints": 139,
+        "tabMinWidthPoints": 201,
+        "tabMaxWidthPoints": 401,
+        "futureKey": true
+      },
+      "expectedValidated": {},
+      "expectedResolved": {
+        "restoreScrollback": false,
+        "restoreLayout": "always",
+        "sidebarVisibleOnLaunch": true,
+        "pasteConfirmationThresholdBytes": 8192,
+        "tabTitleShowsCwd": true,
+        "tabTitleShowsProcess": true,
+        "showTabCloseButtonOnHover": true,
+        "newPaneInheritsCwd": false,
+        "notifyOnBell": false,
+        "notifyOnTerminalNotification": true,
+        "confirmCloseWithRunningProcess": false,
+        "browserSearchEngine": "google",
+        "workspaceColorStyle": "stripe",
+        "workspaceActiveStyle": "outline",
+        "sidebarWidthPoints": 180,
+        "tabMinWidthPoints": 90,
+        "tabMaxWidthPoints": 220
+      }
+    }
+  ]
+}

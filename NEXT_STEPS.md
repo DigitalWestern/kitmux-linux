@@ -10,6 +10,11 @@ disqualify GTK, cheapest and most dangerous first. The reasoning is in
 [Why Slice 2.2 was cut short](LINUX_PORT_PLAN.md#why-slice-22-was-cut-short)
 and ADR 0007.
 
+Phase 0.4's portable fixture corpus is closed and no longer blocks Phase 3.
+Do not start the Rust model incidentally from this handoff: this file still
+assigns one Phase 2 slice, and Phase 3 must begin as its own numbered slice
+against the frozen fixtures.
+
 Do not begin product navigation UI, the Rust product model, browser
 functionality, packaging, or the monorepo migration.
 

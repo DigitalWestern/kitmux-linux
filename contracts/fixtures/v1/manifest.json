@@ -1,0 +1,30 @@
+{
+  "fixtureVersion": 1,
+  "maximumFixtureBytes": 262144,
+  "contracts": [
+    {
+      "id": "state-snapshots",
+      "file": "state-snapshots.json"
+    },
+    {
+      "id": "settings",
+      "file": "settings.json"
+    },
+    {
+      "id": "split-tree",
+      "file": "split-tree.json"
+    },
+    {
+      "id": "command-identifiers",
+      "file": "command-identifiers.json"
+    },
+    {
+      "id": "control-protocol",
+      "file": "control-protocol.json"
+    },
+    {
+      "id": "ssh-profile-review",
+      "file": "ssh-profile-review.json"
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "fixtureVersion": 1,
+  "bounds": {
+    "profiles": 1000,
+    "profileNameUtf8Bytes": 128,
+    "hostAliasUtf8Bytes": 255,
+    "remoteCommandUtf8Bytes": 2048,
+    "resolutionOutputBytes": 524288
+  },
+  "cases": [
+    {
+      "id": "valid-portable-profile-document",
+      "disposition": "accept",
+      "input": {
+        "version": 1,
+        "profiles": [
+          {
+            "id": "11111111-2222-3333-4444-555555555555",
+            "name": "Production",
+            "hostAlias": "prod-via-config",
+            "reviewedFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "createdAt": "2026-07-23T12:00:00Z",
+            "updatedAt": "2026-07-23T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "reject-duplicate-profile-name",
+      "disposition": "reject",
+      "input": {
+        "version": 1,
+        "profiles": [
+          {
+            "id": "21111111-2222-3333-4444-555555555555",
+            "name": "Production",
+            "hostAlias": "prod-one",
+            "createdAt": "2026-07-23T12:00:00Z",
+            "updatedAt": "2026-07-23T12:00:00Z"
+          },
+          {
+            "id": "31111111-2222-3333-4444-555555555555",
+            "name": "production",
+            "hostAlias": "prod-two",
+            "createdAt": "2026-07-23T12:00:00Z",
+            "updatedAt": "2026-07-23T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "reject-command-control-character",
+      "disposition": "reject",
+      "input": {
+        "version": 1,
+        "profiles": [
+          {
+            "id": "41111111-2222-3333-4444-555555555555",
+            "name": "Unsafe",
+            "hostAlias": "safe-alias",
+            "remoteCommand": "echo ok\nwhoami",
+            "createdAt": "2026-07-23T12:00:00Z",
+            "updatedAt": "2026-07-23T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid-review-is-data-only",
+      "disposition": "accept",
+      "profile": {
+        "id": "51111111-2222-3333-4444-555555555555",
+        "name": "Demo",
+        "hostAlias": "demo",
+        "createdAt": "2026-07-23T12:00:00Z",
+        "updatedAt": "2026-07-23T12:00:00Z"
+      },
+      "resolutionOutput": "host demo\nuser deploy\nhostname 203.0.113.4\nport 2222\nstricthostkeychecking ask\ngatewayports no\nproxyjump bastion\nproxycommand none\nlocalforward 127.0.0.1:8080 localhost:80\nlocalforward 0.0.0.0:9000 localhost:9000\nremoteforward 3000 localhost:3000\n",
+      "expectedReview": {
+        "destination": "deploy@203.0.113.4:2222",
+        "hostAlias": "demo",
+        "strictHostKeyChecking": "ask",
+        "proxyJump": "bastion",
+        "forwards": 3,
+        "hasExternallyListeningForward": true,
+        "requiresApproval": true,
+        "fingerprint": "1be98266bf7ab472f99574dcbe9c3f0facb44a5f164cbe34f6e3072175c257ca"
+      }
+    }
+  ]
+}

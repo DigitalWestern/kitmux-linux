@@ -130,8 +130,9 @@ The production desktop host waits for the Phase 2 toolkit decision.
 
 ### Phase 0: Freeze the reference and contracts
 
-Status: Slices 0.1–0.3 complete. Slice 0.4 remains open and blocks Phase 3.
-Slice 0.5 was closed by ADR 0006 on 2026-07-25. Slice 0.6 is open.
+Status: Slices 0.1–0.5 complete. Slice 0.4 was closed on 2026-07-25 and no
+longer blocks Phase 3. Slice 0.5 was closed by ADR 0006 on 2026-07-25. Slice
+0.6 is open.
 
 Goal: make sure Linux work is anchored to a clean macOS baseline.
 
@@ -192,7 +193,7 @@ Once the repository-location decision is recorded, create the Linux repository
 with only the planning, contract, fixture, and spike structure needed for the
 next slices. Do not scaffold production UI before the rendering gate.
 
-#### Slice 0.4: Freeze portable fixtures
+#### Slice 0.4: Freeze portable fixtures — complete
 
 Create valid and invalid fixtures for:
 
@@ -206,6 +207,12 @@ Create valid and invalid fixtures for:
 Add macOS producer/consumer tests before calling a fixture authoritative.
 Document nonportable paths, fonts, shortcuts, browser data, commands, and agent
 sockets.
+
+Closed on 2026-07-25 with `contracts/fixtures/v1/`: six contract files and 20
+valid/invalid cases, a byte-identical macOS SwiftPM resource mirror, a
+cross-repository drift validator, and macOS producer/consumer tests. Exact
+commands and evidence are recorded in `PORT_STATUS.md`. Phase 3 must consume
+the frozen cases; it does not regenerate them from Linux behavior.
 
 #### Slice 0.5: Settle the licence posture — complete
 

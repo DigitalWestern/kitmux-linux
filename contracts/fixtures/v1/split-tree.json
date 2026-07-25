@@ -1,0 +1,126 @@
+{
+  "fixtureVersion": 1,
+  "bounds": {
+    "ratioMinimumPermille": 0,
+    "ratioMaximumPermille": 1000,
+    "fixtureCases": 2
+  },
+  "cases": [
+    {
+      "id": "nested-close-order-collapses-empty-branches",
+      "disposition": "accept",
+      "initial": {
+        "split": {
+          "_0": {
+            "id": {
+              "rawValue": "10000000-0000-0000-0000-000000000001"
+            },
+            "axis": "leftRight",
+            "ratio": 0.4,
+            "first": {
+              "pane": {
+                "_0": {
+                  "rawValue": "aaaaaaaa-0000-0000-0000-000000000001"
+                }
+              }
+            },
+            "second": {
+              "split": {
+                "_0": {
+                  "id": {
+                    "rawValue": "10000000-0000-0000-0000-000000000002"
+                  },
+                  "axis": "topBottom",
+                  "ratio": 0.6,
+                  "first": {
+                    "pane": {
+                      "_0": {
+                        "rawValue": "bbbbbbbb-0000-0000-0000-000000000002"
+                      }
+                    }
+                  },
+                  "second": {
+                    "pane": {
+                      "_0": {
+                        "rawValue": "cccccccc-0000-0000-0000-000000000003"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "closeOrder": [
+        "bbbbbbbb-0000-0000-0000-000000000002",
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        "cccccccc-0000-0000-0000-000000000003"
+      ],
+      "expectedAfterClose": [
+        {
+          "split": {
+            "_0": {
+              "id": {
+                "rawValue": "10000000-0000-0000-0000-000000000001"
+              },
+              "axis": "leftRight",
+              "ratio": 0.4,
+              "first": {
+                "pane": {
+                  "_0": {
+                    "rawValue": "aaaaaaaa-0000-0000-0000-000000000001"
+                  }
+                }
+              },
+              "second": {
+                "pane": {
+                  "_0": {
+                    "rawValue": "cccccccc-0000-0000-0000-000000000003"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "pane": {
+            "_0": {
+              "rawValue": "cccccccc-0000-0000-0000-000000000003"
+            }
+          }
+        },
+        null
+      ]
+    },
+    {
+      "id": "reject-duplicate-pane-id",
+      "disposition": "reject",
+      "initial": {
+        "split": {
+          "_0": {
+            "id": {
+              "rawValue": "10000000-0000-0000-0000-000000000003"
+            },
+            "axis": "leftRight",
+            "ratio": 0.5,
+            "first": {
+              "pane": {
+                "_0": {
+                  "rawValue": "dddddddd-0000-0000-0000-000000000004"
+                }
+              }
+            },
+            "second": {
+              "pane": {
+                "_0": {
+                  "rawValue": "dddddddd-0000-0000-0000-000000000004"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

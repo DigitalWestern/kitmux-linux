@@ -1,0 +1,62 @@
+{
+  "fixtureVersion": 1,
+  "bounds": {
+    "identifierUtf8Bytes": 128,
+    "identifiers": 38
+  },
+  "cases": [
+    {
+      "id": "portable-command-catalog",
+      "disposition": "accept",
+      "identifiers": [
+        "terminal.new-tab",
+        "browser.new-pane",
+        "pane.split-right",
+        "pane.split-down",
+        "terminal.find",
+        "workspace.new",
+        "group.new",
+        "terminal.next-tab",
+        "terminal.previous-tab",
+        "group.next",
+        "group.previous",
+        "pane.close",
+        "group.close",
+        "workspace.close",
+        "workspace.rename",
+        "terminal.rename-tab",
+        "group.rename",
+        "pane.focus-next",
+        "pane.focus-previous",
+        "pane.focus-left",
+        "pane.focus-right",
+        "pane.focus-up",
+        "pane.focus-down",
+        "pane.resize-left",
+        "pane.resize-right",
+        "pane.resize-up",
+        "pane.resize-down",
+        "terminal.paste",
+        "terminal.copy",
+        "terminal.clear-scrollback",
+        "notification.jump-unread",
+        "terminal.resume-command",
+        "app.settings",
+        "app.install-command-line-tool",
+        "app.reload-kitty-config",
+        "font.increase",
+        "font.decrease",
+        "font.reset"
+      ]
+    },
+    {
+      "id": "reject-unknown-and-empty-identifiers",
+      "disposition": "reject",
+      "identifiers": [
+        "",
+        "terminal.execute-arbitrary-command",
+        "workspace.delete-everything"
+      ]
+    }
+  ]
+}

@@ -2,12 +2,13 @@
 
 **Last inspected:** 2026-07-25
 
-**Implementation state:** Phase 1 and GTK Slices 2.1 through 2.2C are closed.
-Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF `libkitty.so`, a
-relocatable 104 MB attributed engine runtime, Linux stress tests, a real
-one-session GTK 4 terminal host over X11 and native Wayland client paths, and
-a deterministic keyboard and input-method harness exist. No product
-navigation UI or native package exists yet.
+**Implementation state:** Phase 0.4, Phase 1, and GTK Slices 2.1 through 2.2C
+are closed. Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF
+`libkitty.so`, a relocatable 104 MB attributed engine runtime, Linux stress
+tests, a real one-session GTK 4 terminal host over X11 and native Wayland
+client paths, a deterministic keyboard and input-method harness, and an
+authoritative portable contract corpus exist. No Linux product model,
+navigation UI, or native package exists yet.
 
 **Active phase:** Phase 2 — rendering and toolkit kill spike.
 
@@ -16,8 +17,9 @@ reordered on 2026-07-25 so the checks that could disqualify GTK run before the
 expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
 mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The
 remaining Phase 2 slices are the WebKitGTK conflict probe, scaling, and event
-fairness. Phase 0.4 shared fixture promotion remains open and blocks the Rust
-product model, not this GTK spike.
+fairness. Phase 0.4 shared fixture promotion is closed, so Phase 3 is no longer
+fixture-blocked; it remains unstarted while the assigned agent works the
+current Phase 2 slice.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 Operational VM, gate, runtime, and SBOM commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
@@ -62,6 +64,53 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — Slice 0.4 portable contract fixtures
+
+- Added an authoritative `contracts/fixtures/v1/` corpus: one manifest and six
+  versioned contract files with 20 named accept, repair, reject, and ignore
+  cases. The files cover state snapshots/stable IDs, settings defaults and
+  validation, split-tree collapse/close order, 38 stable command identifiers,
+  control framing/limits, and portable SSH profile/review data.
+- Every contract file declares bounds and malformed-input behavior. Accepted
+  fixtures exclude user paths, installed fonts, display shortcut encodings,
+  browser data, shell/agent commands, sockets, keychain references, and
+  package paths. The one rejected SSH security case contains a newline-bearing
+  command only to prove validation drops it.
+- The canonical corpus lives in this Linux repository. The tagged macOS
+  reference carries a temporary SwiftPM test-resource mirror. The validator
+  byte-compares every declared JSON file and rejects an extra or missing file,
+  so the mirror cannot drift silently before the monorepo removes it.
+- Added eight `PortableContractFixtureTests`: consumers exercise the production
+  snapshot, settings, split, command, control, and SSH validators; producers
+  build native macOS values and compare them semantically to the fixtures.
+  UUID hex case is normalized because Foundation emits uppercase while other
+  hosts commonly emit lowercase. The SSH review path parses recorded text
+  directly and never starts `ssh`.
+- Source-tested:
+  `contracts/validate-fixtures.py --mirror <macOS fixture directory>` —
+  6 contracts, 20 cases, and 7 byte-identical JSON files passed.
+- Traceability-tested:
+  `contracts/validate-inventory.py <tagged macOS checkout>` — 214 macOS
+  references resolved; 64 features across 17 areas passed.
+- macOS focused test:
+  `swift test --filter PortableContractFixtureTests` — 8 tests passed.
+- macOS full unit test:
+  `swift test` — 291 tests passed. The isolated worktree used the clean tagged
+  checkout's existing `libkitty.dylib` through `LIBRARY_PATH` only because
+  SwiftPM links the unchanged executable target while running `KitmuxCore`
+  tests.
+- A first attempt to rebuild `libkitty.dylib` inside the long temporary
+  worktree failed before tests: the pinned Python runtime did not have enough
+  Mach-O load-command space for that longer checkout path. Moving the worktree
+  shorter avoided the length issue, but the interrupted repair had already
+  left its ignored local runtime unusable. No runtime artifact from that
+  attempt is evidence for this slice.
+- GUI-tested: none; the fixture suite is display-free.
+- Package-tested and clean-machine-tested: none.
+- Phase 3 is no longer blocked by provisional fixtures. Its Linux consumer
+  will be implemented against these unchanged expectations when Slice 3.1 is
+  explicitly started.
 
 ### 2026-07-25 — Slice 2.2C native Wayland client path
 
