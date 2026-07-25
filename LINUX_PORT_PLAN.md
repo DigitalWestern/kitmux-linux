@@ -7,11 +7,22 @@
 
 **Reference commit:** `e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4`
 
-**Last reviewed:** 2026-07-25
+**Last reviewed:** 2026-07-25 (plan audit; Phase 2 reordered)
+
+**Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
 **Current progress:** Phase 1, Slice 2.1, Slice 2.2A, and Slice 2.2B
-complete; Slice 2.2C is next. See [`PORT_STATUS.md`](PORT_STATUS.md) and
+complete. Slice 2.2C is Wayland — the reordered kill tests, not the former
+selection/clipboard slice. See [`PORT_STATUS.md`](PORT_STATUS.md) and
 [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+**2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
+disqualify GTK run before the expensive ones that almost certainly cannot;
+selection, clipboard, mouse, and search moved to Phase 4. Licensing became a
+Phase 0 slice instead of a Phase 8 checklist item. Spike code gained explicit
+durable-versus-disposable ownership. Reproducibility defects gained named
+owners and due dates. Rationale is in ADRs 0006, 0007, and 0008 and in
+[Why Slice 2.2 was cut short](#why-slice-22-was-cut-short).
 
 ## Purpose
 
@@ -120,8 +131,8 @@ The production desktop host waits for the Phase 2 toolkit decision.
 
 ### Phase 0: Freeze the reference and contracts
 
-Status: Slices 0.1–0.3 complete; Slice 0.4 remains open and blocks Phase 3,
-not the active GTK spike.
+Status: Slices 0.1–0.3 complete. Slice 0.4 remains open and blocks Phase 3.
+Slice 0.5 was closed by ADR 0006 on 2026-07-25. Slice 0.6 is open.
 
 Goal: make sure Linux work is anchored to a clean macOS baseline.
 
@@ -197,6 +208,40 @@ Add macOS producer/consumer tests before calling a fixture authoritative.
 Document nonportable paths, fonts, shortcuts, browser data, commands, and agent
 sockets.
 
+#### Slice 0.5: Settle the licence posture — complete
+
+Kitty is GPL-3.0-only, `libkitty` links it, and the host links `libkitty`.
+Distributing a Linux artifact therefore places the whole combined work under
+GPL-3.0. The only architecture that could have avoided this is an
+out-of-process engine behind a defined protocol, which is a Phase 4 process-
+model decision — so deferring the licence question to Phase 8 would have
+silently foreclosed the option it was deferring.
+
+Closed by ADR 0006: the Linux host is GPL-3.0-only free software, the
+in-process architecture stands, and public source release becomes a
+prerequisite for public binary distribution rather than a parallel track.
+
+#### Slice 0.6: Define the re-baselining ritual
+
+The macOS reference is frozen at `macos-linux-port-baseline-2026-07-23` while
+macOS is a live daily driver. Every day Linux develops against that tag, the
+parity target drifts, and nothing currently measures the drift.
+
+Produce a repeatable procedure that:
+
+- reports the diff between the frozen tag and current macOS `HEAD`, restricted
+  to `libkitty/`, `patches/`, and the files named in
+  [What to treat as reusable](#what-to-treat-as-reusable);
+- classifies each change as contract-affecting, behavior-affecting, or
+  irrelevant to Linux;
+- states when re-baselining is mandatory — a `libkitty` public header or
+  patch change is mandatory, a macOS view change is not;
+- re-locks `source-lock.json` and re-runs the headless gate as one reviewable
+  commit that changes nothing else.
+
+Run it at every phase boundary and record the result in `PORT_STATUS.md`, even
+when the answer is "no relevant drift".
+
 Exit criteria:
 
 - The clean reference commit and tag are explicit.
@@ -204,6 +249,8 @@ Exit criteria:
 - Every fixture has a version, bounds, malformed-input behavior, and macOS
   test.
 - No fixture generation or import path executes a saved command.
+- The licence posture is recorded and the repository carries its licence text.
+- Reference drift is measurable on demand.
 
 ### Phase 1: Prove headless `libkitty` on Linux
 
@@ -253,7 +300,11 @@ Failure here blocks all product UI work.
 
 Goal: prove or reject GTK before product UI depends on it.
 
-Build a disposable GTK 4 probe with:
+Status: Slices 2.1, 2.2A, and 2.2B complete. Slice 2.2C is next. Slices
+2.2C–2.2F are the reordered kill tests; see
+[Why Slice 2.2 was cut short](#why-slice-22-was-cut-short).
+
+Build a GTK 4 probe with:
 
 - One `GtkGLArea`, one real libkitty session, and ordinary GTK controls beside
   it.
@@ -263,13 +314,21 @@ Build a disposable GTK 4 probe with:
 - Wayland and X11 runs.
 - Key press/release/repeat, Compose, dead keys, AltGr, non-US layout, and a
   real IME preedit path.
-- Selection, clipboard, paste, mouse reporting, wheel/touchpad, and search.
 - PTY FD integration through GLib, with heartbeat/frame measurements during
   output flood.
 - Fractional scaling and a move between unlike monitor scales.
 - A minimal adjacent WebKitGTK widget only to expose focus, GL, dependency, and
   packaging conflicts.
 - A visible diagnostic when GL initialization fails.
+
+The probe is not uniformly disposable. Under ADR 0007 the display-free key
+translation and its fixtures are durable and stay C behind the FFI boundary;
+only `src/gtk_terminal_host.c` is replaced by the Phase 4 shell. Classify every
+new file before writing it.
+
+Selection, clipboard, paste safety, mouse, wheel, and search are deliberately
+absent from this list. They are product behavior, they are not in doubt on
+GTK, and they moved to Phase 4 Slice 4.2.
 
 #### Slice 2.1: Host one real terminal surface — complete
 
@@ -283,33 +342,121 @@ Build a disposable GTK 4 probe with:
   initialization fails.
 - Prove the slice visibly in the desktop VM over X11 before adding more UI.
 
-#### Slice 2.2: Prove terminal interaction — in progress
+#### Slice 2.2: Prove terminal input — complete
 
 - Add key press/release/repeat, Compose, dead-key, AltGr, non-US layout, and
   IME preedit/commit paths. Closed in Slices 2.2A and 2.2B.
-- Add focus, selection, clipboard, safe paste, mouse reporting, wheel, and
-  search behavior.
 - Keep ordinary GTK controls beside the terminal so focus transfer and
-  shortcut routing are observable.
+  shortcut routing are observable. Closed in Slice 2.2A.
+
+Slice 2.2 originally also covered selection, clipboard, safe paste, mouse
+reporting, wheel, and search. Those were reclassified on 2026-07-25 and moved
+to Phase 4; see [Why Slice 2.2 was cut short](#why-slice-22-was-cut-short) and
+ADR 0007.
+
+#### Why Slice 2.2 was cut short
+
+A kill spike exists to find the thing that kills the toolkit, as cheaply as
+possible. Rank the remaining Phase 2 work by the chance GTK fails it against
+the cost of finding out:
+
+| Check | Could it kill GTK? | Cost |
+| --- | --- | --- |
+| WebKitGTK coexistence | plausibly | low |
+| Native Wayland | plausibly | low |
+| Fractional and mixed-monitor scaling | yes | medium |
+| Main-loop fairness under PTY flood | maybe | low |
+| Selection and clipboard | no — VTE ships it | high |
+| Mouse, wheel, and search | no — VTE ships it | high |
+
+Selection, clipboard, mouse, and search were the two most expensive remaining
+items and the two least likely to fail. Every line of them is discarded if GTK
+later fails a Wayland, scaling, or WebKit gate. Slices 2.2A and 2.2B already
+answered the question those slices were nominally asking — GTK's input model
+drives Kitty's keyboard protocol correctly, including a real input method — so
+what remained was execution, not risk.
+
+The dangerous checks now run first. Product interaction behavior moves to
+Phase 4, where it is written once, in the chosen host language, against a
+toolkit that has already survived.
+
+#### Slice 2.2C: Prove Wayland — next
+
+- Run the existing host under a native Wayland compositor, not Xwayland.
+- Prove `GtkGLArea` context creation, framebuffer ownership, and the tracked
+  GL state restoration hold on the Wayland GL path.
+- Prove key press/release/repeat and at least one input-method preedit/commit
+  flow under Wayland, since key routing and IME differ from X11.
+- Record what cannot be injected under Wayland: XTEST is X11-only, so name the
+  substitute mechanism or mark the assertion display-bound.
+
+Gate: the Slice 2.1 render, resize, GL-state, and clean-close proofs plus one
+Slice 2.2A keyboard run, all green under native Wayland.
+
+#### Slice 2.2D: Prove the WebKitGTK conflict probe
+
+- Instantiate a minimal `WebKitWebView` adjacent to the live terminal in one
+  process. This is a conflict probe, not browser product work.
+- Look specifically for GL context conflicts, loader and symbol collisions
+  against the isolated-`libpython` boundary in ADR 0002, focus interference,
+  and the dependency closure a package would inherit.
+- Run it under both display backends.
+
+Gate: either a clean run under both backends, or a written, specific
+incompatibility. An ambiguous result counts as a failure and needs a narrower
+probe, not a workaround.
+
+This runs early on purpose. It is cheap, it is a known-hard interaction, and a
+failure changes the toolkit decision — so discovering it after building product
+chrome would be the single most expensive mistake available in this phase.
+
+#### Slice 2.2E: Prove scaling
+
+- Prove coordinates, framebuffer size, cell metrics, and rendered text at
+  100%, a fractional scale, and 200%.
+- Move a live window between unlike monitor scales without session loss or
+  cell-metric drift.
+- Confirm `kitty_render_init`'s scale argument and
+  `gtk_widget_get_scale_factor` stay consistent under fractional scaling, which
+  is where GTK and Kitty are most likely to disagree.
+
+Gate: exact framebuffer and cell assertions at each scale, and a scale change
+applied to a live session.
+
+#### Slice 2.2F: Prove event fairness
+
+- Measure heartbeat and frame latency during sustained PTY flood, repeated
+  resize, and multiple hidden sessions pumping at once.
+- Confirm the GLib main loop does not starve UI events under output pressure,
+  and that the existing `g_unix_fd_add_full` priority is defensible.
+
+Gate: bounded, recorded latency figures under load. Absolute numbers on
+llvmpipe are not performance evidence; the assertion is fairness, not speed.
 
 #### Slice 2.3: Make the toolkit decision
 
-- Exercise Wayland and X11, scale changes, unlike monitor scales, and GL state
-  restoration.
-- Measure heartbeat/frame fairness during PTY flood and repeated resize.
-- Add the minimal adjacent WebKitGTK conflict probe; it is not product browser
-  work.
+- Confirm Slices 2.1, 2.2A, 2.2B, and 2.2C through 2.2F are all green.
+- Confirm the isolated-`libpython` boundary holds in a release-shaped GUI
+  layout without a broad `LD_LIBRARY_PATH`.
+- Confirm required accessibility focus and text-input behavior is viable.
 - Record GTK as chosen only if the complete decision gate below passes;
   otherwise run the one planned Qt 6 comparison.
 
 Decision gate:
 
 - Choose GTK only if GL correctness, input/IME, focus, scaling, Wayland/X11,
-  and event fairness all pass on the support matrix.
-- If a technical gate fails, run one equivalent time-boxed Qt 6 probe.
+  WebKit coexistence, and event fairness all pass on the support matrix.
+- If a technical gate fails, run one equivalent time-boxed Qt 6 probe. Under
+  ADR 0007 that probe replaces the disposable host file and re-targets the
+  durable key translation's input struct; it does not restart key semantics.
 - If both fail, stop and redesign the renderer boundary.
 
 Do not build production chrome around a failing spike.
+
+At least one physical Mesa GPU must pass before beta. It is not a Phase 2
+blocker: llvmpipe is adequate to prove correctness, and a GPU proves driver
+behavior, which is a different question. Record it as a Phase 6 obligation
+rather than stalling the toolkit decision on hardware access.
 
 ### Phase 3: Build the Linux model and compatibility harness
 
@@ -360,11 +507,36 @@ Goal: combine the engine, toolkit, and model in the smallest useful app.
 
 #### Slice 4.2: Terminal interaction
 
-- Kitty keyboard encoding and configurable app-shortcut routing.
-- IME preedit/commit, selection, clipboard, scrollback, search, paste safety,
-  mouse reporting, URL opening, and font controls.
-- Resize/scale changes without session loss.
+This slice absorbed the work formerly planned as Slices 2.2C through 2.2E. It
+is product behavior, written once in the chosen host language against a
+toolkit that has already survived Phase 2.
+
+Inherited from Phase 2 under ADR 0007, not rewritten:
+
+- `src/gtk_key_translation.{c,h}`, called over FFI.
+- The fixed-byte key matrix, the PTY recorder, and the XTEST injector.
+
+New in this slice:
+
+- Configurable app-shortcut routing that does not steal terminal Control keys.
+- Selection and text extraction through libkitty, with local selection
+  distinguished from terminal mouse-reporting mode and a Shift override.
+- Asynchronous clipboard copy and paste through the toolkit's own clipboard
+  API, without blocking PTY pumping.
+- Bracketed paste, plus confirmation for unsafe multiline or control-character
+  paste per the macOS behavior contract.
+- Mouse press/release/drag, wheel and touchpad scrolling, and URL hit-testing,
+  converting toolkit coordinates to framebuffer pixels and terminal cells
+  without assuming scale 1.
+- Search query, next/previous result, marker visibility, and cancel.
+- Scrollback, font controls, and URL opening.
+- Resize and scale changes without session loss.
 - Foreground-process close confirmation.
+
+Gate: exact coordinate and cell assertions at each supported scale,
+independent per-session selection and search state, a clipboard round trip,
+rejected and confirmed unsafe-paste cases, and no lost PTY pumping during
+sustained pointer activity.
 
 #### Slice 4.3: Minimal crash-safe persistence
 
@@ -415,6 +587,11 @@ Exit criteria:
 - Core workflows are usable without a mouse.
 
 ### Phase 6: Add control, SSH, resume review, and reliability
+
+Also due here, carried over from Phase 2: at least one physical Mesa GPU must
+pass the rendering and interaction gates. llvmpipe proves correctness; a real
+driver proves driver behavior, and that is a beta obligation rather than a
+toolkit-decision blocker.
 
 #### Slice 6.1: Secure local control and CLI
 
@@ -468,6 +645,11 @@ Exit criteria:
 
 ### Phase 8: Produce supported packages
 
+Blocked until the reproducibility defects R1 and R2 in ADR 0008 are closed. A
+package built from a tree nobody else can clone and build cannot satisfy the
+source obligation ADR 0006 attaches to distributing it. This is a hard
+dependency, not a quality preference.
+
 Packaging experiments start in Phase 1. Promotion order:
 
 1. Reproducible CI development tarball.
@@ -480,8 +662,12 @@ Required evidence:
 
 - Desktop entry, icons, AppStream metadata, and declared dependencies.
 - Pinned builders and lockfiles.
-- Checksums/signatures, SBOM, licenses, GPL source compliance, vulnerability
-  results, and debug symbols.
+- Checksums/signatures, SBOM, licenses, vulnerability results, and debug
+  symbols.
+- GPL-3.0 corresponding source shipped or offered for the complete combined
+  work — host, model, build scripts, and the exact Kitty and `libkitty`
+  revisions used. Under ADR 0006 this verifies an obligation already
+  satisfied; it is not an open question at this point.
 - Fresh-VM install, desktop-menu launch, upgrade, downgrade, reinstall, and
   uninstall.
 - No developer paths, keys, ambient Python, or unsigned mutable runtime code.
@@ -489,9 +675,15 @@ Required evidence:
 ### Phase 9: Close parity and general availability
 
 - Resolve every parity row as shipped, intentionally different, or deferred.
+  This gate is only meaningful at the granularity the inventory is written at:
+  a row covering an entire subsystem can be marked "shipped" while half the
+  subsystem is missing. `contracts/feature-inventory.json` must be decomposed
+  to per-behavior rows before Phase 5, not before Phase 9, because Phase 5 is
+  where the hierarchy behaviors are actually built.
 - Complete Tier 1 soak, accessibility, and threat-model reviews.
 - Name maintainers for Kitty, Python, toolkit, optional WebKit, distro
-  packages, and security updates.
+  packages, and security updates. ADR 0008 R1 through R3 are what make this
+  satisfiable; a project one person can build has no second maintainer.
 - Publish release cadence, support intake, update SLA, and end-of-life policy.
 
 Final gate:
@@ -499,6 +691,7 @@ Final gate:
 - No open critical state-loss, command-execution, socket, rendering, input, or
   packaging defect.
 - Published claims match the support matrix and distinguish Linux from macOS.
+- Published claims state the GPL-3.0-only licence plainly.
 
 ## Linux rules the agent should not forget
 
@@ -623,14 +816,40 @@ These should be answered during implementation, not guessed in advance:
 - Whether libkitty becomes a separately versioned shared component.
 - Which Linux distributions are Tier 1 versus source-only.
 - How much of the macOS core should be shared by source versus by fixture.
+- Whether the macOS build carries the same GPL obligation as Linux. ADR 0006
+  governs Linux only and is not a legal opinion; the owner should get one.
+- When the repository becomes public. ADR 0006 makes it a prerequisite for
+  binary distribution, not for today.
+
+Resolved and removed from this list on 2026-07-25: the Linux licence posture
+(ADR 0006) and whether spike code carries forward (ADR 0007).
 
 When an open decision is resolved, record it in a short architecture decision
 record and remove it from this list.
 
+## Where effort should go next
+
+In priority order, independent of which slice is nominally active:
+
+1. **Finish the Phase 2 kill tests** — Slices 2.2C through 2.2F. Cheap, and
+   they decide whether anything else in this plan survives.
+2. **Slice 0.4 fixtures.** They gate Phase 3, which gates Phases 4 and 5 —
+   the entire shippable alpha. This is the critical path, it is a few days of
+   unglamorous work, and it has lost to more interesting GUI work at every
+   decision point so far.
+3. **Decompose the feature inventory** before Phase 5 builds the hierarchy.
+4. **ADR 0008 R1 and R2** — standalone buildability and one automated gate —
+   before Phase 8, and before any second contributor.
+
+The recurring failure mode this plan should guard against is not lack of
+rigor. Rigor here is high and per-slice evidence is excellent. It is spending
+that rigor on code whose survival has not yet been established, while the
+items that unblock everything else stay open.
+
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2A is next: build a deterministic GTK
-keyboard/focus harness for the real libkitty terminal, run the existing
-headless and desktop baselines, and stop before Compose/IME breadth. Shared
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2C is next under the reordered
+Phase 2: prove the existing GTK host under a native Wayland compositor. Do not
+start selection, clipboard, mouse, or search — those moved to Phase 4. Shared
 fixtures remain provisional and still block the Rust product model.

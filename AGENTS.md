@@ -35,6 +35,19 @@ observations, not proof that a checkout is still unchanged.
   attempting to share the Swift product core.
 - Treat GTK 4 as a candidate until the complete Slice 2.3 decision gate
   passes. Slice 2.1 alone did not select it.
+- Before adding a file to the GTK spike, classify it as durable or disposable
+  per ADR 0007. Durable code is display-free, has a headless test, and stays C
+  behind the FFI boundary. Disposable code lives in `gtk_terminal_host.c`.
+- Spike work answers "can this toolkit do X at all?". Implementing how Kitmux
+  does X is product work and belongs in Phase 4. If VTE already ships the
+  behavior on GTK, it is not a kill-spike question.
+- The Linux host is GPL-3.0-only (ADR 0006). Do not add a dependency whose
+  licence is incompatible with GPL-3.0, and do not describe the Linux port as
+  closed-source or dual-licensable.
+- New gates take their display, architecture, and paths from the environment.
+  Do not hard-code this VM; see ADR 0008.
+- Any new pinned input gets a hash in `source-lock.json` in the same commit
+  that introduces it.
 - Keep browser work out of the terminal-first alpha.
 - Start release-layout and clean-machine checks with the engine. A build on a
   developer machine is not packaging proof.

@@ -14,7 +14,7 @@ reviewed session.
 | Platform | Current state |
 | --- | --- |
 | macOS | Daily-driver application for macOS 13+ on Apple silicon. Terminal, navigation, persistence, settings, local control, SSH, browser panes, reliability gates, and local arm64 packaging exist. Public distribution still needs Developer ID signing, notarization, stapling, and real macOS 13 hardware qualification. |
-| Linux | Experimental. Phase 1 and GTK Slice 2.1 are complete: the engine passes headless and clean-runtime gates, and one real terminal renders and closes correctly in GTK 4 over X11 with Mesa llvmpipe. Input, Wayland, scaling, fairness, WebKit coexistence, x86_64, and native packaging remain unproven. |
+| Linux | Experimental, GPL-3.0-only. Phase 1 and GTK Slices 2.1, 2.2A, and 2.2B are complete: the engine passes headless and clean-runtime gates, one real terminal renders and closes correctly in GTK 4 over X11 with Mesa llvmpipe, and keyboard input reaches it with fixed byte expectations including Compose, dead keys, AltGr, a non-US layout, and a real IME preedit/commit flow. Wayland, scaling, fairness, WebKit coexistence, selection/clipboard/mouse/search, x86_64, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. |
 
 Linux is not yet a production application or downloadable desktop package.
 GTK is the leading toolkit candidate, not a final selection.
@@ -72,13 +72,19 @@ control, SSH, reliability, and soak gates required for changes in those areas.
 
 ## Roadmap
 
-1. Complete Linux Slice 2.2 input and interaction proof.
-2. Complete Slice 2.3 on Wayland/X11, scaling, real GPU, fairness, and the
-   bounded WebKitGTK coexistence probe; select GTK only if those gates pass.
-3. Freeze shared portable fixtures, then build the pure Linux product model.
-4. Build the terminal-first desktop alpha.
-5. Add multiplexer behavior, reliability, and native packages.
-6. Consider browser panes only after the terminal product is stable.
+Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK
+run before the expensive ones that almost certainly cannot.
+
+1. Finish the Phase 2 kill tests: native Wayland, the bounded WebKitGTK
+   coexistence probe, scaling, and event fairness. Select GTK only if they
+   pass.
+2. Freeze shared portable fixtures, then build the pure Linux product model.
+   This is the critical path to a shippable alpha and it is currently the
+   longest-open item.
+3. Build the terminal-first desktop alpha, including the selection, clipboard,
+   paste-safety, mouse, and search behavior that moved out of Phase 2.
+4. Add multiplexer behavior, reliability, and native packages.
+5. Consider browser panes only after the terminal product is stable.
 
 The exact resume order is in [NEXT_STEPS.md](NEXT_STEPS.md). Proven evidence
 and current blockers are in [PORT_STATUS.md](PORT_STATUS.md).
@@ -92,13 +98,22 @@ See the [migration proposal](docs/MONOREPO_MIGRATION.md).
 
 ## Licensing
 
-Kitty and `libkitty` are GPL-3.0-only. The verified Linux engine runtime
-includes per-component notices and a machine-readable SPDX 2.3 SBOM. The
-runtime's component manifest is
-[`kitmux-linux/release/runtime-components.json`](kitmux-linux/release/runtime-components.json).
+**The Linux host is GPL-3.0-only.** See [`LICENSE`](LICENSE) and
+[ADR 0006](docs/decisions/0006-linux-license-posture.md).
 
-The combined product does not yet have a root license declaration in this
-repository. Before public source or binary distribution, the owner should
-confirm the intended project-wide license, source-offer obligations, notices,
-and package-specific compliance. The Linux SBOM proves the current engine
-payload inventory; it is not legal approval for a future desktop package.
+Kitty is GPL-3.0-only, `libkitty` links it, and the host links `libkitty`, so
+any distributed Linux artifact is a combined work under GPL-3.0. Distributing
+one means shipping or offering complete corresponding source for the whole of
+it — host, model, build scripts, and the exact Kitty and `libkitty` revisions
+used. Public source release is therefore a prerequisite for public binary
+distribution, not a parallel track.
+
+The verified Linux engine runtime includes per-component notices and a
+machine-readable SPDX 2.3 SBOM; its component manifest is
+[`kitmux-linux/release/runtime-components.json`](kitmux-linux/release/runtime-components.json).
+The SBOM proves the current engine payload inventory. It is not legal approval
+for a future desktop package.
+
+ADR 0006 governs Linux only. The same combined-work analysis plausibly applies
+to any distributed macOS binary that links `libkitty`; nothing in this
+repository is a legal opinion, and the owner should get one.

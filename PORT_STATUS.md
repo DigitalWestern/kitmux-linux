@@ -11,13 +11,19 @@ exists yet.
 
 **Active phase:** Phase 2 — rendering and toolkit kill spike.
 
-**Next slice:** Slice 2.2C — focus, selection, clipboard, and safe paste.
-Text input now comes from a real `GtkIMContext`; selection, clipboard, paste,
-mouse, and search remain unproven. Phase 0.4 shared fixture promotion remains
-open and blocks the Rust product model, not this GTK spike.
+**Next slice:** Slice 2.2C — **native Wayland**. Phase 2 was reordered on
+2026-07-25 so the checks that could disqualify GTK run before the expensive
+ones that almost certainly cannot. Selection, clipboard, safe paste, mouse,
+wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
+Phase 2 slices are Wayland, the WebKitGTK conflict probe, scaling, and event
+fairness. Phase 0.4 shared fixture promotion remains open and blocks the Rust
+product model, not this GTK spike.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 Operational VM, gate, runtime, and SBOM commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
+
+**Licence:** GPL-3.0-only, decided 2026-07-25 in ADR 0006. `LICENSE` is at the
+repository root.
 
 ## Verified checkout state
 
@@ -56,6 +62,52 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — plan audit, licence decision, and Phase 2 reorder
+
+No implementation, build, or runtime claim was made. Reviewed the plan, this
+ledger, `NEXT_STEPS.md`, ADRs 0001–0005, the support matrix, the contracts,
+and the live Linux source — CMake, the GTK host, the key translation, both
+gate scripts, the release tooling, and the source-lock boundary — against the
+macOS reference.
+
+Findings and the changes they produced:
+
+- **Licensing was a Phase 8 checklist item and should have been a Phase 0
+  architectural constraint.** Kitty is GPL-3.0-only; the host links it
+  transitively, so distribution places the whole combined work under GPL-3.0.
+  The only architecture that avoids that is an out-of-process engine, which is
+  a Phase 4 process-model decision — so the deferral would have silently
+  foreclosed the option it was deferring. Decided: the Linux host is
+  GPL-3.0-only free software (ADR 0006). `LICENSE` added at the repository
+  root. Phase 0 gained Slice 0.5.
+- **Phase 2 had its risk ordering backwards.** Slices 2.2C–2.2E — selection,
+  clipboard, mouse, search — were the most expensive remaining work and the
+  least likely to disqualify GTK, since VTE ships all of it. Slice 2.3 held
+  four cheap checks that plausibly could: Wayland, WebKitGTK coexistence,
+  fractional scaling, and main-loop fairness. Reordered: 2.2C Wayland, 2.2D
+  WebKit probe, 2.2E scaling, 2.2F fairness. The interaction work moved to
+  Phase 4 Slice 4.2, to be written once in the chosen host language.
+- **The "disposable" spike was already being inherited.** `NEXT_STEPS.md`
+  instructed later sub-slices to build on ~1,400 lines of key-translation and
+  harness C that two ADRs described as throwaway, and nobody had decided
+  whether the Rust host would call or replace it. ADR 0007 splits the spike
+  explicitly: the display-free translation and its fixtures are durable and
+  stay C behind FFI; `gtk_terminal_host.c` is disposable.
+- **The physical-GPU requirement was blocking the toolkit decision on hardware
+  access.** llvmpipe proves correctness; a driver proves driver behavior.
+  Moved to Phase 6 as a beta obligation.
+- **The feature inventory was too coarse to make Phase 9's parity gate
+  falsifiable** — 16 rows against a ~32,000-line macOS application, with
+  `navigation.hierarchy` covering an entire subsystem. Decomposition is now
+  required before Phase 5.
+- **Reference drift was unmeasured.** The macOS baseline is frozen at a tag
+  while macOS is a live daily driver. Phase 0 gained Slice 0.6, a re-baselining
+  ritual to run at every phase boundary.
+- **Four reproducibility defects were named and given due dates** in ADR 0008;
+  they are listed under current blockers below. No CI was added: the
+  repository has no remote, and the desktop gate should not be edited by
+  anyone who cannot run it.
 
 ### 2026-07-25 — Slice 2.2B Compose, layouts, and input methods
 
@@ -394,14 +446,50 @@ clean-machine release evidence.
   no release-shaped GUI artifact proves it yet. A global Kitty dependency
   path would shadow GTK's distribution libraries and is forbidden.
 
+### Reproducibility defects (ADR 0008)
+
+These are properties of the tree, not of any one slice. Each has a due date;
+none is due today.
+
+- **R1 — the repository cannot be built standalone.**
+  `scripts/materialize-reference.sh` requires the private macOS repository at
+  `../macos/kitmux` at the baseline tag, and extracts `libkitty/` and
+  `patches/` from it. `kitmux-linux/patches/` is empty in this tree. A clone of
+  this repository alone fails at the first step. Due at the monorepo
+  migration, which is now a Phase 8 prerequisite.
+- **R2 — no automated gate.** Nothing runs on commit. The containerized
+  headless gate is already hermetic; only the trigger is missing. Due with the
+  first Git remote.
+- **R3 — the desktop gate is bound to one VM, not to a display.**
+  `scripts/test-desktop.sh` requires `KITMUX_VNC_DISPLAY`, noVNC on port 6080,
+  and this project's XFCE session, and it mutates session-global X state.
+  No contributor can run it, and it cannot run under Xvfb or headless Weston.
+  Due before Phase 4. Do not attempt the edit without being able to run the
+  gate afterwards.
+- **R4 — x86_64 inputs are unpinned.** Both Tier-1 environments are x86_64 and
+  `CMakeLists.txt` resolves `linux-64`, but `source-lock.json` records a
+  SHA-256 for `linux-arm64.tar.xz` only. x86_64 is not merely untested; it is
+  not reproducible. Due with R2.
+
+All evidence in this ledger was produced by one person, by hand, in two
+Lima VMs on one Apple-silicon macOS machine. That is adequate for the current
+phase and is not adequate for Phase 8 or for a second contributor.
+
 ## Next-agent handoff
 
-Continue
-[Slice 2.2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22-prove-terminal-interaction)
-using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Slices 2.2A and
-2.2B are closed; begin with only Slice 2.2C: make terminal/GTK focus
-transitions explicit and observable, wire selection and text extraction
-through libkitty, implement asynchronous GDK clipboard copy/paste, and
-preserve bracketed-paste and unsafe-paste confirmation semantics. Do not begin
-product chrome, the Rust model, browser functionality, packaging, or
-repository migration.
+Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22c-prove-wayland--next)
+using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+Phase 2 was reordered on 2026-07-25. Slices 2.2A and 2.2B are closed; begin
+with only Slice 2.2C, which is now **native Wayland**, not selection and
+clipboard. Run the existing GTK host under a real Wayland compositor and prove
+`GtkGLArea` context creation, framebuffer ownership, tracked GL state
+restoration, resize, clean close, key press/release/repeat, and one
+input-method preedit/commit flow. XTEST is X11-only and will not work there —
+either substitute an injection mechanism or mark the affected assertions
+display-bound explicitly rather than dropping them.
+
+Classify every new file as durable or disposable per ADR 0007 before writing
+it. Do not begin selection, clipboard, mouse, or search — those are Phase 4
+Slice 4.2 now. Do not begin product chrome, the Rust model, browser
+functionality, packaging, or repository migration.
