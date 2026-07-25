@@ -62,7 +62,9 @@ typedef struct {
   uint32_t key;
   uint32_t shifted_key;
   uint32_t mods;
-  const char *text;
+  // What the host's GtkIMContext committed for this event, "" for nothing.
+  // The translation never invents this; it is an input, not an expectation.
+  const char *im_text;
   // Encoded bytes as hex, one column per mode. "" means "send nothing".
   const char *expected[3];
 } key_case;
@@ -142,6 +144,16 @@ static const key_case cases[] = {
    0xE00C, 0, 0, "", {"1b5b48", "1b4f48", "1b5b48"}},
   {"page up press",      GDK_KEY_Page_Up, GDK_KEY_Page_Up, 0, KITMUX_KEY_ACTION_PRESS,
    0xE00A, 0, 0, "", {"1b5b357e", "1b5b357e", "1b5b357e"}},
+
+  // Non-US layouts and AltGr levels reach the encoder as an ordinary key
+  // whose text the input method supplied. The key identity stays the
+  // unmodified symbol of the same hardware key in the active layout, so a
+  // German AltGr+q that produces "@" still reports q.
+  {"de udiaeresis press", GDK_KEY_udiaeresis, GDK_KEY_udiaeresis, 0,
+   KITMUX_KEY_ACTION_PRESS,
+   0xFC, 0, 0, "\xc3\xbc", {"c3bc", "c3bc", "1b5b32353275"}},
+  {"de altgr q press",   GDK_KEY_at, GDK_KEY_q, 0, KITMUX_KEY_ACTION_PRESS,
+   0x71, 0, 0, "@", {"40", "40", "1b5b31313375"}},
 
   // Function keys: F1-F4 keep their legacy SS3 forms, F5+ are CSI ~ forms.
   {"f1 press",           GDK_KEY_F1, GDK_KEY_F1, 0, KITMUX_KEY_ACTION_PRESS,
@@ -241,7 +253,7 @@ static bool run_mode(kitty_engine *engine, const char *recorder,
         .action = item->action,
     };
     kitmux_key_translation translated;
-    CHECK(kitmux_translate_gdk_key(&input, &translated),
+    CHECK(kitmux_translate_gdk_key(&input, item->im_text, &translated),
           "%s/%s: translation rejected an encodable key", spec->name,
           item->name);
     CHECK(translated.event.key == item->key,
@@ -253,9 +265,9 @@ static bool run_mode(kitty_engine *engine, const char *recorder,
     CHECK(translated.event.mods == item->mods,
           "%s/%s: mods 0x%X, expected 0x%X", spec->name, item->name,
           translated.event.mods, item->mods);
-    CHECK(strcmp(translated.event.text, item->text) == 0,
-          "%s/%s: text \"%s\", expected \"%s\"", spec->name, item->name,
-          translated.event.text, item->text);
+    CHECK(strcmp(translated.event.text, item->im_text) == 0,
+          "%s/%s: committed text \"%s\" did not survive translation as \"%s\"",
+          spec->name, item->name, translated.event.text, item->im_text);
 
     char encoded[256];
     size_t written =
@@ -315,6 +327,11 @@ static bool run_tracker_checks(void) {
   CHECK(kitmux_key_tracker_press(&tracker, 39) == KITMUX_KEY_ACTION_PRESS,
         "a second key must report its own press");
   CHECK(kitmux_key_tracker_held(&tracker) == 2, "two keys must be held");
+  CHECK(kitmux_key_tracker_release(&tracker, 38),
+        "releasing a held key must report that it was held");
+  CHECK(!kitmux_key_tracker_release(&tracker, 38),
+        "releasing an untracked key must report that it was not held");
+  kitmux_key_tracker_press(&tracker, 38);
   kitmux_key_tracker_release(&tracker, 38);
   CHECK(kitmux_key_tracker_press(&tracker, 38) == KITMUX_KEY_ACTION_PRESS,
         "a released key must report a fresh press");
@@ -330,7 +347,7 @@ static bool run_tracker_checks(void) {
                                    .state = 0,
                                    .action = KITMUX_KEY_ACTION_PRESS};
   kitmux_key_translation translated;
-  CHECK(!kitmux_translate_gdk_key(&modifier, &translated),
+  CHECK(!kitmux_translate_gdk_key(&modifier, NULL, &translated),
         "a bare modifier must not reach the terminal");
   printf("key tracker: press/repeat/release and modifier rejection OK\n");
   return true;

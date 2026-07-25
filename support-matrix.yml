@@ -20,18 +20,24 @@ gtk_host_evidence:
   session: live libkitty shell with GLib PTY source
   verified: [render, tracked-gl-state-restore, resize, diagnostic, child-reap,
              key-press-release-repeat, key-encoding-live-terminal-state,
-             focus-transfer]
-  unproven: [compose, dead-keys, altgr, non-us-layout, ime, clipboard, paste,
-             mouse, search, wayland, scaling, physical-gpu, fairness, webkit,
-             packaging]
+             focus-transfer, compose, dead-keys, altgr, non-us-layout, emoji,
+             ibus-preedit-commit]
+  unproven: [clipboard, paste, selection, mouse, search, wayland, scaling,
+             physical-gpu, fairness, webkit, packaging, cjk-conversion-engines,
+             surrounding-text]
   keyboard_evidence:
     translation: kitmux-linux/src/gtk_key_translation.c
-    matrix: 30 events x 3 live terminal states, fixed expected bytes, no display
-    windowed_runs: [default-terminal-state, kitty-keyboard-protocol-flags-15]
+    matrix: 32 events x 3 live terminal states, fixed expected bytes, no display
+    windowed_runs: [default-terminal-state, kitty-keyboard-protocol-flags-15,
+                    gtk-im-context-simple, ibus]
     injector: XTEST; xdotool infers modifiers from XKB shift levels and is unusable for function keys here
     repeat_source: X auto-repeat; per-event bytes fixed, repeat count bounded
-    text_source: synthesized from key symbols until Slice 2.2B replaces it with GtkIMContext
-  toolkit_decision: pending IME, Wayland, scale, fairness, and WebKit checks
+    text_source: GtkIMMulticontext; the translation never synthesizes committed text
+    commit_routes: [key-encoder for a first single-scalar commit with no composition,
+                    direct-write for composition results and asynchronous commits]
+    ibus_engines: [xkb:us::eng, "m17n:t:latn-post"]
+    session_state_touched: [x-auto-repeat, keyboard-layout, active-ibus-engine]
+  toolkit_decision: pending Wayland, scale, fairness, and WebKit checks
 
 toolchain:
   rust: 1.97.1

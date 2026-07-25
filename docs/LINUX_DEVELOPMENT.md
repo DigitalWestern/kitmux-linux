@@ -18,13 +18,19 @@ host commands from the Linux repository root on the macOS machine.
 - One real libkitty terminal renders, pumps PTY output, resizes, restores
   tracked GL state, reports initialization failure, closes, and reaps its
   child in GTK 4.22.4 over X11 with Mesa llvmpipe.
+- Keyboard input reaches that terminal with exact, fixed byte expectations:
+  press, release, and auto-repeat; the kitty keyboard protocol and DECCKM;
+  Compose, dead keys, AltGr, a non-US layout, emoji, and a real IBus
+  preedit/commit flow; and focus transfer to an ordinary GTK control beside
+  the terminal.
 
 ## What is not proven
 
-- GTK keyboard semantics, repeat/release, Compose, dead keys, AltGr, non-US
-  layouts, or a real IME preedit/commit flow.
-- Focus transfer, selection, clipboard, safe paste, mouse reporting, wheel,
-  touchpad, or search in the GTK host.
+- Selection, clipboard, safe paste, mouse reporting, wheel, touchpad, or
+  search in the GTK host.
+- CJK or other conversion engines with candidate windows, and
+  surrounding-text requests; the input-method evidence covers one Latin
+  engine.
 - Wayland, fractional/mixed-monitor scaling, physical-GPU behavior, or
   accessibility.
 - Main-loop fairness during sustained PTY output and resize pressure.
@@ -102,11 +108,14 @@ limactl shell kitmux-linux-desktop -- \
   "$PWD/kitmux-linux/scripts/test-desktop.sh"
 ```
 
-The gate covers rendering, resize, PTY, clean close, and the Slice 2.2A
-keyboard harness. It writes `kitmux-linux/gtk-terminal-host-proof.png` and
-`kitmux-linux/gtk-keyboard-focus-proof.png`, and it briefly disables X
-auto-repeat, so run it on the project VNC session rather than a desktop you
-are using.
+The gate covers rendering, resize, PTY, clean close, and the Slice 2.2A/2.2B
+keyboard and input-method harness. It writes
+`kitmux-linux/gtk-terminal-host-proof.png`,
+`kitmux-linux/gtk-keyboard-focus-proof.png`, and
+`kitmux-linux/gtk-preedit-proof.png`. While it runs it changes X auto-repeat,
+the keyboard layout, and the active IBus engine — restoring auto-repeat and
+the US layout on exit — so run it on the project VNC session rather than a
+desktop you are using.
 
 The keyboard harness has two halves:
 
@@ -115,8 +124,11 @@ The keyboard harness has two halves:
   terminal states (default, DECCKM, and kitty keyboard protocol flags 15),
   then checks the bytes a real PTY child (`pty_input_recorder`) actually
   read.
-- Two windowed runs replay a fixed key script through real GDK events using
-  `x11_key_injector`, a small XTEST tool. `xdotool` cannot be used for the
+- Four windowed runs replay fixed key scripts through real GDK events using
+  `x11_key_injector`, a small XTEST tool: the default terminal state, the
+  kitty keyboard protocol, GTK's own input-method context (Compose, dead
+  keys, AltGr, a German layout), and IBus (`m17n:t:latn-post` preedit and
+  commit, plus a pass-through engine). `xdotool` cannot be used for the
   function keys: it infers modifiers from the shift level where it finds a
   keysym, and this session's XKB map puts `XF86Switch_VT_*` on higher levels
   of the same keycode, so `xdotool key F1` arrives as Alt+F1 and XFCE

@@ -72,12 +72,17 @@ static uint32_t kitty_mods(GdkModifierType state) {
 }
 
 bool kitmux_translate_gdk_key(const kitmux_gdk_key_input *input,
+                              const char *committed_text,
                               kitmux_key_translation *out) {
   if (!input || !out) return false;
   memset(out, 0, sizeof(*out));
   out->event.action = input->action;
   out->event.mods = kitty_mods(input->state);
   out->event.text = out->text;
+  if (committed_text && *committed_text) {
+    size_t length = strlen(committed_text);
+    if (length < sizeof(out->text)) memcpy(out->text, committed_text, length);
+  }
 
   uint32_t functional = 0;
   if (functional_value(input->keyval, &functional)) {
@@ -100,22 +105,6 @@ bool kitmux_translate_gdk_key(const kitmux_gdk_key_input *input,
   if ((out->event.mods & KITMUX_KITTY_MOD_SHIFT) && delivered != key) {
     out->event.shifted_key = (uint32_t)delivered;
   }
-
-  // Text rules (kitty's backends): a Ctrl/Alt/Super chord carries no text —
-  // the encoder synthesizes those bytes — and neither do control characters.
-  // Releases never carry text.
-  bool chord = (out->event.mods & (KITMUX_KITTY_MOD_CTRL |
-                                   KITMUX_KITTY_MOD_ALT |
-                                   KITMUX_KITTY_MOD_SUPER)) != 0;
-  if (input->action != KITMUX_KEY_ACTION_RELEASE && !chord &&
-      delivered >= 0x20 && delivered != 0x7F) {
-    gint written = g_unichar_to_utf8(delivered, out->text);
-    if (written < 0 || (size_t)written >= sizeof(out->text)) {
-      memset(out->text, 0, sizeof(out->text));
-    } else {
-      out->text[written] = '\0';
-    }
-  }
   return true;
 }
 
@@ -130,14 +119,15 @@ int kitmux_key_tracker_press(kitmux_key_tracker *tracker, guint keycode) {
   return KITMUX_KEY_ACTION_PRESS;
 }
 
-void kitmux_key_tracker_release(kitmux_key_tracker *tracker, guint keycode) {
-  if (!tracker) return;
+bool kitmux_key_tracker_release(kitmux_key_tracker *tracker, guint keycode) {
+  if (!tracker) return false;
   for (size_t i = 0; i < tracker->count; ++i) {
     if (tracker->codes[i] != keycode) continue;
     tracker->codes[i] = tracker->codes[tracker->count - 1];
     tracker->count--;
-    return;
+    return true;
   }
+  return false;
 }
 
 void kitmux_key_tracker_reset(kitmux_key_tracker *tracker) {

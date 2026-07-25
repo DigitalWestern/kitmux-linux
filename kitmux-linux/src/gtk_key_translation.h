@@ -11,8 +11,9 @@
  * a display server. The host resolves the level-0 keyval for the pressed
  * hardware key and passes it in.
  *
- * Slice 2.2B replaces the `text` synthesis below with a real GtkIMContext;
- * until then this file must not be treated as Compose/dead-key/IME evidence.
+ * Committed text is never synthesized here. It arrives from the host's
+ * GtkIMContext, which is the only component that knows what a Compose
+ * sequence, dead key, AltGr level, or input-method conversion produced.
  */
 #ifndef KITMUX_GTK_KEY_TRANSLATION_H
 #define KITMUX_GTK_KEY_TRANSLATION_H
@@ -34,8 +35,10 @@
 #define KITMUX_KEY_ACTION_PRESS 1
 #define KITMUX_KEY_ACTION_REPEAT 2
 
-// One UTF-8 scalar plus a terminator is all a single key event can carry.
-#define KITMUX_KEY_TEXT_CAPACITY 8
+// An input method may commit more than one scalar for a single key; the host
+// only routes short commits through the key encoder and writes longer ones
+// straight to the child.
+#define KITMUX_KEY_TEXT_CAPACITY 32
 
 typedef struct {
   guint keyval;            // keyval GDK delivered for this event
@@ -49,10 +52,13 @@ typedef struct {
   char text[KITMUX_KEY_TEXT_CAPACITY];
 } kitmux_key_translation;
 
-// Translate one GDK key event. Returns false when the event carries nothing
-// the terminal should see (a bare modifier, or a keyval with no functional
-// mapping and no Unicode value); `out` is then left zeroed.
+// Translate one GDK key event. `committed_text` is the UTF-8 an input method
+// committed for this event, or NULL when it committed nothing; kitty's
+// encoder decides what to do with it. Returns false when the event carries
+// nothing the terminal should see (a bare modifier, or a keyval with no
+// functional mapping and no Unicode value); `out` is then left zeroed.
 bool kitmux_translate_gdk_key(const kitmux_gdk_key_input *input,
+                              const char *committed_text,
                               kitmux_key_translation *out);
 
 // GDK reports auto-repeat as further key-pressed events without an
@@ -69,7 +75,9 @@ typedef struct {
 // KITMUX_KEY_ACTION_REPEAT while it stays down. A full tracker degrades to
 // reporting presses rather than dropping the key.
 int kitmux_key_tracker_press(kitmux_key_tracker *tracker, guint keycode);
-void kitmux_key_tracker_release(kitmux_key_tracker *tracker, guint keycode);
+// Returns true when the key was actually being tracked. The host uses that to
+// tell whether a release belongs to a press the terminal ever saw.
+bool kitmux_key_tracker_release(kitmux_key_tracker *tracker, guint keycode);
 // Focus loss ends every key the widget can still observe.
 void kitmux_key_tracker_reset(kitmux_key_tracker *tracker);
 size_t kitmux_key_tracker_held(const kitmux_key_tracker *tracker);

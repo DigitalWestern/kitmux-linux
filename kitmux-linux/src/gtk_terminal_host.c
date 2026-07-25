@@ -16,17 +16,34 @@ typedef struct {
   GtkWidget *status_label;
   GtkWidget *error_label;
   GtkWidget *adjacent_entry;
+  GtkWidget *preedit_label;
+  GtkIMContext *im_context;
   kitty_engine *engine;
   kitty_session *session;
   kitmux_key_tracker keys;
+  // Presses the input method swallowed. Their releases must not reach the
+  // terminal: under the kitty keyboard protocol a release with no matching
+  // press is a malformed event.
+  kitmux_key_tracker im_consumed;
   guint pty_source;
   int framebuffer_width;
   int framebuffer_height;
+  int cell_width;
+  int cell_height;
   bool first_frame_reported;
   bool pty_output_reported;
   bool gl_state_reported;
   bool layout_reported;
   bool close_on_child_exit;
+  // Composition state. `filtering` is true only inside
+  // gtk_im_context_filter_keypress, so a commit can tell ordinary typing from
+  // a composition result or an asynchronous input-method commit.
+  bool preedit_active;
+  bool filtering;
+  bool filtering_had_preedit;
+  bool filtering_committed;
+  bool filtering_encoded;
+  kitmux_gdk_key_input filtering_input;
 } AppState;
 
 typedef struct {
@@ -177,14 +194,26 @@ static const char *action_name(int action) {
   }
 }
 
+static size_t to_hex(const char *bytes, size_t length, char *out,
+                     size_t capacity) {
+  size_t used = 0;
+  for (size_t i = 0; i < length && used + 2 < capacity; ++i) {
+    used += (size_t)snprintf(out + used, capacity - used, "%02x",
+                             (unsigned char)bytes[i]);
+  }
+  out[used] = '\0';
+  return used;
+}
+
 // Every key the focused terminal sees is reported here: the translated event
 // metadata plus the exact bytes libkitty produced for it. Keys that encode to
 // nothing (a release under the legacy protocol) are still reported, so the
 // harness can tell "no bytes" from "no event".
 static void route_key_to_terminal(AppState *state,
-                                  const kitmux_gdk_key_input *input) {
+                                  const kitmux_gdk_key_input *input,
+                                  const char *committed_text) {
   kitmux_key_translation translated;
-  if (!kitmux_translate_gdk_key(input, &translated)) {
+  if (!kitmux_translate_gdk_key(input, committed_text, &translated)) {
     printf("GTK key ignored: action=%s keyval=0x%X\n",
            action_name(input->action), input->keyval);
     fflush(stdout);
@@ -197,12 +226,7 @@ static void route_key_to_terminal(AppState *state,
                                        encoded, sizeof(encoded));
   }
   char hex[2 * sizeof(encoded) + 1];
-  size_t used = 0;
-  for (size_t i = 0; i < written && used + 2 < sizeof(hex); ++i) {
-    used += (size_t)snprintf(hex + used, sizeof(hex) - used, "%02x",
-                             (unsigned char)encoded[i]);
-  }
-  hex[used] = '\0';
+  to_hex(encoded, written, hex, sizeof(hex));
   printf("GTK key %s: key=0x%X shifted=0x%X mods=0x%X text=\"%s\" bytes=%s\n",
          action_name(translated.event.action), translated.event.key,
          translated.event.shifted_key, translated.event.mods,
@@ -231,6 +255,107 @@ static guint base_layout_keyval(GtkWidget *widget,
   return keyval;
 }
 
+// Put the preedit overlay where libkitty says the cursor is, and tell the
+// input method the same rectangle so its candidate window follows the text.
+static void place_composition(AppState *state) {
+  if (!state->session || state->cell_width <= 0 || state->cell_height <= 0) {
+    return;
+  }
+  int column = 0, row = 0;
+  bool visible = false;
+  if (!kitty_session_cursor_cell(state->session, &column, &row, &visible)) {
+    return;
+  }
+  int scale = gtk_widget_get_scale_factor(state->gl_area);
+  if (scale <= 0) scale = 1;
+  int x = column * state->cell_width / scale;
+  int y = row * state->cell_height / scale;
+  gtk_widget_set_margin_start(state->preedit_label, x);
+  gtk_widget_set_margin_top(state->preedit_label, y);
+  if (state->im_context) {
+    GdkRectangle area = {
+        .x = x,
+        .y = y,
+        .width = state->cell_width / scale,
+        .height = state->cell_height / scale,
+    };
+    gtk_im_context_set_cursor_location(state->im_context, &area);
+  }
+}
+
+static void im_preedit_changed(GtkIMContext *context, gpointer userdata) {
+  AppState *state = userdata;
+  char *text = NULL;
+  PangoAttrList *attributes = NULL;
+  int cursor = 0;
+  gtk_im_context_get_preedit_string(context, &text, &attributes, &cursor);
+  bool empty = !text || !*text;
+  gtk_label_set_text(GTK_LABEL(state->preedit_label), empty ? "" : text);
+  gtk_widget_set_visible(state->preedit_label, !empty);
+  if (!empty) place_composition(state);
+  char hex[4 * KITMUX_KEY_TEXT_CAPACITY + 1];
+  to_hex(text ? text : "", text ? strlen(text) : 0, hex, sizeof(hex));
+  printf("GTK preedit: \"%s\" cursor=%d bytes=%s\n", text ? text : "", cursor,
+         hex);
+  fflush(stdout);
+  if (attributes) pango_attr_list_unref(attributes);
+  g_free(text);
+}
+
+static void im_preedit_start(GtkIMContext *context, gpointer userdata) {
+  (void)context;
+  AppState *state = userdata;
+  state->preedit_active = true;
+  printf("GTK preedit start\n");
+  fflush(stdout);
+}
+
+static void im_preedit_end(GtkIMContext *context, gpointer userdata) {
+  (void)context;
+  AppState *state = userdata;
+  state->preedit_active = false;
+  gtk_widget_set_visible(state->preedit_label, FALSE);
+  printf("GTK preedit end\n");
+  fflush(stdout);
+}
+
+static void im_commit(GtkIMContext *context, const char *text,
+                      gpointer userdata) {
+  (void)context;
+  AppState *state = userdata;
+  if (!text || !*text || !state->session) return;
+  size_t length = strlen(text);
+  char hex[4 * KITMUX_KEY_TEXT_CAPACITY + 1];
+  to_hex(text, length, hex, sizeof(hex));
+
+  // Ordinary typing, captured while the physical key was being filtered:
+  // re-encode it through kitty's keyboard protocol so a protocol-aware
+  // application sees the same event vocabulary it sees for every other key.
+  // Only the first commit of a key event, only a single scalar, and only
+  // when no composition was already in progress.
+  bool single_scalar = g_utf8_strlen(text, -1) == 1;
+  if (state->filtering && !state->filtering_committed &&
+      !state->filtering_had_preedit && single_scalar &&
+      length < KITMUX_KEY_TEXT_CAPACITY) {
+    state->filtering_committed = true;
+    state->filtering_encoded = true;
+    printf("GTK input method commit: \"%s\" bytes=%s route=key-encoder\n",
+           text, hex);
+    fflush(stdout);
+    route_key_to_terminal(state, &state->filtering_input, text);
+    return;
+  }
+
+  // A composition result, a dead-key or Compose sequence, hex entry, or an
+  // asynchronous input-method commit: the composed text bypasses the key
+  // encoder, exactly as kitty does.
+  state->filtering_committed = true;
+  printf("GTK input method commit: \"%s\" bytes=%s route=direct-write\n", text,
+         hex);
+  fflush(stdout);
+  kitty_session_write(state->session, (const uint8_t *)text, length);
+}
+
 static gboolean key_pressed(GtkEventControllerKey *controller, guint keyval,
                             guint keycode, GdkModifierType state,
                             gpointer userdata) {
@@ -242,7 +367,36 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint keyval,
       .state = state,
       .action = kitmux_key_tracker_press(&app->keys, keycode),
   };
-  route_key_to_terminal(app, &input);
+
+  // The input method sees every press first. It owns Compose sequences, dead
+  // keys, hex entry, and any engine conversion, and it is the only component
+  // that knows what text a key produced.
+  GdkEvent *event =
+      gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(controller));
+  if (app->im_context && event) {
+    app->filtering = true;
+    app->filtering_input = input;
+    app->filtering_had_preedit = app->preedit_active;
+    app->filtering_committed = false;
+    app->filtering_encoded = false;
+    gboolean consumed = gtk_im_context_filter_keypress(app->im_context, event);
+    bool committed = app->filtering_committed;
+    bool encoded = app->filtering_encoded;
+    app->filtering = false;
+    if (consumed) {
+      // A press that reached the terminal as an encoded key event still owes
+      // it a release. A press the input method absorbed — or answered with
+      // composed text rather than a key event — owes it nothing.
+      if (!encoded) kitmux_key_tracker_press(&app->im_consumed, keycode);
+      if (!committed) {
+        printf("GTK key to input method: action=%s keyval=0x%X\n",
+               action_name(input.action), keyval);
+        fflush(stdout);
+      }
+      return TRUE;
+    }
+  }
+  route_key_to_terminal(app, &input, NULL);
   // The terminal owns every key while it is focused, including Tab: GTK must
   // not turn it into focus navigation.
   return TRUE;
@@ -253,6 +407,13 @@ static void key_released(GtkEventControllerKey *controller, guint keyval,
                          gpointer userdata) {
   AppState *app = userdata;
   kitmux_key_tracker_release(&app->keys, keycode);
+  if (kitmux_key_tracker_release(&app->im_consumed, keycode)) {
+    printf("GTK key release withheld: keyval=0x%X (press went to the input "
+           "method)\n",
+           keyval);
+    fflush(stdout);
+    return;
+  }
   kitmux_gdk_key_input input = {
       .keyval = keyval,
       .unshifted_keyval = base_layout_keyval(
@@ -260,13 +421,17 @@ static void key_released(GtkEventControllerKey *controller, guint keyval,
       .state = state,
       .action = KITMUX_KEY_ACTION_RELEASE,
   };
-  route_key_to_terminal(app, &input);
+  // Releases do not go through the input method. The kitty keyboard protocol
+  // requires them to reach the terminal, and no composition step consumes a
+  // release; VTE likewise filters presses only.
+  route_key_to_terminal(app, &input, NULL);
 }
 
 static void terminal_focus_entered(GtkEventControllerFocus *controller,
                                    gpointer userdata) {
   (void)controller;
-  (void)userdata;
+  AppState *state = userdata;
+  if (state->im_context) gtk_im_context_focus_in(state->im_context);
   printf("GTK focus: terminal\n");
   fflush(stdout);
 }
@@ -279,6 +444,15 @@ static void terminal_focus_left(GtkEventControllerFocus *controller,
   // see, so the held-key set ends with the focus.
   size_t held = kitmux_key_tracker_held(&state->keys);
   kitmux_key_tracker_reset(&state->keys);
+  kitmux_key_tracker_reset(&state->im_consumed);
+  // Losing focus ends any composition; a half-finished preedit must not
+  // survive to be committed into a pane the user is no longer typing into.
+  if (state->im_context) {
+    gtk_im_context_focus_out(state->im_context);
+    gtk_im_context_reset(state->im_context);
+  }
+  state->preedit_active = false;
+  gtk_widget_set_visible(state->preedit_label, FALSE);
   printf("GTK focus: terminal released %zu held key(s)\n", held);
   fflush(stdout);
 }
@@ -389,6 +563,8 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
     show_error(state, "libkitty renderer initialization failed: %s", error);
     return;
   }
+  state->cell_width = cell_width;
+  state->cell_height = cell_height;
 
   kitty_session_callbacks callbacks = {
       .userdata = state,
@@ -438,6 +614,10 @@ static void teardown_terminal(GtkGLArea *area, AppState *state) {
   if (state->engine) {
     kitty_engine_shutdown(state->engine);
     state->engine = NULL;
+  }
+  if (state->im_context) {
+    gtk_im_context_set_client_widget(state->im_context, NULL);
+    g_clear_object(&state->im_context);
   }
 }
 
@@ -528,6 +708,20 @@ static void activate(GtkApplication *application, gpointer userdata) {
     gtk_window_present(GTK_WINDOW(state->window));
     return;
   }
+  GtkCssProvider *provider = gtk_css_provider_new();
+  gtk_css_provider_load_from_string(
+      provider,
+      ".kitmux-preedit {"
+      "  background-color: #f5f5f5;"
+      "  color: #101010;"
+      "  text-decoration: underline;"
+      "  padding: 0 2px;"
+      "}");
+  gtk_style_context_add_provider_for_display(
+      gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  g_object_unref(provider);
+
   state->window = gtk_application_window_new(application);
   gtk_window_set_title(GTK_WINDOW(state->window), "Kitmux GTK Terminal Host");
   gtk_window_set_default_size(GTK_WINDOW(state->window), 900, 580);
@@ -588,10 +782,32 @@ static void activate(GtkApplication *application, gpointer userdata) {
   g_signal_connect(click, "pressed", G_CALLBACK(terminal_clicked), state);
   gtk_widget_add_controller(state->gl_area, GTK_EVENT_CONTROLLER(click));
 
+  // GtkIMMulticontext picks the platform input method (GTK_IM_MODULE), so the
+  // same host covers GTK's built-in Compose/dead-key handling and a real IBus
+  // engine without a second code path.
+  state->im_context = gtk_im_multicontext_new();
+  gtk_im_context_set_client_widget(state->im_context, state->gl_area);
+  gtk_im_context_set_use_preedit(state->im_context, TRUE);
+  g_signal_connect(state->im_context, "commit", G_CALLBACK(im_commit), state);
+  g_signal_connect(state->im_context, "preedit-start",
+                   G_CALLBACK(im_preedit_start), state);
+  g_signal_connect(state->im_context, "preedit-changed",
+                   G_CALLBACK(im_preedit_changed), state);
+  g_signal_connect(state->im_context, "preedit-end",
+                   G_CALLBACK(im_preedit_end), state);
+
   g_signal_connect(state->gl_area, "realize", G_CALLBACK(realized), state);
   g_signal_connect(state->gl_area, "unrealize", G_CALLBACK(unrealized), state);
   g_signal_connect(state->gl_area, "render", G_CALLBACK(render), state);
   gtk_overlay_set_child(GTK_OVERLAY(overlay), state->gl_area);
+
+  // Composition preview, drawn over the terminal at libkitty's cursor cell.
+  state->preedit_label = gtk_label_new(NULL);
+  gtk_widget_set_halign(state->preedit_label, GTK_ALIGN_START);
+  gtk_widget_set_valign(state->preedit_label, GTK_ALIGN_START);
+  gtk_widget_add_css_class(state->preedit_label, "kitmux-preedit");
+  gtk_widget_set_visible(state->preedit_label, FALSE);
+  gtk_overlay_add_overlay(GTK_OVERLAY(overlay), state->preedit_label);
 
   state->error_label = gtk_label_new(NULL);
   gtk_label_set_wrap(GTK_LABEL(state->error_label), TRUE);

@@ -24,7 +24,20 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   tigervnc-tools \
   websockify \
   weston \
+  ibus-m17n \
   xfce4 \
   xfce4-terminal \
   xdotool \
   xwayland
+
+# XFCE asks polkit for permission to create a colord-managed device on every
+# session start. In a headless VNC session nobody answers, and the dialog
+# floats over the windows the desktop gate screenshots as evidence. Grant it
+# to local sessions so no prompt appears.
+sudo tee /etc/polkit-1/rules.d/49-kitmux-colord.rules >/dev/null <<'RULES'
+polkit.addRule(function (action, subject) {
+  if (action.id.indexOf("org.freedesktop.color-manager.") === 0) {
+    return polkit.Result.YES;
+  }
+});
+RULES

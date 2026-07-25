@@ -1,15 +1,15 @@
 # Kitmux Linux next steps
 
-Start with Slice 2.2B. Slice 2.2A is closed; do not begin product navigation
-UI, the Rust product model, browser functionality, packaging, or the monorepo
-migration.
+Start with Slice 2.2C. Slices 2.2A and 2.2B are closed; do not begin product
+navigation UI, the Rust product model, browser functionality, packaging, or
+the monorepo migration.
 
 ## Preconditions
 
 1. Read `PORT_STATUS.md`, this file, and the Slice 2.2/2.3 sections of
    `LINUX_PORT_PLAN.md`.
 2. Confirm `git status --short` is clean and inspect commits newer than the
-   Slice 2.2A entry in `PORT_STATUS.md`.
+   Slice 2.2B entry in `PORT_STATUS.md`.
 3. Run:
 
    ```sh
@@ -52,22 +52,30 @@ later sub-slices inherit:
   ownership and widget bounds, on stdout. Keep that contract: the desktop gate
   asserts against it.
 
-### 2.2B — Compose, layouts, and IME — next
+### 2.2B — Compose, layouts, and IME — done 2026-07-25
 
-- Use GTK's input-method context rather than synthesizing committed Unicode
-  from key symbols. Slice 2.2A deliberately left that synthesis in
-  `kitmux_translate_gdk_key`; replacing it is this sub-slice's first job.
-- Wire preedit start/change/end and commit without double-sending the physical
-  key event.
-- Test Compose, a dead key, AltGr, one non-US layout, emoji, and a real IBus
-  preedit/commit flow.
-- Record which assertions are backend-independent and which require the
-  desktop session.
+Exact commands, byte expectations, and limits are in `PORT_STATUS.md`. What
+later sub-slices inherit:
 
-Gate: deterministic byte assertions plus visible preedit evidence; manual-only
-IME claims are insufficient for closing the slice.
+- A `GtkIMMulticontext` sees every press first and owns committed text.
+  `kitmux_translate_gdk_key` takes that text as an argument and must never go
+  back to synthesizing it.
+- Two commit routes, both logged: a first single-scalar commit with no
+  composition in progress is re-encoded through `kitty_session_encode_key`;
+  anything else is written to the child as UTF-8. Keep both — protocol-aware
+  applications depend on the first, composition correctness on the second.
+- Releases deliberately bypass the input method, and a release whose press
+  never reached the terminal as a key event is withheld.
+- The desktop gate changes X auto-repeat, the keyboard layout, and the active
+  IBus engine while it runs. Anything added to it must restore session state
+  on exit.
 
-### 2.2C — Focus, selection, clipboard, and safe paste
+Backend-independent versus desktop-only: the encoder expectations for
+layouts and AltGr live in `tests/gtk_key_matrix.c` and need no display. Every
+Compose, dead-key, preedit, and commit assertion needs the desktop session,
+because only a live `GtkIMContext` produces them.
+
+### 2.2C — Focus, selection, clipboard, and safe paste — next
 
 - Make terminal/GTK-control focus transitions explicit and observable.
 - Wire selection and text extraction through libkitty.
@@ -142,11 +150,10 @@ and redesign that boundary rather than accumulating workarounds.
 ```text
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, and the Slice 2.2 section of
 LINUX_PORT_PLAN.md. Confirm the worktree and both VM baselines. Implement only
-Slice 2.2B: replace the Slice 2.2A key-symbol text synthesis with a real
-GtkIMContext, wire preedit start/change/end and commit without double-sending
-the physical key event, and cover Compose, a dead key, AltGr, one non-US
-layout, emoji, and an IBus preedit/commit flow. Extend the existing keyboard
-harness rather than replacing it. Run the headless and desktop gates, record
-which assertions need the desktop session, update evidence docs, and stop
-before Slice 2.2C.
+Slice 2.2C: make terminal/GTK focus transitions explicit and observable, wire
+selection and text extraction through libkitty, implement asynchronous GDK
+clipboard copy and paste, and preserve bracketed-paste semantics plus the
+macOS confirmation contract for unsafe multiline or control-character paste.
+Extend the existing harness rather than replacing it. Run the headless and
+desktop gates, update evidence docs, and stop before Slice 2.2D.
 ```

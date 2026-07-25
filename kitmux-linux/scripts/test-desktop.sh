@@ -17,6 +17,7 @@ build_dir="${source_root}/build-gtk"
 host_binary="${build_dir}/kitmux_gtk_host"
 proof_image="${source_root}/gtk-terminal-host-proof.png"
 keyboard_proof_image="${source_root}/gtk-keyboard-focus-proof.png"
+preedit_proof_image="${source_root}/gtk-preedit-proof.png"
 export DISPLAY=":${display_number}"
 
 case "$(uname -m)" in
@@ -83,6 +84,7 @@ cleanup() {
     wait "${host_pid}" 2>/dev/null || true
   fi
   xset r on 2>/dev/null || true
+  setxkbmap -layout us 2>/dev/null || true
   rm -rf -- "${proof_log}" "${error_log}" "${key_dir}"
 }
 trap cleanup EXIT
@@ -196,12 +198,14 @@ click_widget() {  # host log, bounds label
     "$((bx + bw / 2))" "$((by + bh / 2))" click 1
 }
 
+key_host_env=()
+
 launch_key_host() {  # label, recorder init sequence, recorder quit hex
   key_label="$1"
   child_log="${key_dir}/gui-${key_label}.log"
   host_log="${key_dir}/gui-${key_label}-host.log"
   rm -f -- "${child_log}" "${host_log}"
-  env "${libkitty_environment[@]}" \
+  env "${libkitty_environment[@]}" "${key_host_env[@]+"${key_host_env[@]}"}" \
     GTK_THEME=Adwaita \
     GSK_RENDERER=gl \
     KITMUX_GTK_CHILD="${recorder}" \
@@ -253,6 +257,11 @@ hold_key_for_repeats() {  # keysym
   xset r off
 }
 
+# Pin GTK's own input-method context for the Slice 2.2A runs: a session with
+# ibus-daemon already running would otherwise route ordinary typing through
+# IBus and change which path encodes it.
+key_host_env=(GTK_IM_MODULE=gtk-im-context-simple)
+
 # --- Legacy terminal state: default DECCKM off, no keyboard protocol --------
 launch_key_host legacy '' '1b5b32347e'
 "${inject}" \
@@ -301,6 +310,127 @@ wait_for_count "${host_log}" '^GTK key repeat: key=0x61 .*bytes=1b5b39373b313a32
 finish_key_host '^1b5b3937751b5b39373b313a33751b5b3133751b5b31333b313a33751b5b411b5b313b313a33411b5b393775(1b5b39373b313a3275)+1b5b39373b313a33751b5b32347e1b5b32343b313a337e$'
 echo "kitty-keyboard-protocol press/repeat/release proof: OK"
 
+# ---------------------------------------------------------------------------
+# Slice 2.2B Compose, layouts, and input methods
+# ---------------------------------------------------------------------------
+
+# GTK's own input-method context: Compose sequences and dead keys produce a
+# preedit and commit composed text that must bypass the key encoder, while an
+# AltGr level or a non-US layout is ordinary typing whose text only the input
+# method knows.
+setxkbmap -layout us -option compose:menu
+launch_key_host compose '' '1b5b32347e'
+
+"${inject}" tap Multi_key tap a tap e
+wait_for_line "${host_log}" '^GTK preedit: "a" cursor=1 bytes=61$' \
+  "a visible Compose preedit"
+wait_for_line "${host_log}" \
+  '^GTK input method commit: "æ" bytes=c3a6 route=direct-write$' \
+  "the Compose result committed without the key encoder"
+# The physical key whose press the input method swallowed must not leave a
+# lone release behind it.
+wait_for_line "${host_log}" '^GTK key release withheld: keyval=0x61 ' \
+  "the withheld release of a swallowed press"
+
+setxkbmap -layout us -variant intl -option compose:menu
+sleep 1
+"${inject}" tap dead_acute tap e
+wait_for_line "${host_log}" '^GTK preedit: "'"'"'" cursor=1 bytes=27$' \
+  "a visible dead-key preedit"
+wait_for_line "${host_log}" \
+  '^GTK input method commit: "é" bytes=c3a9 route=direct-write$' \
+  "the dead-key result committed without the key encoder"
+
+setxkbmap -layout de -option compose:menu
+sleep 1
+"${inject}" tap udiaeresis
+wait_for_line "${host_log}" \
+  '^GTK key press: key=0xFC .*text="ü" bytes=c3bc$' \
+  "a non-US layout key encoded with its committed text"
+"${inject}" down ISO_Level3_Shift tap q up ISO_Level3_Shift
+# AltGr is a level shifter, not a kitty modifier: the key identity stays the
+# unmodified symbol of the same hardware key, and the level's text rides along.
+wait_for_line "${host_log}" \
+  '^GTK key press: key=0x71 shifted=0x0 mods=0x0 text="@" bytes=40$' \
+  "an AltGr level encoded as its base key plus committed text"
+
+setxkbmap -layout us
+sleep 1
+"${inject}" tap F12
+finish_key_host '^c3a6c3a9c3bc401b5b32347e$'
+echo "Compose, dead-key, AltGr, and non-US layout proof: OK"
+
+# A real IBus engine. m17n:t:latn-post holds a letter in the preedit until a
+# following diacritic resolves it, so both the preedit and the commit are
+# deterministic.
+ibus_engines="['xkb:us::eng', 'm17n:t:latn-post']"
+if ! gsettings set org.freedesktop.ibus.general preload-engines "${ibus_engines}"
+then
+  echo "Could not preload the IBus engines this gate needs." >&2
+  exit 1
+fi
+if ! ibus-daemon --xim --daemonize --replace >/dev/null 2>&1; then
+  echo "Could not start ibus-daemon." >&2
+  exit 1
+fi
+
+use_ibus_engine() {  # engine name
+  for _ in $(seq 1 60); do
+    if [[ "$(ibus engine 2>/dev/null)" == "$1" ]]; then return 0; fi
+    ibus engine "$1" >/dev/null 2>&1 || true
+    sleep 0.5
+  done
+  echo "IBus never activated the '$1' engine; available engines:" >&2
+  ibus list-engine >&2 2>&1 || true
+  exit 1
+}
+
+use_ibus_engine xkb:us::eng
+key_host_env=(GTK_IM_MODULE=ibus)
+launch_key_host ibus '' '1b5b32347e'
+
+# A pass-through engine must leave the key encoder in charge.
+use_ibus_engine xkb:us::eng
+sleep 1
+"${inject}" tap a
+wait_for_line "${host_log}" \
+  '^GTK key press: key=0x61 shifted=0x0 mods=0x0 text="a" bytes=61$' \
+  "a pass-through IBus engine leaving encoding to the key path"
+
+use_ibus_engine m17n:t:latn-post
+sleep 2
+"${inject}" tap a
+wait_for_line "${host_log}" '^GTK preedit: "a" cursor=1 bytes=61$' \
+  "a real IBus preedit"
+sleep 1
+scrot --overwrite --focused "${preedit_proof_image}"
+"${inject}" tap apostrophe
+wait_for_line "${host_log}" '^GTK preedit: "á" cursor=1 bytes=c3a1$' \
+  "the IBus preedit updating in place"
+# latn-post holds the composed letter until something ends the composition;
+# Return commits it and is then encoded as an ordinary key in its own right.
+"${inject}" tap Return
+wait_for_line "${host_log}" \
+  '^GTK input method commit: "á" bytes=c3a1 route=direct-write$' \
+  "the IBus commit bypassing the key encoder"
+wait_for_line "${host_log}" '^GTK preedit end$' "the IBus preedit ending"
+wait_for_line "${host_log}" '^GTK key press: key=0xE001 .*bytes=0d$' \
+  "the composition-ending key encoded once, after the commit"
+
+# A non-BMP scalar. Whether IBus answers inside the key filter or commits
+# asynchronously afterwards is the engine's choice, so assert the bytes that
+# reach the child rather than which of the two routes carried them.
+xdotool type --delay 150 '🚀'
+wait_for_line "${host_log}" \
+  '^GTK input method commit: "🚀" bytes=f09f9a80 route=' \
+  "an emoji commit reaching the child as UTF-8"
+
+use_ibus_engine xkb:us::eng
+"${inject}" tap F12
+finish_key_host '^61c3a10df09f9a801b5b32347e$'
+echo "IBus preedit, commit, pass-through, and emoji proof: OK"
+key_host_env=()
+
 xset r on
 
 env -u PYTHONHOME -u KITTY_SRC -u LIBKITTY_PY -u LIBKITTY_TEST_CONFIG \
@@ -314,3 +444,4 @@ echo "Visible missing-runtime diagnostic proof: OK"
 echo "GTK terminal host binary: ${host_binary}"
 echo "Visible proof: ${proof_image}"
 echo "Visible keyboard proof: ${keyboard_proof_image}"
+echo "Visible preedit proof: ${preedit_proof_image}"
