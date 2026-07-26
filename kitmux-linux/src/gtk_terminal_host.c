@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <webkit/webkit.h>
 
 #include "gtk_key_translation.h"
 #include "libkitty.h"
@@ -16,6 +17,7 @@ typedef struct {
   GtkWidget *status_label;
   GtkWidget *error_label;
   GtkWidget *adjacent_entry;
+  GtkWidget *web_view;
   GtkWidget *preedit_label;
   GtkIMContext *im_context;
   kitty_engine *engine;
@@ -471,6 +473,57 @@ static void adjacent_text_changed(GtkEditable *editable, gpointer userdata) {
   fflush(stdout);
 }
 
+static void webkit_focus_entered(GtkEventControllerFocus *controller,
+                                 gpointer userdata) {
+  (void)controller;
+  (void)userdata;
+  printf("GTK focus: webkit-probe\n");
+  fflush(stdout);
+}
+
+static void webkit_load_changed(WebKitWebView *web_view,
+                                WebKitLoadEvent event, gpointer userdata) {
+  (void)userdata;
+  if (event != WEBKIT_LOAD_FINISHED) return;
+  const char *uri = webkit_web_view_get_uri(web_view);
+  const char *title = webkit_web_view_get_title(web_view);
+  printf("GTK WebKit probe loaded: version=%u.%u.%u uri=%s title=%s\n",
+         webkit_get_major_version(), webkit_get_minor_version(),
+         webkit_get_micro_version(), uri ? uri : "", title ? title : "");
+  fflush(stdout);
+}
+
+static void webkit_title_changed(WebKitWebView *web_view, GParamSpec *spec,
+                                 gpointer userdata) {
+  (void)spec;
+  (void)userdata;
+  const char *title = webkit_web_view_get_title(web_view);
+  if (g_strcmp0(title, "Kitmux WebKit probe") != 0) return;
+  printf("GTK WebKit probe document: %s\n", title);
+  fflush(stdout);
+}
+
+static gboolean webkit_load_failed(WebKitWebView *web_view,
+                                   WebKitLoadEvent event,
+                                   const char *failing_uri, GError *error,
+                                   gpointer userdata) {
+  (void)web_view;
+  (void)userdata;
+  fprintf(stderr,
+          "GTK WebKit probe load failed: event=%d uri=%s error=%s\n",
+          (int)event, failing_uri ? failing_uri : "",
+          error ? error->message : "unknown");
+  return FALSE;
+}
+
+static void webkit_process_terminated(
+    WebKitWebView *web_view, WebKitWebProcessTerminationReason reason,
+    gpointer userdata) {
+  (void)web_view;
+  (void)userdata;
+  fprintf(stderr, "GTK WebKit process terminated: reason=%d\n", (int)reason);
+}
+
 static void terminal_clicked(GtkGestureClick *gesture, int n_press, double x,
                              double y, gpointer userdata) {
   (void)gesture;
@@ -490,8 +543,10 @@ static void report_layout(AppState *state) {
   } items[] = {
       {"terminal", state->gl_area},
       {"adjacent-control", state->adjacent_entry},
+      {"webkit-probe", state->web_view},
   };
   for (size_t i = 0; i < G_N_ELEMENTS(items); ++i) {
+    if (!items[i].widget) continue;
     graphene_rect_t bounds;
     if (!gtk_widget_compute_bounds(items[i].widget, state->window, &bounds)) {
       continue;
@@ -823,7 +878,49 @@ static void activate(GtkApplication *application, gpointer userdata) {
   gtk_widget_add_css_class(state->error_label, "error");
   gtk_widget_set_visible(state->error_label, FALSE);
   gtk_overlay_add_overlay(GTK_OVERLAY(overlay), state->error_label);
-  gtk_box_append(GTK_BOX(root), overlay);
+
+  const char *webkit_probe = g_getenv("KITMUX_GTK_WEBKIT_PROBE");
+  if (webkit_probe && *webkit_probe && g_strcmp0(webkit_probe, "0") != 0) {
+    // Disposable Slice 2.2D conflict probe: one mapped WebKitWebView with an
+    // in-memory fixture. It has no navigation UI, network load, or product
+    // data-session policy and is replaced with this entire host after the
+    // toolkit decision (ADR 0007).
+    GtkWidget *content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_hexpand(overlay, TRUE);
+    gtk_widget_set_vexpand(overlay, TRUE);
+    gtk_box_append(GTK_BOX(content), overlay);
+    gtk_box_append(GTK_BOX(content),
+                   gtk_separator_new(GTK_ORIENTATION_VERTICAL));
+
+    state->web_view = webkit_web_view_new();
+    gtk_widget_set_size_request(state->web_view, 320, -1);
+    gtk_widget_set_vexpand(state->web_view, TRUE);
+    GtkEventController *webkit_focus = gtk_event_controller_focus_new();
+    g_signal_connect(webkit_focus, "enter",
+                     G_CALLBACK(webkit_focus_entered), state);
+    gtk_widget_add_controller(state->web_view, webkit_focus);
+    g_signal_connect(state->web_view, "load-changed",
+                     G_CALLBACK(webkit_load_changed), state);
+    g_signal_connect(state->web_view, "notify::title",
+                     G_CALLBACK(webkit_title_changed), state);
+    g_signal_connect(state->web_view, "load-failed",
+                     G_CALLBACK(webkit_load_failed), state);
+    g_signal_connect(state->web_view, "web-process-terminated",
+                     G_CALLBACK(webkit_process_terminated), state);
+    gtk_box_append(GTK_BOX(content), state->web_view);
+    gtk_box_append(GTK_BOX(root), content);
+    webkit_web_view_load_html(
+        WEBKIT_WEB_VIEW(state->web_view),
+        "<!doctype html><meta charset=utf-8><title>Kitmux WebKit probe</title>"
+        "<style>html{color-scheme:dark}body{margin:0;padding:24px;"
+        "font:16px system-ui;background:#20242b;color:#f4f5f7}"
+        "strong{display:block;margin-bottom:12px;color:#8bd5ff}</style>"
+        "<strong>WebKitGTK conflict probe</strong>"
+        "<p>In-memory fixture; no network or browser product behavior.</p>",
+        NULL);
+  } else {
+    gtk_box_append(GTK_BOX(root), overlay);
+  }
   gtk_window_set_child(GTK_WINDOW(state->window), root);
   gtk_window_present(GTK_WINDOW(state->window));
   // The terminal, not the adjacent entry, owns the keyboard when the window

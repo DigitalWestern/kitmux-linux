@@ -367,7 +367,10 @@
         "render.live-frame"
       ],
       "translation": "Conflict probe only, not browser product work. The isolated-libpython boundary in ADR 0002 is the fragile part.",
-      "linux_status": "unproven; Slice 2.2D, and a failure changes the toolkit decision"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh"
+      ],
+      "linux_status": "proven under X11 and native Wayland with WebKitGTK 2.52.3: GL-state restoration, focus isolation/return, exact child bytes, clean process exit, and the isolated-libpython loader boundary passed (Slice 2.2D)"
     },
     {
       "id": "render.event-fairness",

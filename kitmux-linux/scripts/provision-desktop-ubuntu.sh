@@ -14,6 +14,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ibus \
   ibus-gtk4 \
   libgtk-4-dev \
+  libwebkitgtk-6.0-dev \
   libxtst-dev \
   mesa-utils \
   ninja-build \
@@ -24,6 +25,8 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   tigervnc-tools \
   websockify \
   weston \
+  xdg-desktop-portal \
+  xdg-desktop-portal-gtk \
   ibus-m17n \
   xfce4 \
   xfce4-terminal \

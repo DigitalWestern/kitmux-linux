@@ -11,8 +11,8 @@
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phase 1 and Slices 2.1 through 2.2C are complete. Slice
-2.2D, the bounded WebKitGTK conflict probe, is next. See
+**Current progress:** Phase 1 and Slices 2.1 through 2.2D are complete. Slice
+2.2E, the scaling proof, is next. See
 [`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
@@ -306,7 +306,7 @@ Failure here blocks all product UI work.
 
 Goal: prove or reject GTK before product UI depends on it.
 
-Status: Slices 2.1 through 2.2C complete. Slice 2.2D is next. Slices
+Status: Slices 2.1 through 2.2D complete. Slice 2.2E is next. Slices
 2.2C–2.2F are the reordered kill tests; see
 [Why Slice 2.2 was cut short](#why-slice-22-was-cut-short).
 
@@ -408,7 +408,7 @@ the compositor's outer window and Weston translated the input to
 `wl_keyboard`, so this is explicitly display-bound and not physical-libinput
 evidence. Exact results and limits are in `PORT_STATUS.md`.
 
-#### Slice 2.2D: Prove the WebKitGTK conflict probe — next
+#### Slice 2.2D: Prove the WebKitGTK conflict probe — complete
 
 - Instantiate a minimal `WebKitWebView` adjacent to the live terminal in one
   process. This is a conflict probe, not browser product work.
@@ -420,6 +420,15 @@ evidence. Exact results and limits are in `PORT_STATUS.md`.
 Gate: either a clean run under both backends, or a written, specific
 incompatibility. An ambiguous result counts as a failure and needs a narrower
 probe, not a workaround.
+
+The 2026-07-25 gate passed with WebKitGTK 2.52.3 under X11 and native
+Wayland. A static in-memory page and the live terminal rendered together;
+tracked GL state, focus isolation and return, exact child bytes, clean child
+reaping, and the isolated-libpython loader boundary all passed. The host's
+native closure resolved 139 libraries with no missing objects or Kitty private
+development-library leakage. This closes only coexistence risk, not browser
+product behavior or packaging. Exact results and limits are in
+`PORT_STATUS.md`.
 
 This runs early on purpose. It is cheap, it is a known-hard interaction, and a
 failure changes the toolkit decision — so discovering it after building product
@@ -846,12 +855,11 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Finish the Phase 2 kill tests** — Slices 2.2C through 2.2F. Cheap, and
+1. **Finish the Phase 2 kill tests** — Slices 2.2E and 2.2F. Cheap, and
    they decide whether anything else in this plan survives.
-2. **Slice 0.4 fixtures.** They gate Phase 3, which gates Phases 4 and 5 —
-   the entire shippable alpha. This is the critical path, it is a few days of
-   unglamorous work, and it has lost to more interesting GUI work at every
-   decision point so far.
+2. **Start Phase 3 against the frozen Slice 0.4 fixtures** once the current
+   Phase 2 assignment closes. The fixture dependency is satisfied; the Rust
+   product model remains the critical path to Phases 4 and 5.
 3. **Decompose the feature inventory** before Phase 5 builds the hierarchy.
 4. **ADR 0008 R1 and R2** — standalone buildability and one automated gate —
    before Phase 8, and before any second contributor.
@@ -864,8 +872,8 @@ items that unblock everything else stay open.
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2D is next under the reordered
-Phase 2: run the bounded WebKitGTK coexistence probe under both proven display
-backends. Do not start browser product behavior, selection, clipboard, mouse,
-or search — those belong to later phases. Shared fixtures remain provisional
-and still block the Rust product model.
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2E is next under the reordered
+Phase 2: prove 100%, fractional, and 200% scaling plus a live scale change.
+Do not start browser product behavior, selection, clipboard, mouse, or search
+— those belong to later phases. The shared fixtures are frozen; begin the Rust
+product model only when Phase 3 is explicitly assigned.

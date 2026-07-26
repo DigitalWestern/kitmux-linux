@@ -99,6 +99,7 @@ target_compile_options(pty_input_recorder PRIVATE
 if(KITMUX_BUILD_GTK_HOST)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4 epoxy)
+  pkg_check_modules(WEBKITGTK REQUIRED IMPORTED_TARGET webkitgtk-6.0)
 
   # The GDK -> libkitty key translation carries no display state, so the GTK
   # host and the headless key matrix share one implementation.
@@ -109,7 +110,8 @@ if(KITMUX_BUILD_GTK_HOST)
     -Wall -Wextra -Wpedantic -Werror)
 
   add_executable(kitmux_gtk_host src/gtk_terminal_host.c)
-  target_link_libraries(kitmux_gtk_host PRIVATE kitmux_key_translation)
+  target_link_libraries(kitmux_gtk_host PRIVATE
+    kitmux_key_translation PkgConfig::WEBKITGTK)
   target_compile_options(kitmux_gtk_host PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
 

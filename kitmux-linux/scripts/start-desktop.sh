@@ -18,7 +18,9 @@ novnc_log="${runtime_dir}/novnc.log"
 mkdir -p "${runtime_dir}"
 chmod 700 "${runtime_dir}"
 
-if ! tigervncserver -list 2>/dev/null | grep -Eq ":${display_number}([[:space:]]|$)"; then
+if ! tigervncserver -list 2>/dev/null \
+    | awk -v display="${display_number}" \
+      '$1 == display || $1 == ":" display { found = 1 } END { exit !found }'; then
   tigervncserver ":${display_number}" \
     -localhost yes \
     -SecurityTypes None \
@@ -27,6 +29,18 @@ if ! tigervncserver -list 2>/dev/null | grep -Eq ":${display_number}([[:space:]]
     -desktop "Kitmux Linux development" \
     -xstartup "${xstartup}"
 fi
+
+# GTK/WebKit consult the desktop portal even in this disposable VNC harness.
+# User services do not inherit the display created after login, so publish it
+# before activating the portal backend. Without this, each GTK host waits for
+# the portal's D-Bus timeout and test results depend on stale session state.
+export DISPLAY=":${display_number}"
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-XFCE}"
+dbus-update-activation-environment --systemd DISPLAY XDG_CURRENT_DESKTOP
+systemctl --user reset-failed \
+  xdg-desktop-portal.service xdg-desktop-portal-gtk.service
+systemctl --user restart \
+  xdg-desktop-portal-gtk.service xdg-desktop-portal.service
 
 if [[ -f "${novnc_pid_file}" ]] && kill -0 "$(cat "${novnc_pid_file}")" 2>/dev/null; then
   :

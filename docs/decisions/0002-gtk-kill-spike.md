@@ -18,8 +18,8 @@ libkitty shell rendered, PTY output arrived through a GLib file-descriptor
 source, two framebuffer resizes applied, tracked OpenGL state restored after
 draw, and close reaped the terminal child. This closes only the rendering and
 lifecycle slice; GTK is not chosen until input, IME, Wayland, scale, fairness,
-and the bounded WebKit conflict checks pass. Input/IME and native Wayland have
-since passed; scaling, fairness, and WebKit coexistence remain open.
+and the bounded WebKit conflict checks pass. Input/IME, native Wayland, and
+WebKit coexistence have since passed; scaling and fairness remain open.
 
 ## 2026-07-25 scope correction
 
@@ -57,6 +57,25 @@ outer window; Weston converted those events to `wl_keyboard` events for the
 native client. This closes the GTK Wayland-client kill check but does not
 claim a physical Wayland desktop, libinput/evdev injection, GPU performance,
 or driver behavior.
+
+## 2026-07-25 WebKitGTK coexistence result
+
+Slice 2.2D passed with WebKitGTK 2.52.3. The disposable host mapped one
+`WebKitWebView` containing static in-memory HTML beside the live terminal
+under X11 and native Wayland. Kitty's tracked GL state restored correctly,
+focus entered WebKit without leaking bytes to the terminal and returned
+cleanly, and neither run reported load failure or web-process termination.
+
+The loader check preserved this ADR's known-fragile boundary: the host's 139
+resolved native libraries included the isolated pinned `libpython`, while
+WebKitGTK, JavaScriptCoreGTK, GTK, and their native dependencies came from the
+Ubuntu system paths. Kitty's private development-library directory did not
+enter the process closure. The VM install added 43 packages and 166 MB, which
+is a dependency-cost warning for future packaging rather than a package-size
+measurement. This closes the coexistence kill check only; it does not select
+GTK, implement browser behavior, or prove a distributable layout.
+
+## Loader boundary retained
 
 The spike also established a loader boundary for the eventual native package.
 The GTK process must not add Kitty's full private dependency directory to its

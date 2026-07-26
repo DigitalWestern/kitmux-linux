@@ -1,7 +1,6 @@
 # Kitmux Linux next steps
 
-Start with Slice 2.2D — the **WebKitGTK conflict probe**. Slices 2.2A through
-2.2C are closed.
+Start with Slice 2.2E — **scaling**. Slices 2.2A through 2.2D are closed.
 
 Phase 2 was reordered on 2026-07-25. Slice 2.2C is no longer selection and
 clipboard: those, along with mouse, wheel, and search, moved to Phase 4 as
@@ -129,9 +128,7 @@ only a live `GtkIMContext` produces them.
 - The gate and exact limits are recorded in `PORT_STATUS.md`; visible evidence
   is `kitmux-linux/gtk-wayland-proof.png`.
 
-## Remaining Phase 2 sequence
-
-### 2.2D — WebKitGTK conflict probe — next
+### 2.2D — WebKitGTK conflict probe — done 2026-07-25
 
 A minimal `WebKitWebView` adjacent to the live terminal, in one process. This
 is a conflict probe, not browser product work — no navigation, no chrome, no
@@ -147,15 +144,19 @@ Look for, specifically:
 
 Run under both display backends.
 
-Gate: a clean run under both backends, or a written, specific
-incompatibility. An ambiguous result is a failure — narrow the probe, do not
-work around it.
+Gate result: clean under X11 and native Wayland. WebKitGTK 2.52.3 loaded an
+in-memory fixture beside the live terminal; tracked GL state, focus isolation
+and return, exact child bytes, clean process exit, and the isolated-libpython
+loader boundary all passed. The host resolved a 139-library native closure.
+Exact evidence and limits are in `PORT_STATUS.md`.
 
 This is deliberately early. It is cheap, it is a known-hard interaction, and a
 failure changes the toolkit decision. Finding it after Phase 4 exists would be
 the most expensive mistake available in this phase.
 
-### 2.2E — Scaling
+## Remaining Phase 2 sequence
+
+### 2.2E — Scaling — next
 
 - Coordinates, framebuffer size, cell metrics, and rendered text at 100%, a
   fractional scale, and 200%.
@@ -206,9 +207,9 @@ toolkit decision. It moved to Phase 6.
 
 - Selection, clipboard, safe paste, mouse, wheel, and search are Phase 4
   Slice 4.2, not Phase 2.
-- Phase 0.4 shared valid/invalid fixtures still block the Rust product model,
-  and through it Phases 4 and 5 — the entire shippable alpha. This is the
-  critical path and it has been open since the beginning.
+- Phase 0.4's shared valid/invalid fixture corpus is frozen. It no longer
+  blocks the Rust product model, but Phase 3 must still begin as its own
+  explicitly assigned slice after the current Phase 2 work.
 - Phase 0.6 defines the macOS re-baselining ritual. Reference drift is
   currently unmeasured.
 - `contracts/feature-inventory.json` must reach per-behavior granularity
@@ -226,13 +227,12 @@ toolkit decision. It moved to Phase 6.
 ```text
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, the Phase 2 section of
 LINUX_PORT_PLAN.md, and ADRs 0006 through 0008. Note that Phase 2 was
-reordered and Slice 2.2C native Wayland is closed. Confirm the worktree and
-both VM baselines. Implement only Slice 2.2D: add one minimal
-WebKitWebView adjacent to the live terminal in the disposable GTK host, with
-no navigation, browser chrome, or data-session product work. Probe GL context,
-loader/symbol, focus, and dependency-closure conflicts against the isolated
-libpython boundary, and run the same bounded probe under both X11 and native
-Wayland. Treat an ambiguous result as failure to narrow, not permission to
-work around it. Classify any new file per ADR 0007, run the headless and
-desktop gates, update evidence docs, and stop before Slice 2.2E.
+reordered and Slices 2.2C native Wayland and 2.2D WebKitGTK coexistence are
+closed. Confirm the worktree and both VM baselines. Implement only Slice
+2.2E: prove coordinates, framebuffer size, cell metrics, and rendered text at
+100%, a fractional scale, and 200%; then apply a scale change to a live
+session without session loss or cell-metric drift. Inspect how Kitty's render
+scale relates to GTK's integer widget scale factor before choosing the
+display harness. Classify any new file per ADR 0007, run the headless and
+desktop gates, update evidence docs, and stop before Slice 2.2F.
 ```

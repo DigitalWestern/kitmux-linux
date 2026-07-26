@@ -2,7 +2,7 @@
 
 **Last inspected:** 2026-07-25
 
-**Implementation state:** Phase 0.4, Phase 1, and GTK Slices 2.1 through 2.2C
+**Implementation state:** Phase 0.4, Phase 1, and GTK Slices 2.1 through 2.2D
 are closed. Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF
 `libkitty.so`, a relocatable 104 MB attributed engine runtime, Linux stress
 tests, a real one-session GTK 4 terminal host over X11 and native Wayland
@@ -12,12 +12,12 @@ navigation UI, or native package exists yet.
 
 **Active phase:** Phase 2 — rendering and toolkit kill spike.
 
-**Next slice:** Slice 2.2D — **WebKitGTK conflict probe**. Phase 2 was
+**Next slice:** Slice 2.2E — **scaling**. Phase 2 was
 reordered on 2026-07-25 so the checks that could disqualify GTK run before the
 expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
 mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The
-remaining Phase 2 slices are the WebKitGTK conflict probe, scaling, and event
-fairness. Phase 0.4 shared fixture promotion is closed, so Phase 3 is no longer
+remaining Phase 2 slices are scaling and event fairness. Phase 0.4 shared
+fixture promotion is closed, so Phase 3 is no longer
 fixture-blocked; it remains unstarted while the assigned agent works the
 current Phase 2 slice.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
@@ -64,6 +64,49 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — Slice 2.2D WebKitGTK conflict probe
+
+- Added WebKitGTK 6.0 only to the disposable GTK host and mapped one
+  `WebKitWebView` beside the live `GtkGLArea`. It loaded static in-memory HTML;
+  the probe has no network request, navigation UI, browser chrome, or product
+  data-session policy.
+- WebKitGTK 2.52.3 loaded the fixture under `GdkX11Display` and native
+  `GdkWaylandDisplay` while the real libkitty recorder remained visible. Kitty
+  restored the tracked host GL state after every draw, and WebKit reported no
+  load failure or web-process termination.
+- Focus moved from the terminal into WebKit and back under both backends. The
+  child received `61`, received nothing while an injected `x` targeted the
+  focused web view, then received `7a` after terminal focus returned. Including
+  the close sentinel, both exact streams were `617a1b5b32347e`; both terminal
+  children were reaped.
+- The host directly needs `libwebkitgtk-6.0.so.4`. Its live ELF closure
+  resolved 139 libraries with none missing: `libpython3.14.so.1.0` stayed in
+  `build-gtk/python-runtime`, while WebKitGTK, JavaScriptCoreGTK, and GTK came
+  from Ubuntu's architecture library directory. Kitty's private development
+  dependency directory did not enter the process closure.
+- Installing the Ubuntu WebKitGTK development input added 43 distro packages
+  and 166 MB on this VM. The principal runtime objects observed were about
+  93 MB for WebKitGTK and 30 MB for JavaScriptCoreGTK. This is dependency-cost
+  evidence, not a packaged-application measurement.
+- The desktop startup now publishes its VNC display to the systemd user
+  session and starts the GTK desktop portal reproducibly. This avoids a
+  20-second failed portal lookup per WebKit-linked process after a VM restart.
+  The TigerVNC session check also accepts both `1` and `:1`, making repeated
+  startup idempotent.
+- GUI-tested: `kitmux-linux/scripts/test-desktop.sh` passed every existing X11,
+  deterministic keyboard, Compose/layout, IBus, and native Wayland gate plus
+  the two WebKit coexistence runs. Visible evidence is
+  `kitmux-linux/gtk-webkit-x11-proof.png` and
+  `kitmux-linux/gtk-webkit-wayland-proof.png`.
+- Source-tested: `kitmux-linux/scripts/test-headless.sh` remained green: six
+  tests passed in 6.75 seconds plus the Rust/C header layout check.
+- Package-tested and clean-machine desktop-tested: none. The result is ARM64,
+  Mesa llvmpipe, one VNC/XFCE VM, and one nested Weston compositor; it does not
+  prove a physical GPU, another distro, x86_64, browser product behavior, or a
+  distributable dependency layout.
+- Slice 2.2D is closed. Slice 2.2E scaling is next; event fairness remains
+  Slice 2.2F. GTK is still a candidate until the complete Slice 2.3 gate.
 
 ### 2026-07-25 — Slice 0.4 portable contract fixtures
 
@@ -505,8 +548,9 @@ clean-machine release evidence.
   preedit/commit flow on both display backends. It does not prove performance
   or driver behavior. A physical Wayland desktop/libinput path, physical GPU,
   selection, clipboard/paste, mouse/wheel, search, fractional or mixed-monitor
-  scaling, accessibility, PTY/frame fairness, and WebKitGTK coexistence remain
-  untested.
+  scaling, accessibility, and PTY/frame fairness remain untested. The bounded
+  WebKitGTK coexistence check passed, but browser product behavior remains
+  unimplemented and out of scope for the terminal-first alpha.
 - Input-method evidence covers one Latin conversion engine. CJK engines,
   candidate windows, and surrounding-text requests are unproven; IBus already
   warns that the host has no surrounding-text capability.
@@ -523,9 +567,9 @@ clean-machine release evidence.
   against a desktop in use.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
-- Shared portable fixtures are still provisional. Do not start the Rust model
-  or claim snapshot/control parity until macOS and Linux consume the same
-  valid and invalid fixture files.
+- Shared portable fixtures are frozen and byte-identical in the current macOS
+  mirror. Phase 3 is no longer fixture-blocked, but it remains unstarted and
+  must begin as its own numbered slice.
 - The clean release gate currently proves ARM64 userspaces. Tier-1 x86_64,
   physical-GPU, native package, and clean desktop-install evidence remain
   future gates.
@@ -567,16 +611,16 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22d-prove-the-webkitgtk-conflict-probe--next)
+Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22e-prove-scaling)
 using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-Phase 2 was reordered on 2026-07-25. Slices 2.2A through 2.2C are closed;
-begin with only Slice 2.2D, the bounded **WebKitGTK conflict probe**. Add one
-minimal `WebKitWebView` beside the live terminal in the disposable GTK host
-and look for GL context, loader/symbol, focus, and dependency-closure
-conflicts. Run the same probe under both the existing X11 and native Wayland
-paths. Do not add navigation, browser chrome, a data session, or workarounds
-that obscure an ambiguous result.
+Phase 2 was reordered on 2026-07-25. Slices 2.2A through 2.2D are closed;
+begin with only Slice 2.2E, **scaling**. Prove coordinates, framebuffer size,
+cell metrics, and rendered text at 100%, a fractional scale, and 200%, then
+apply a scale change to a live session without cell-metric drift or session
+loss. Inspect the Kitty render scale against GTK's integer scale APIs before
+choosing a harness mechanism; do not infer fractional correctness from an
+integer widget scale factor.
 
 Classify every new file as durable or disposable per ADR 0007 before writing
 it. Do not begin selection, clipboard, mouse, or search — those are Phase 4

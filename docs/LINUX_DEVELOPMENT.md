@@ -24,6 +24,10 @@ host commands from the Linux repository root on the macOS machine.
   Compose, dead keys, AltGr, a non-US layout, emoji, and a real IBus
   preedit/commit flow; and focus transfer to an ordinary GTK control beside
   the terminal.
+- WebKitGTK 2.52.3 renders a static in-memory fixture beside that terminal
+  under X11 and native Wayland without GL-state, loader, or focus conflict.
+  The live host resolved 139 native libraries while keeping pinned libpython
+  isolated from the distro WebKitGTK/GTK dependency set.
 
 ## What is not proven
 
@@ -35,7 +39,9 @@ host commands from the Linux repository root on the macOS machine.
 - A physical Wayland desktop/libinput path, fractional/mixed-monitor scaling,
   physical-GPU behavior, or accessibility.
 - Main-loop fairness during sustained PTY output and resize pressure.
-- GTK/libkitty coexistence with WebKitGTK in one process.
+- Browser navigation, web data-session policy, web-process recovery, or a
+  packaged WebKitGTK dependency layout. The bounded coexistence probe is not
+  browser product evidence.
 - x86_64 build, GUI, clean-runtime, or package gates.
 - `.deb`, RPM, AppImage, desktop installation, launcher, upgrade/uninstall,
   sandbox, signing, or public distribution.
@@ -110,12 +116,15 @@ limactl shell kitmux-linux-desktop -- \
 ```
 
 The gate covers rendering, resize, PTY, clean close, the Slice 2.2A/2.2B
-keyboard and input-method harness over X11, and the Slice 2.2C native Wayland
-client path under nested Weston. It writes
+keyboard and input-method harness over X11, the Slice 2.2C native Wayland
+client path under nested Weston, and the Slice 2.2D static WebKitGTK
+coexistence probe under both backends. It writes
 `kitmux-linux/gtk-terminal-host-proof.png`,
 `kitmux-linux/gtk-keyboard-focus-proof.png`, and
 `kitmux-linux/gtk-preedit-proof.png`, plus
-`kitmux-linux/gtk-wayland-proof.png`. While it runs it changes X auto-repeat,
+`kitmux-linux/gtk-wayland-proof.png`, plus
+`kitmux-linux/gtk-webkit-x11-proof.png` and
+`kitmux-linux/gtk-webkit-wayland-proof.png`. While it runs it changes X auto-repeat,
 the keyboard layout, and the active IBus engine — restoring auto-repeat and
 the US layout on exit — so run it on the project VNC session rather than a
 desktop you are using.
@@ -141,6 +150,10 @@ The keyboard harness has two halves:
   XTEST drives only Weston's outer window; Weston delivers native
   `wl_keyboard` events to GTK. This is intentionally display-bound
   compositor-bridge evidence, not a physical libinput/evdev claim.
+- The two WebKit runs load only a static in-memory page, move focus into the
+  web view and back, assert exact terminal bytes, and reject missing loader
+  objects, WebKit process termination, or leakage of Kitty's private native
+  dependency directory. They prove coexistence, not browser functionality.
 
 Stop desktop services and the VM without deleting either:
 
@@ -225,10 +238,10 @@ Nested Weston now proves the GTK client's native Wayland GL/input/IME path,
 but not a physical Wayland desktop, libinput device, latency, frame pacing,
 fractional scaling, mixed-DPI monitors, or vendor GPU drivers.
 
-The remaining Phase 2 checks are scaling, PTY/frame fairness, and a minimal
-adjacent WebKitGTK conflict probe under both display backends. WebKit is not
-part of the terminal-first alpha; the probe exists only to expose loader, GL,
-focus, and packaging conflicts early.
+The remaining Phase 2 checks are scaling and PTY/frame fairness. The minimal
+adjacent WebKitGTK probe passed both display backends. WebKit is not part of
+the terminal-first alpha; the probe exists only to expose loader, GL, focus,
+and dependency conflicts early.
 
 GTK becomes the production choice only after the complete decision gate
 passes on the support matrix. A concrete technical failure triggers one

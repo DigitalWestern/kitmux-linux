@@ -19,6 +19,8 @@ proof_image="${source_root}/gtk-terminal-host-proof.png"
 keyboard_proof_image="${source_root}/gtk-keyboard-focus-proof.png"
 preedit_proof_image="${source_root}/gtk-preedit-proof.png"
 wayland_proof_image="${source_root}/gtk-wayland-proof.png"
+webkit_x11_proof_image="${source_root}/gtk-webkit-x11-proof.png"
+webkit_wayland_proof_image="${source_root}/gtk-webkit-wayland-proof.png"
 export DISPLAY=":${display_number}"
 
 case "$(uname -m)" in
@@ -65,6 +67,7 @@ cmake --build "${build_dir}" --parallel \
   --target kitmux_gtk_host gtk_key_matrix pty_input_recorder x11_key_injector
 
 gtk_version="$(pkg-config --modversion gtk4)"
+webkit_version="$(pkg-config --modversion webkitgtk-6.0)"
 renderer="$(glxinfo -B | awk -F: '/OpenGL renderer string/ {sub(/^[[:space:]]+/, "", $2); print $2}')"
 
 if [[ -z "${renderer}" ]]; then
@@ -73,8 +76,39 @@ if [[ -z "${renderer}" ]]; then
 fi
 
 echo "GTK ${gtk_version}"
+echo "WebKitGTK ${webkit_version}"
 echo "OpenGL renderer: ${renderer}"
 echo "X11 DISPLAY=${DISPLAY} and noVNC are responding"
+
+if ! readelf -d "${host_binary}" \
+    | grep -q 'Shared library: \[libwebkitgtk-6\.0\.so\.4\]'; then
+  echo "GTK host does not directly declare the WebKitGTK 6.0 runtime." >&2
+  exit 1
+fi
+host_closure="$(ldd "${host_binary}")"
+if grep -q 'not found' <<<"${host_closure}"; then
+  echo "GTK/WebKit host has an unresolved runtime library:" >&2
+  grep 'not found' <<<"${host_closure}" >&2
+  exit 1
+fi
+if ! grep -qE "libpython3\..* => ${python_runtime}/libpython3\..*\.so\.1\.0" \
+    <<<"${host_closure}"; then
+  echo "GTK host did not resolve libpython from its isolated runtime." >&2
+  exit 1
+fi
+for system_library in libwebkitgtk-6.0.so.4 libjavascriptcoregtk-6.0.so.1 libgtk-4.so.1; do
+  if ! grep -qE "${system_library//./\\.} => /usr/lib/[^/]+/${system_library//./\\.}" \
+      <<<"${host_closure}"; then
+    echo "GTK host did not resolve ${system_library} from the distro runtime." >&2
+    exit 1
+  fi
+done
+if grep -Fq "${dependencies}/lib" <<<"${host_closure}"; then
+  echo "GTK/WebKit host leaked the Kitty development dependency directory into its loader closure." >&2
+  exit 1
+fi
+host_closure_count="$(grep -c ' => /' <<<"${host_closure}")"
+echo "WebKitGTK host native closure: ${host_closure_count} resolved libraries"
 
 proof_log="$(mktemp /tmp/kitmux-gtk-host.XXXXXX.log)"
 error_log="$(mktemp /tmp/kitmux-gtk-error.XXXXXX.log)"
@@ -82,6 +116,8 @@ key_dir="$(mktemp -d /tmp/kitmux-gtk-keys.XXXXXX)"
 wayland_runtime_dir="$(mktemp -d /tmp/kitmux-wayland-runtime.XXXXXX)"
 wayland_host_log="$(mktemp /tmp/kitmux-gtk-wayland-host.XXXXXX.log)"
 wayland_child_log="$(mktemp /tmp/kitmux-gtk-wayland-child.XXXXXX.log)"
+webkit_wayland_host_log="$(mktemp /tmp/kitmux-gtk-webkit-wayland-host.XXXXXX.log)"
+webkit_wayland_child_log="$(mktemp /tmp/kitmux-gtk-webkit-wayland-child.XXXXXX.log)"
 weston_log="$(mktemp /tmp/kitmux-weston.XXXXXX.log)"
 cleanup() {
   if [[ -n "${host_pid:-}" ]] && kill -0 "${host_pid}" 2>/dev/null; then
@@ -96,6 +132,7 @@ cleanup() {
   setxkbmap -layout us 2>/dev/null || true
   rm -rf -- "${proof_log}" "${error_log}" "${key_dir}" \
     "${wayland_runtime_dir}" "${wayland_host_log}" "${wayland_child_log}" \
+    "${webkit_wayland_host_log}" "${webkit_wayland_child_log}" \
     "${weston_log}"
 }
 trap cleanup EXIT
@@ -442,6 +479,57 @@ finish_key_host '^61c3a10df09f9a801b5b32347e$'
 echo "IBus preedit, commit, pass-through, and emoji proof: OK"
 key_host_env=()
 
+# ---------------------------------------------------------------------------
+# Slice 2.2D WebKitGTK conflict probe: X11
+# ---------------------------------------------------------------------------
+
+# This is deliberately a coexistence probe rather than browser product work:
+# the host maps one WebKitWebView containing static in-memory HTML, transfers
+# focus through it, and proves that Kitty resumes receiving the exact bytes.
+key_host_env=(GTK_IM_MODULE=gtk-im-context-simple KITMUX_GTK_WEBKIT_PROBE=1)
+launch_key_host webkit-x11 '' '1b5b32347e'
+wait_for_line "${host_log}" '^GTK display backend: GdkX11Display$' \
+  "the WebKit probe using X11"
+wait_for_line "${host_log}" '^GTK terminal GL state restoration: OK$' \
+  "GL state restoration beside WebKit under X11"
+wait_for_line "${host_log}" '^GTK WebKit probe loaded: version=' \
+  "the WebKit in-memory fixture loading under X11"
+wait_for_line "${host_log}" \
+  '^GTK WebKit probe document: Kitmux WebKit probe$' \
+  "the exact WebKit in-memory document under X11"
+wait_for_line "${host_log}" '^GTK bounds webkit-probe:' \
+  "WebKit probe bounds under X11"
+"${inject}" tap a
+wait_for_line "${host_log}" '^GTK key press: key=0x61 .*bytes=61$' \
+  "terminal input before the X11 WebKit focus transfer"
+before_webkit_focus="$(child_hex "${child_log}")"
+click_widget "${host_log}" webkit-probe
+wait_for_line "${host_log}" '^GTK focus: webkit-probe$' \
+  "WebKit focus under X11"
+"${inject}" tap x
+sleep 1
+if [[ "$(child_hex "${child_log}")" != "${before_webkit_focus}" ]]; then
+  echo "Terminal received bytes while WebKit held focus under X11." >&2
+  exit 1
+fi
+sleep 1
+scrot --overwrite --focused "${webkit_x11_proof_image}"
+click_widget "${host_log}" terminal
+wait_for_count "${host_log}" '^GTK focus: terminal$' 2 \
+  "terminal focus before and after WebKit under X11"
+"${inject}" tap z
+wait_for_line "${host_log}" '^GTK key press: key=0x7A .*bytes=7a$' \
+  "terminal input after the X11 WebKit focus transfer"
+"${inject}" tap F12
+finish_key_host '^617a1b5b32347e$'
+if grep -qE '^GTK WebKit (probe load failed|process terminated):' "${host_log}"; then
+  echo "WebKit failed or terminated during the X11 coexistence probe." >&2
+  cat "${host_log}" >&2
+  exit 1
+fi
+echo "WebKitGTK render, GL coexistence, and focus-return proof under X11: OK"
+key_host_env=()
+
 xset r on
 
 # ---------------------------------------------------------------------------
@@ -590,6 +678,82 @@ fi
 echo "Native Wayland render, resize, GL, keyboard, IBus, and clean-close proof: OK"
 echo "Wayland injection boundary: XTEST -> Weston X11 backend -> wl_keyboard"
 
+# ---------------------------------------------------------------------------
+# Slice 2.2D WebKitGTK conflict probe: native Wayland
+# ---------------------------------------------------------------------------
+
+key_label="webkit-wayland"
+child_log="${webkit_wayland_child_log}"
+host_log="${webkit_wayland_host_log}"
+rm -f -- "${child_log}" "${host_log}"
+env "${libkitty_environment[@]}" \
+  DISPLAY="${DISPLAY}" \
+  XDG_RUNTIME_DIR="${wayland_runtime_dir}" \
+  WAYLAND_DISPLAY="${wayland_socket}" \
+  GDK_BACKEND=wayland \
+  GTK_IM_MODULE=gtk-im-context-simple \
+  NO_AT_BRIDGE=1 \
+  GTK_THEME=Adwaita \
+  GSK_RENDERER=gl \
+  KITMUX_GTK_WEBKIT_PROBE=1 \
+  KITMUX_GTK_CHILD="${recorder}" \
+  KITMUX_RECORDER_LOG="${child_log}" \
+  KITMUX_RECORDER_QUIT=1b5b32347e \
+  KITMUX_GTK_CLOSE_ON_CHILD_EXIT=1 \
+  KITMUX_GTK_AUTO_CLOSE_MS=90000 \
+  "${host_binary}" >"${host_log}" 2>&1 &
+host_pid=$!
+window_id="${wayland_window_id}"
+
+wait_for_line "${host_log}" '^GTK display backend: GdkWaylandDisplay$' \
+  "the WebKit probe using native Wayland"
+wait_for_line "${host_log}" '^GTK terminal PTY output:' \
+  "the Wayland WebKit probe child startup"
+wait_for_line "${host_log}" '^GTK terminal GL state restoration: OK$' \
+  "GL state restoration beside WebKit under Wayland"
+wait_for_line "${host_log}" '^GTK WebKit probe loaded: version=' \
+  "the WebKit in-memory fixture loading under Wayland"
+wait_for_line "${host_log}" \
+  '^GTK WebKit probe document: Kitmux WebKit probe$' \
+  "the exact WebKit in-memory document under Wayland"
+wait_for_line "${host_log}" '^GTK bounds webkit-probe:' \
+  "WebKit probe bounds under Wayland"
+wait_for_line "${host_log}" '^GTK focus: terminal$' \
+  "initial terminal focus beside WebKit under Wayland"
+
+xset r off
+xdotool windowactivate --sync "${wayland_window_id}"
+"${inject}" tap a
+wait_for_line "${host_log}" '^GTK key press: key=0x61 .*bytes=61$' \
+  "terminal input before the Wayland WebKit focus transfer"
+before_webkit_focus="$(child_hex "${child_log}")"
+click_widget "${host_log}" webkit-probe
+wait_for_line "${host_log}" '^GTK focus: webkit-probe$' \
+  "WebKit focus under Wayland"
+"${inject}" tap x
+sleep 1
+if [[ "$(child_hex "${child_log}")" != "${before_webkit_focus}" ]]; then
+  echo "Terminal received bytes while WebKit held focus under Wayland." >&2
+  exit 1
+fi
+sleep 1
+scrot --overwrite --focused "${webkit_wayland_proof_image}"
+click_widget "${host_log}" terminal
+wait_for_count "${host_log}" '^GTK focus: terminal$' 2 \
+  "terminal focus before and after WebKit under Wayland"
+"${inject}" tap z
+wait_for_line "${host_log}" '^GTK key press: key=0x7A .*bytes=7a$' \
+  "terminal input after the Wayland WebKit focus transfer"
+"${inject}" tap F12
+finish_key_host '^617a1b5b32347e$'
+xset r on
+if grep -qE '^GTK WebKit (probe load failed|process terminated):' "${host_log}"; then
+  echo "WebKit failed or terminated during the Wayland coexistence probe." >&2
+  cat "${host_log}" >&2
+  exit 1
+fi
+echo "WebKitGTK render, GL coexistence, and focus-return proof under native Wayland: OK"
+
 env -u PYTHONHOME -u KITTY_SRC -u LIBKITTY_PY -u LIBKITTY_TEST_CONFIG \
   GTK_THEME=Adwaita \
   GSK_RENDERER=gl \
@@ -603,3 +767,5 @@ echo "Visible proof: ${proof_image}"
 echo "Visible keyboard proof: ${keyboard_proof_image}"
 echo "Visible preedit proof: ${preedit_proof_image}"
 echo "Visible Wayland proof: ${wayland_proof_image}"
+echo "Visible WebKitGTK X11 proof: ${webkit_x11_proof_image}"
+echo "Visible WebKitGTK Wayland proof: ${webkit_wayland_proof_image}"
