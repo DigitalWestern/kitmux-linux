@@ -434,7 +434,7 @@ This runs early on purpose. It is cheap, it is a known-hard interaction, and a
 failure changes the toolkit decision — so discovering it after building product
 chrome would be the single most expensive mistake available in this phase.
 
-#### Slice 2.2E: Prove scaling
+#### Slice 2.2E: Prove scaling — complete
 
 - Prove coordinates, framebuffer size, cell metrics, and rendered text at
   100%, a fractional scale, and 200%.

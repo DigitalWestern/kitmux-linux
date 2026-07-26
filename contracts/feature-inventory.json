@@ -141,7 +141,7 @@
       "linux_tests": [
         "kitmux-linux/tests/linux_session_stress.c"
       ],
-      "linux_status": "proven: 16-session flood, 24 forced-close cycles, zombie absence, exact FD restoration"
+      "linux_status": "proven in Slice 1.2: 16-session flood, 24 forced-close cycles, zombie absence, exact FD restoration"
     },
     {
       "id": "engine.child-exit-status",
@@ -159,7 +159,7 @@
         "engine.session-create-close"
       ],
       "translation": "Linux wait status decoding differs from Darwin's; assert it explicitly.",
-      "linux_status": "exit callback and status validated in the Linux stress gate"
+      "linux_status": "exit callback and status validated in the Slice 1.2 Linux stress gate"
     },
     {
       "id": "engine.resize",
@@ -177,7 +177,7 @@
         "engine.session-create-close"
       ],
       "translation": "None.",
-      "linux_status": "proven headless; live GTK framebuffer resize proven over X11, native Wayland, and virtual outputs at 100%, 150%, and 200%"
+      "linux_status": "proven headless in Slice 1.2; live GTK framebuffer resize proven over X11 (Slice 2.1), native Wayland (Slice 2.2C), and virtual outputs at 100%, 150%, and 200% (Slice 2.2E)"
     },
     {
       "id": "engine.fair-pumping",
@@ -216,7 +216,7 @@
         "engine.session-create-close"
       ],
       "translation": "Host watches kitty_session_fd through the toolkit main loop.",
-      "linux_status": "proven over X11 through a GLib fd source"
+      "linux_status": "proven over X11 through a GLib fd source (Slice 2.1)"
     },
     {
       "id": "terminal.text-extraction",
@@ -314,7 +314,7 @@
         "engine.resize"
       ],
       "translation": "None.",
-      "linux_status": "proven over X11 and native Wayland at scale 1"
+      "linux_status": "proven over X11 and native Wayland at scale 1 (Slices 2.1 and 2.2C)"
     },
     {
       "id": "render.scale-correctness",
@@ -351,7 +351,7 @@
         "render.live-frame"
       ],
       "translation": "Do not make screenshot pixel equality the only render gate.",
-      "linux_status": "proven over X11 in a separate run"
+      "linux_status": "proven over X11 in Slice 2.1; the visible missing-runtime diagnostic is asserted by test-desktop.sh"
     },
     {
       "id": "render.webkit-coexistence",
@@ -479,7 +479,7 @@
         "kitmux-linux/tests/gtk_key_matrix.c",
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven for one Latin engine (m17n:t:latn-post) over X11 and native Wayland, plus GTK's built-in Compose over X11; CJK candidate windows and surrounding-text are unproven"
+      "linux_status": "proven for one Latin engine (m17n:t:latn-post) over X11 (Slice 2.2B) and native Wayland (Slice 2.2C), plus GTK's built-in Compose over X11; CJK candidate windows and surrounding-text are unproven"
     },
     {
       "id": "keyboard.focus-ownership",
@@ -1121,7 +1121,7 @@
         "engine.session-create-close"
       ],
       "translation": "Validate against Linux tcgetpgrp and job control, not Darwin assumptions.",
-      "linux_status": "libkitty foreground detection covered headless on Linux"
+      "linux_status": "libkitty foreground detection covered headless on Linux in Slice 1.2"
     },
     {
       "id": "safety.close-offer",
@@ -1184,7 +1184,7 @@
       "linux_tests": [
         "kitmux-linux/tests/linux_session_stress.c"
       ],
-      "linux_status": "proven in the Linux stress gate"
+      "linux_status": "proven in the Slice 1.2 Linux stress gate"
     },
     {
       "id": "desktop.clipboard-read",

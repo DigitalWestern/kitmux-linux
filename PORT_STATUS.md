@@ -603,6 +603,9 @@ Findings and the changes they produced:
 - Added a Linux-native gate with 16 simultaneous terminal floods, 736,272
   pumped bytes, exit callback/status validation, 24 forced-close cycles,
   direct-child reaping, zombie absence, and exact FD-baseline restoration.
+- This gate is the Slice 1.2 headless-test evidence: engine lifecycle, child
+  exit status, PTY resize, foreground-process detection, descendant reaping,
+  and many-session floods. The release-shaped tree below is Slice 1.3.
 - Full headless gate passed: six C/C++/ELF/engine/session/stress tests plus the
   Rust/C layout check. CTest completed in 6.58 seconds.
 - Built a release-shaped engine tree with pinned CPython 3.14, Kitty,

@@ -17,3 +17,6 @@ cmake -S "$workspace" -B "$workspace/build" -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build "$workspace/build" --parallel
 ctest --test-dir "$workspace/build" --output-on-failure
 "$script_dir/test-rust-header.sh"
+python3 "$linux_root/contracts/validate-fixtures.py"
+python3 "$linux_root/contracts/validate-inventory.py"
+"$script_dir/test-model.sh"
