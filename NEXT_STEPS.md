@@ -9,20 +9,20 @@ disqualify GTK, cheapest and most dangerous first. The reasoning is in
 [Why Slice 2.2 was cut short](LINUX_PORT_PLAN.md#why-slice-22-was-cut-short)
 and ADR 0007.
 
-Phase 0.4's portable fixture corpus is closed and no longer blocks Phase 3.
-Do not start the Rust model incidentally from this handoff: this file still
-assigns one Phase 2 slice, and Phase 3 must begin as its own numbered slice
-against the frozen fixtures.
+Phase 0.4's portable fixture corpus is closed. Phase 3 Slice 3.1's pure Rust
+model is also closed and consumes the frozen split-tree fixture. This file
+still assigns one Phase 2 slice; do not start Phase 3.2 incidentally from the
+Phase 2 handoff.
 
-Do not begin product navigation UI, the Rust product model, browser
-functionality, packaging, or the monorepo migration.
+Do not begin product navigation UI, Phase 3.2 bounded contracts, browser
+product functionality, packaging, or the monorepo migration.
 
 ## Preconditions
 
 1. Read `PORT_STATUS.md`, this file, the Phase 2 section of
    `LINUX_PORT_PLAN.md`, and ADRs 0006, 0007, and 0008.
 2. Confirm `git status --short` is clean and inspect commits newer than the
-   Slice 2.2C entry in `PORT_STATUS.md`.
+   Slice 2.2D entry in `PORT_STATUS.md`.
 3. Run:
 
    ```sh
@@ -207,9 +207,9 @@ toolkit decision. It moved to Phase 6.
 
 - Selection, clipboard, safe paste, mouse, wheel, and search are Phase 4
   Slice 4.2, not Phase 2.
-- Phase 0.4's shared valid/invalid fixture corpus is frozen. It no longer
-  blocks the Rust product model, but Phase 3 must still begin as its own
-  explicitly assigned slice after the current Phase 2 work.
+- Phase 0.4's shared valid/invalid fixture corpus is frozen. Phase 3.1 is
+  closed; Phase 3.2 must still begin as its own explicitly assigned slice
+  rather than being folded into the current Phase 2 work.
 - Phase 0.6 defines the macOS re-baselining ritual. Reference drift is
   currently unmeasured.
 - `contracts/feature-inventory.json` must reach per-behavior granularity

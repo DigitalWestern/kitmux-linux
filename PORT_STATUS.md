@@ -2,24 +2,25 @@
 
 **Last inspected:** 2026-07-25
 
-**Implementation state:** Phase 0.4, Phase 1, and GTK Slices 2.1 through 2.2D
-are closed. Separate Ubuntu ARM64 headless and XFCE desktop VMs, an ELF
-`libkitty.so`, a relocatable 104 MB attributed engine runtime, Linux stress
-tests, a real one-session GTK 4 terminal host over X11 and native Wayland
-client paths, a deterministic keyboard and input-method harness, and an
-authoritative portable contract corpus exist. No Linux product model,
-navigation UI, or native package exists yet.
+**Implementation state:** Phase 0.4, Phase 1, GTK Slices 2.1 through 2.2D, and
+Phase 3 Slice 3.1 are closed. Separate Ubuntu ARM64 headless and XFCE desktop
+VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
+Linux stress tests, a real one-session GTK 4 terminal host over X11 and native
+Wayland client paths, a deterministic keyboard and input-method harness, an
+authoritative portable contract corpus, and a display-free Rust product model
+exist. No Linux product navigation UI or native package exists yet.
 
-**Active phase:** Phase 2 — rendering and toolkit kill spike.
+**Active tracks:** Phase 2 — rendering and toolkit kill spike; Phase 3 —
+display-free model and compatibility harness.
 
-**Next slice:** Slice 2.2E — **scaling**. Phase 2 was
-reordered on 2026-07-25 so the checks that could disqualify GTK run before the
-expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
-mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The
-remaining Phase 2 slices are scaling and event fairness. Phase 0.4 shared
-fixture promotion is closed, so Phase 3 is no longer
-fixture-blocked; it remains unstarted while the assigned agent works the
-current Phase 2 slice.
+**Next slices:** Phase 2 Slice 2.2E — **scaling**; Phase 3 Slice 3.2 —
+**bounded contracts**, when separately assigned. Phase 2 was reordered on
+2026-07-25 so the checks that could disqualify GTK run before the expensive
+ones that almost certainly cannot. Selection, clipboard, safe paste, mouse,
+wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
+Phase 2 slices are scaling and event fairness. Phase 3.1 consumed the frozen
+Phase 0.4 split fixture and stopped before state/settings decode, control
+framing, command semantics, or XDG adapters.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 Operational VM, gate, runtime, and SBOM commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
@@ -56,14 +57,52 @@ listed only in the checkout's local Git exclude file.
   directly depend on Darwin, Combine, CryptoKit, Foundation behavior, or
   macOS paths.
 - GTK 4 is the first toolkit candidate, not a final choice. The disposable
-  host is C to test the direct libkitty/GTK boundary; Rust remains the future
-  model/lifecycle candidate after shared fixtures are authoritative. Input,
-  scale, display-backend, and event-loop evidence decides the production
-  stack.
+  host is C to test the direct libkitty/GTK boundary; Rust now owns the
+  display-free product model. Input, scale, display-backend, and event-loop
+  evidence still decide the production UI stack.
 - The first user-facing target is a terminal-only alpha. Browser panes and
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — Slice 3.1 display-free Rust model
+
+- Added `kitmux-linux/rust/model`, a GPL-3.0-only Rust crate with distinct
+  workspace, group, tab, pane, surface, and split ID types. Pane and split IDs
+  retain the frozen Swift fixture's `rawValue` UUID representation.
+- Implemented a content-neutral split tree with duplicate-ID rejection,
+  depth-first layout order, branch collapse on close, pane swaps, ratio
+  clamping, minimum-size-aware pixel layout, resize targets, and directional
+  focus. The frozen `split-tree.json` accept and reject cases now drive a Linux
+  consumer test directly.
+- Implemented workspace/group/tab/pane hierarchy selection, cycling, reorder
+  with active-object preservation, cross-hierarchy pane focus, and the close
+  chain from pane through tab, group, and workspace. Closing the last live
+  hierarchy returns an explicit host-close requirement instead of silently
+  destroying the model.
+- Added terminal and browser runtime interfaces with mocks. Pane containers
+  own ordered surface stacks; the active surface alone can render or receive
+  input, while inactive surfaces and hidden tabs/workspaces remain owned.
+  Every non-closed terminal mock pumps while hidden, and closing a leaf closes
+  every runtime in its surface stack.
+- The crate has no GTK, WebKit, libkitty, filesystem, shell, or network
+  dependency. Direct third-party dependencies are `serde` and `uuid`
+  (MIT/Apache-2.0); test-only JSON parsing uses `serde_json`
+  (MIT/Apache-2.0). Exact versions and registry checksums are in `Cargo.lock`;
+  the lockfile hash is also recorded in `source-lock.json`.
+- macOS-host source gate: `kitmux-linux/scripts/test-model.sh` — formatting,
+  Clippy with warnings denied, and 15 tests passed.
+- Ubuntu ARM64 source gate:
+  `limactl shell kitmux-linux -- "$PWD/kitmux-linux/scripts/test-model.sh"` —
+  the same formatting, lint, frozen-fixture, model, close, and mocked-runtime
+  suite passed all 15 tests under Ubuntu 26.04.
+- GUI-tested: none; the slice is intentionally display-free.
+- Package-tested and clean-machine-tested: none. The Ubuntu result used the
+  existing headless development VM and proves the Linux source lane, not a
+  package or fresh-system install.
+- Slice 3.1 is closed. Slice 3.2 is the next Phase 3 slice and must remain
+  bounded to state/settings decode, control framing and errors, command
+  semantics, and Linux XDG/file-watch/hash/socket adapters.
 
 ### 2026-07-25 — Slice 2.2D WebKitGTK conflict probe
 
@@ -568,8 +607,8 @@ clean-machine release evidence.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
 - Shared portable fixtures are frozen and byte-identical in the current macOS
-  mirror. Phase 3 is no longer fixture-blocked, but it remains unstarted and
-  must begin as its own numbered slice.
+  mirror. Phase 3.1 now consumes the split-tree fixture; the remaining fixture
+  consumers belong to bounded-contract Slice 3.2 and compatibility Slice 3.3.
 - The clean release gate currently proves ARM64 userspaces. Tier-1 x86_64,
   physical-GPU, native package, and clean desktop-install evidence remain
   future gates.
@@ -622,7 +661,12 @@ loss. Inspect the Kitty render scale against GTK's integer scale APIs before
 choosing a harness mechanism; do not infer fractional correctness from an
 integer widget scale factor.
 
+The independently assigned Phase 3.1 lane is also closed. If Phase 3 is the
+next assignment instead, begin only Slice 3.2 against
+`kitmux-linux/rust/model` and the remaining frozen fixtures; stop before the
+cross-host import work in Slice 3.3.
+
 Classify every new file as durable or disposable per ADR 0007 before writing
 it. Do not begin selection, clipboard, mouse, or search — those are Phase 4
-Slice 4.2 now. Do not begin product chrome, the Rust model, browser
-functionality, packaging, or repository migration.
+Slice 4.2 now. Do not begin product chrome, Phase 3.2 incidentally, browser
+product functionality, packaging, or repository migration.

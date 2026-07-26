@@ -486,13 +486,21 @@ rather than stalling the toolkit decision on hardware access.
 
 Goal: reproduce portable product behavior without a display or real terminal.
 
-#### Slice 3.1: Implement the pure model
+Status: Slice 3.1 complete. Slice 3.2 is next when explicitly assigned.
+
+#### Slice 3.1: Implement the pure model — complete
 
 - Stable workspace, group, tab, pane, surface, and split IDs.
 - Split-tree layout and ratio constraints.
 - Focus, navigation, reorder, and close-chain rules.
 - Terminal/browser runtime interfaces backed by mocks.
 - Hidden-session versus visible-layout ownership.
+
+The 2026-07-25 implementation lives in `kitmux-linux/rust/model`. Its host and
+Ubuntu ARM64 gates format, lint with warnings denied, and run 15 headless tests,
+including the frozen split-tree accept/reject cases. It has no GTK, WebKit,
+libkitty, filesystem, shell, or network dependency. Exact results and limits
+are recorded in `PORT_STATUS.md`.
 
 #### Slice 3.2: Implement bounded contracts
 
