@@ -114,6 +114,14 @@ if(KITMUX_BUILD_GTK_HOST)
     kitmux_key_translation PkgConfig::WEBKITGTK m)
   target_compile_options(kitmux_gtk_host PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
+  set_target_properties(kitmux_gtk_host PROPERTIES
+    INSTALL_RPATH "$ORIGIN/../lib")
+  install(TARGETS kitmux_gtk_host kitty
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib)
+  if(KITMUX_PYTHON_LIBRARY_OVERRIDE)
+    install(FILES "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" DESTINATION lib)
+  endif()
 
   pkg_check_modules(XTST REQUIRED IMPORTED_TARGET x11 xtst)
   add_executable(x11_key_injector tests/x11_key_injector.c)

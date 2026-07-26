@@ -37,6 +37,7 @@ fi
 export DISPLAY=":${display_number}"
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-XFCE}"
 dbus-update-activation-environment --systemd DISPLAY XDG_CURRENT_DESKTOP
+systemctl --user daemon-reload
 systemctl --user reset-failed \
   xdg-desktop-portal.service xdg-desktop-portal-gtk.service
 systemctl --user restart \

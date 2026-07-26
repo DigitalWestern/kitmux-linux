@@ -1,11 +1,12 @@
-# ADR 0002: GTK 4 gets one bounded rendering spike
+# ADR 0002: GTK 4 is the Linux UI toolkit
 
 Status: accepted
 
-GTK 4 is the first toolkit candidate. It wins only if one `GtkGLArea` can host
-a real libkitty session with correct OpenGL lifetime, continuous PTY pumping,
-keyboard/IME, pointer coordinates, clipboard, focus, and fractional scale on
-Wayland and X11.
+GTK 4 is the Linux UI toolkit. It earned that selection when the bounded Phase
+2 spike passed its rendering, input/IME, native Wayland, WebKit coexistence,
+fractional scaling, event-fairness, relocatable-loader, and accessibility
+viability gates. Selection, clipboard, paste, mouse, wheel, and search are
+product work in Phase 4 rather than toolkit kill tests.
 
 The spike is disposable and contains no production navigation UI. A failure
 against a written criterion triggers one equivalent Qt 6 spike; the project
@@ -18,8 +19,8 @@ libkitty shell rendered, PTY output arrived through a GLib file-descriptor
 source, two framebuffer resizes applied, tracked OpenGL state restored after
 draw, and close reaped the terminal child. This closes only the rendering and
 lifecycle slice; GTK is not chosen until input, IME, Wayland, scale, fairness,
-and the bounded WebKit conflict checks pass. Input/IME, native Wayland,
-WebKit coexistence, and scaling have since passed; fairness remains open.
+and the bounded WebKit conflict checks pass. At that checkpoint input/IME,
+native Wayland, WebKit coexistence, scaling, and fairness were still open.
 
 ## 2026-07-25 scope correction
 
@@ -90,9 +91,35 @@ outputs and back to 100%, with exact framebuffer, cell, grid, content, and
 child-PID assertions. Its original 100% metrics returned exactly.
 
 This closes the fractional and unlike-output correctness check. It does not
-claim physical mixed-DPI hardware, GPU or compositor performance, a
-release-shaped GUI dependency layout, or GTK selection; event fairness and the
-complete Slice 2.3 decision gate remain open.
+claim physical mixed-DPI hardware or GPU/compositor performance.
+
+## 2026-07-26 event-fairness result
+
+Slice 2.2F passed after the spike exposed and fixed starvation at the shared
+source priority. Five continuously readable PTYs at `G_PRIORITY_DEFAULT`
+allowed the heartbeat to run but starved every frame and resize. Moving only
+the PTY sources to `G_PRIORITY_DEFAULT_IDLE` preserved progress for every
+session while 60 resizes, more than 700 frames, and bounded heartbeat, frame,
+and pump latency passed during a 12-second X11/llvmpipe flood.
+
+This is scheduler-fairness evidence, not physical-GPU performance evidence.
+
+## 2026-07-26 toolkit decision
+
+Slice 2.3 selected GTK 4. A temporary installed GUI layout placed the host in
+`bin/` and `libkitty` plus the pinned `libpython` in `lib/`. `$ORIGIN`-relative
+runpaths loaded that tree and distro GTK/WebKit dependencies without a broad
+`LD_LIBRARY_PATH`, rendered a live frame, and reaped the child cleanly.
+
+The terminal surface exposes GTK's terminal accessibility role and label,
+accepts focus, transfers focus to an ordinary text control and back, and keeps
+the proven `GtkIMMulticontext` input path. This establishes the required
+accessibility focus and text-input viability; full AT-SPI screen-reader and
+terminal-content coverage remains Phase 5 work.
+
+No written GTK decision criterion failed, so the conditional Qt 6 probe was
+not run. Physical GPU and mixed-monitor hardware proof remain Phase 6 gates,
+and native packaging/clean-install proof remains later release work.
 
 ## Loader boundary retained
 

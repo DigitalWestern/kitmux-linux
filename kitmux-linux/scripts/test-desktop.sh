@@ -24,6 +24,7 @@ webkit_wayland_proof_image="${source_root}/gtk-webkit-wayland-proof.png"
 scale_100_proof_image="${source_root}/gtk-scale-100-proof.png"
 scale_150_proof_image="${source_root}/gtk-scale-150-proof.png"
 scale_200_proof_image="${source_root}/gtk-scale-200-proof.png"
+fairness_proof_image="${source_root}/gtk-fairness-proof.png"
 export DISPLAY=":${display_number}"
 
 case "$(uname -m)" in
@@ -126,6 +127,9 @@ sway_runtime_dir="$(mktemp -d /tmp/kitmux-sway-runtime.XXXXXX)"
 sway_log="${sway_runtime_dir}/sway.log"
 sway_host_log="${sway_runtime_dir}/host.log"
 sway_child_log="${sway_runtime_dir}/child.log"
+fairness_log="$(mktemp /tmp/kitmux-gtk-fairness.XXXXXX.log)"
+gui_layout="$(mktemp -d /tmp/kitmux-gtk-layout.XXXXXX)"
+gui_layout_log="$(mktemp /tmp/kitmux-gtk-layout.XXXXXX.log)"
 cleanup() {
   if [[ -n "${host_pid:-}" ]] && kill -0 "${host_pid}" 2>/dev/null; then
     kill "${host_pid}" 2>/dev/null || true
@@ -144,7 +148,8 @@ cleanup() {
   rm -rf -- "${proof_log}" "${error_log}" "${key_dir}" \
     "${wayland_runtime_dir}" "${wayland_host_log}" "${wayland_child_log}" \
     "${webkit_wayland_host_log}" "${webkit_wayland_child_log}" \
-    "${weston_log}" "${sway_runtime_dir}"
+    "${weston_log}" "${sway_runtime_dir}" "${fairness_log}" \
+    "${gui_layout}" "${gui_layout_log}"
 }
 trap cleanup EXIT
 
@@ -203,6 +208,53 @@ libkitty_environment=(
   LIBKITTY_TEST_CONFIG="${reference_root}/libkitty/tests/fixtures/kitty.conf"
 )
 recorder="${build_dir}/pty_input_recorder"
+
+# ---------------------------------------------------------------------------
+# Slice 2.3 relocated GUI loader and accessibility viability
+# ---------------------------------------------------------------------------
+
+cmake --install "${build_dir}" --prefix "${gui_layout}"
+installed_host="${gui_layout}/bin/kitmux_gtk_host"
+installed_kitty="${gui_layout}/lib/libkitty.so"
+grep -Fq 'Library runpath: [$ORIGIN/../lib]' \
+  < <(readelf -d "${installed_host}")
+grep -Fq 'Library runpath: [$ORIGIN]' < <(readelf -d "${installed_kitty}")
+installed_closure="$(env -u LD_LIBRARY_PATH ldd "${installed_host}")"
+grep -Eq "libkitty\\.so => ${gui_layout}/(bin/\\.\\./)?lib/libkitty\\.so" \
+  <<<"${installed_closure}"
+grep -Eq \
+  "libpython3\\..* => ${gui_layout}/(bin/\\.\\./)?lib/libpython3\\..*\\.so\\.1\\.0" \
+  <<<"${installed_closure}"
+if grep -q 'not found' <<<"${installed_closure}" \
+    || grep -Fq "${dependencies}/lib" <<<"${installed_closure}"; then
+  echo "Installed GTK layout has a missing or leaked private dependency." >&2
+  exit 1
+fi
+
+env -u LD_LIBRARY_PATH "${libkitty_environment[@]}" \
+  GTK_THEME=Adwaita \
+  GSK_RENDERER=gl \
+  KITMUX_GTK_ACCESSIBILITY_PROBE=1 \
+  KITMUX_GTK_AUTO_CLOSE_MS=2500 \
+  "${installed_host}" >"${gui_layout_log}" 2>&1
+grep -q '^GTK terminal frame:' "${gui_layout_log}"
+grep -q '^GTK terminal GL state restoration: OK$' "${gui_layout_log}"
+grep -q \
+  '^GTK accessibility: role=terminal label=Terminal focusable=1 focus-transfer=terminal-entry-terminal ime=GtkIMMulticontext$' \
+  "${gui_layout_log}"
+if grep -Fq "${build_dir}" "${gui_layout_log}"; then
+  echo "Installed GTK layout resolved a build-tree path at runtime." >&2
+  exit 1
+fi
+layout_child_pid="$(
+  sed -n 's/^GTK terminal frame: .* pid=\([0-9][0-9]*\)$/\1/p' \
+    "${gui_layout_log}" | head -n 1
+)"
+if [[ -z "${layout_child_pid}" ]] || kill -0 "${layout_child_pid}" 2>/dev/null; then
+  echo "Installed GTK layout left child '${layout_child_pid}' alive." >&2
+  exit 1
+fi
+echo "Relocated GUI loader and GTK accessibility viability proof: OK"
 
 # Display-free half: every documented key, in three live terminal states,
 # against fixed expected bytes, delivered to a real PTY child.
@@ -954,6 +1006,64 @@ sway_pid=""
 echo "GTK 100%, 150%, 200%, and live cross-output scale proof: OK"
 echo "Scaling boundary: surface scale 1/1.5/2; GL buffer factor 1/2/2"
 
+# ---------------------------------------------------------------------------
+# Slice 2.2F event fairness
+# ---------------------------------------------------------------------------
+
+env "${libkitty_environment[@]}" \
+  GTK_THEME=Adwaita \
+  GSK_RENDERER=gl \
+  KITMUX_GTK_FAIRNESS_PROBE_MS=12000 \
+  KITMUX_GTK_AUTO_CLOSE_MS=20000 \
+  "${host_binary}" >"${fairness_log}" 2>&1 &
+host_pid=$!
+window_id="$(
+  timeout 20s xdotool search --sync --onlyvisible --pid "${host_pid}" \
+    | head -n 1
+)"
+xdotool windowactivate --sync "${window_id}"
+for iteration in $(seq 1 60); do
+  if (( iteration % 2 )); then
+    xdotool windowsize --sync "${window_id}" 760 500
+  else
+    xdotool windowsize --sync "${window_id}" 980 640
+  fi
+  sleep 0.04
+done
+scrot --overwrite --focused "${fairness_proof_image}"
+wait "${host_pid}"
+host_pid=""
+cat "${fairness_log}"
+
+fairness_line="$(grep '^GTK fairness:' "${fairness_log}")"
+fairness_metric() {
+  sed -n "s/.* $1=\([0-9][0-9]*\).*/\1/p" <<<"${fairness_line}"
+}
+heartbeats="$(fairness_metric heartbeats)"
+pty_priority="$(fairness_metric priority)"
+max_heartbeat_us="$(fairness_metric max-heartbeat-us)"
+frames="$(fairness_metric frames)"
+max_frame_us="$(fairness_metric max-frame-us)"
+resizes="$(fairness_metric resizes)"
+visible_bytes="$(fairness_metric visible-bytes)"
+max_visible_pump_us="$(fairness_metric max-visible-pump-us)"
+hidden_sessions="$(fairness_metric hidden-sessions)"
+hidden_min_bytes="$(fairness_metric hidden-min-bytes)"
+hidden_max_pump_us="$(fairness_metric hidden-max-pump-us)"
+
+[[ "${heartbeats}" -ge 100 ]]
+[[ "${pty_priority}" -eq 200 ]]
+[[ "${max_heartbeat_us}" -le 250000 ]]
+[[ "${frames}" -ge 20 ]]
+[[ "${max_frame_us}" -le 500000 ]]
+[[ "${resizes}" -ge 20 ]]
+[[ "${visible_bytes}" -ge 1000000 ]]
+[[ "${max_visible_pump_us}" -le 500000 ]]
+[[ "${hidden_sessions}" -eq 4 ]]
+[[ "${hidden_min_bytes}" -ge 1000000 ]]
+[[ "${hidden_max_pump_us}" -le 500000 ]]
+echo "GTK event fairness under PTY flood and repeated resize: OK"
+
 env -u PYTHONHOME -u KITTY_SRC -u LIBKITTY_PY -u LIBKITTY_TEST_CONFIG \
   GTK_THEME=Adwaita \
   GSK_RENDERER=gl \
@@ -972,3 +1082,4 @@ echo "Visible WebKitGTK Wayland proof: ${webkit_wayland_proof_image}"
 echo "Visible 100% scale proof: ${scale_100_proof_image}"
 echo "Visible 150% scale proof: ${scale_150_proof_image}"
 echo "Visible 200% scale proof: ${scale_200_proof_image}"
+echo "Visible fairness proof: ${fairness_proof_image}"

@@ -13,6 +13,38 @@
 #include "libkitty.h"
 
 typedef struct {
+  GtkGLArea parent;
+} KitmuxTerminalArea;
+
+typedef struct {
+  GtkGLAreaClass parent;
+} KitmuxTerminalAreaClass;
+
+G_DEFINE_TYPE(KitmuxTerminalArea, kitmux_terminal_area, GTK_TYPE_GL_AREA)
+
+static void kitmux_terminal_area_class_init(KitmuxTerminalAreaClass *class) {
+  gtk_widget_class_set_accessible_role(GTK_WIDGET_CLASS(class),
+                                       GTK_ACCESSIBLE_ROLE_TERMINAL);
+}
+
+static void kitmux_terminal_area_init(KitmuxTerminalArea *area) {
+  (void)area;
+}
+
+enum {
+  FAIR_SESSION_COUNT = 4,
+  FAIR_HEARTBEAT_MS = 20,
+  PTY_SOURCE_PRIORITY = G_PRIORITY_DEFAULT_IDLE,
+};
+
+typedef struct {
+  kitty_session *session;
+  guint source;
+  size_t bytes;
+  gint64 max_pump_us;
+} FairSession;
+
+typedef struct {
   GtkWidget *window;
   GtkWidget *gl_area;
   GtkWidget *status_label;
@@ -30,6 +62,19 @@ typedef struct {
   kitmux_key_tracker im_consumed;
   guint pty_source;
   guint status_update_source;
+  guint fairness_heartbeat_source;
+  guint fairness_finish_source;
+  FairSession fair_sessions[FAIR_SESSION_COUNT];
+  guint fairness_duration_ms;
+  guint64 fairness_heartbeats;
+  guint64 fairness_frames;
+  guint64 fairness_resizes;
+  size_t fairness_visible_bytes;
+  gint64 fairness_last_heartbeat_us;
+  gint64 fairness_max_heartbeat_us;
+  gint64 fairness_frame_requested_us;
+  gint64 fairness_max_frame_us;
+  gint64 fairness_max_visible_pump_us;
   int framebuffer_width;
   int framebuffer_height;
   int cell_width;
@@ -45,6 +90,8 @@ typedef struct {
   bool gl_state_reported;
   bool layout_reported;
   bool close_on_child_exit;
+  bool fairness_enabled;
+  bool fairness_frame_pending;
   // Composition state. `filtering` is true only inside
   // gtk_im_context_filter_keypress, so a commit can tell ordinary typing from
   // a composition result or an asynchronous input-method commit.
@@ -203,9 +250,17 @@ static void schedule_terminal_status(AppState *state, double surface_scale) {
   }
 }
 
+static void queue_terminal_render(AppState *state) {
+  if (state->fairness_enabled && !state->fairness_frame_pending) {
+    state->fairness_frame_pending = true;
+    state->fairness_frame_requested_us = g_get_monotonic_time();
+  }
+  gtk_gl_area_queue_render(GTK_GL_AREA(state->gl_area));
+}
+
 static void on_damage(void *userdata) {
   AppState *state = userdata;
-  gtk_gl_area_queue_render(GTK_GL_AREA(state->gl_area));
+  queue_terminal_render(state);
 }
 
 static void on_title(void *userdata, const char *title) {
@@ -610,20 +665,93 @@ static gboolean pump_pty(gint fd, GIOCondition condition, gpointer userdata) {
   (void)fd;
   AppState *state = userdata;
   if (!state->session) return G_SOURCE_REMOVE;
+  gint64 started = g_get_monotonic_time();
   bool changed = kitty_session_pump(state->session);
+  gint64 elapsed = g_get_monotonic_time() - started;
   size_t pumped = kitty_session_last_pump_bytes(state->session);
+  if (state->fairness_enabled) {
+    state->fairness_visible_bytes += pumped;
+    if (elapsed > state->fairness_max_visible_pump_us) {
+      state->fairness_max_visible_pump_us = elapsed;
+    }
+  }
   if (pumped > 0 && !state->pty_output_reported) {
     state->pty_output_reported = true;
     printf("GTK terminal PTY output: %zu bytes\n", pumped);
     fflush(stdout);
   }
-  if (changed) gtk_gl_area_queue_render(GTK_GL_AREA(state->gl_area));
+  if (changed) queue_terminal_render(state);
   if ((condition & (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) != 0 &&
       !kitty_session_child_alive(state->session)) {
     state->pty_source = 0;
     return G_SOURCE_REMOVE;
   }
   return G_SOURCE_CONTINUE;
+}
+
+static gboolean pump_hidden_pty(gint fd, GIOCondition condition,
+                                gpointer userdata) {
+  (void)fd;
+  FairSession *fair = userdata;
+  if (!fair->session) return G_SOURCE_REMOVE;
+  gint64 started = g_get_monotonic_time();
+  kitty_session_pump(fair->session);
+  gint64 elapsed = g_get_monotonic_time() - started;
+  fair->bytes += kitty_session_last_pump_bytes(fair->session);
+  if (elapsed > fair->max_pump_us) fair->max_pump_us = elapsed;
+  if ((condition & (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) != 0 &&
+      !kitty_session_child_alive(fair->session)) {
+    fair->source = 0;
+    return G_SOURCE_REMOVE;
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+static gboolean fairness_heartbeat(gpointer userdata) {
+  AppState *state = userdata;
+  gint64 now = g_get_monotonic_time();
+  gint64 gap = now - state->fairness_last_heartbeat_us;
+  state->fairness_last_heartbeat_us = now;
+  state->fairness_heartbeats++;
+  if (gap > state->fairness_max_heartbeat_us) {
+    state->fairness_max_heartbeat_us = gap;
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+static gboolean finish_fairness_probe(gpointer userdata) {
+  AppState *state = userdata;
+  state->fairness_finish_source = 0;
+  if (state->fairness_heartbeat_source) {
+    g_source_remove(state->fairness_heartbeat_source);
+    state->fairness_heartbeat_source = 0;
+  }
+
+  size_t hidden_min_bytes = G_MAXSIZE;
+  gint64 hidden_max_pump_us = 0;
+  for (size_t i = 0; i < G_N_ELEMENTS(state->fair_sessions); ++i) {
+    FairSession *fair = &state->fair_sessions[i];
+    if (fair->bytes < hidden_min_bytes) hidden_min_bytes = fair->bytes;
+    if (fair->max_pump_us > hidden_max_pump_us) {
+      hidden_max_pump_us = fair->max_pump_us;
+    }
+  }
+  printf(
+      "GTK fairness: duration-ms=%u priority=%d heartbeats=%" G_GUINT64_FORMAT
+      " max-heartbeat-us=%" G_GINT64_FORMAT " frames=%" G_GUINT64_FORMAT
+      " max-frame-us=%" G_GINT64_FORMAT " resizes=%" G_GUINT64_FORMAT
+      " visible-bytes=%zu max-visible-pump-us=%" G_GINT64_FORMAT
+      " hidden-sessions=%d hidden-min-bytes=%zu hidden-max-pump-us=%"
+      G_GINT64_FORMAT "\n",
+      state->fairness_duration_ms, PTY_SOURCE_PRIORITY,
+      state->fairness_heartbeats, state->fairness_max_heartbeat_us,
+      state->fairness_frames, state->fairness_max_frame_us,
+      state->fairness_resizes, state->fairness_visible_bytes,
+      state->fairness_max_visible_pump_us, FAIR_SESSION_COUNT,
+      hidden_min_bytes, hidden_max_pump_us);
+  fflush(stdout);
+  gtk_window_close(GTK_WINDOW(state->window));
+  return G_SOURCE_REMOVE;
 }
 
 static bool required_environment(AppState *state, kitty_engine_config *config) {
@@ -670,6 +798,21 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
   state->cell_width = cell_width;
   state->cell_height = cell_height;
 
+  const char *fairness_probe_ms = g_getenv("KITMUX_GTK_FAIRNESS_PROBE_MS");
+  if (fairness_probe_ms && *fairness_probe_ms) {
+    char *end = NULL;
+    guint64 duration = g_ascii_strtoull(fairness_probe_ms, &end, 10);
+    if (end == fairness_probe_ms || *end || duration < 1000 ||
+        duration > G_MAXUINT) {
+      show_error(state,
+                 "KITMUX_GTK_FAIRNESS_PROBE_MS must be 1000..%u.",
+                 G_MAXUINT);
+      return;
+    }
+    state->fairness_enabled = true;
+    state->fairness_duration_ms = (guint)duration;
+  }
+
   kitty_session_callbacks callbacks = {
       .userdata = state,
       .on_damage = on_damage,
@@ -681,9 +824,13 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
   // exact bytes it receives; the child inherits this process's environment.
   const char *child = g_getenv("KITMUX_GTK_CHILD");
   const char *const child_argv[] = {child, NULL};
+  const char *const fairness_argv[] = {"/usr/bin/yes", "visible-flood", NULL};
+  const char *const *session_argv =
+      state->fairness_enabled ? fairness_argv
+                              : ((child && *child) ? child_argv : NULL);
   state->session = kitty_session_create(state->engine, 24, 80,
-                                        (child && *child) ? child_argv : NULL,
-                                        &callbacks, error, sizeof(error));
+                                        session_argv, &callbacks, error,
+                                        sizeof(error));
   if (!state->session) {
     show_error(state, "Terminal session creation failed: %s", error);
     return;
@@ -691,8 +838,31 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
   gtk_widget_grab_focus(GTK_WIDGET(area));
   int fd = kitty_session_fd(state->session);
   state->pty_source = g_unix_fd_add_full(
-      G_PRIORITY_DEFAULT, fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
+      PTY_SOURCE_PRIORITY, fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
       pump_pty, state, NULL);
+  if (state->fairness_enabled) {
+    const char *const hidden_argv[] = {"/usr/bin/yes", "hidden-flood", NULL};
+    for (size_t i = 0; i < G_N_ELEMENTS(state->fair_sessions); ++i) {
+      FairSession *fair = &state->fair_sessions[i];
+      fair->session = kitty_session_create(state->engine, 24, 80, hidden_argv,
+                                           NULL, error, sizeof(error));
+      if (!fair->session) {
+        show_error(state, "Hidden fairness session %zu failed: %s", i,
+                   error);
+        return;
+      }
+      fair->source = g_unix_fd_add_full(
+          PTY_SOURCE_PRIORITY, kitty_session_fd(fair->session),
+          G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL, pump_hidden_pty, fair,
+          NULL);
+    }
+    state->fairness_last_heartbeat_us = g_get_monotonic_time();
+    state->fairness_heartbeat_source = g_timeout_add_full(
+        G_PRIORITY_DEFAULT, FAIR_HEARTBEAT_MS, fairness_heartbeat, state, NULL);
+    state->fairness_finish_source = g_timeout_add_full(
+        G_PRIORITY_DEFAULT, state->fairness_duration_ms,
+        finish_fairness_probe, state, NULL);
+  }
   char status[128];
   snprintf(status, sizeof(status), "Live shell · cell %d×%d px", cell_width,
            cell_height);
@@ -711,6 +881,25 @@ static void teardown_terminal(GtkGLArea *area, AppState *state) {
   if (state->pty_source) {
     g_source_remove(state->pty_source);
     state->pty_source = 0;
+  }
+  if (state->fairness_heartbeat_source) {
+    g_source_remove(state->fairness_heartbeat_source);
+    state->fairness_heartbeat_source = 0;
+  }
+  if (state->fairness_finish_source) {
+    g_source_remove(state->fairness_finish_source);
+    state->fairness_finish_source = 0;
+  }
+  for (size_t i = 0; i < G_N_ELEMENTS(state->fair_sessions); ++i) {
+    FairSession *fair = &state->fair_sessions[i];
+    if (fair->source) {
+      g_source_remove(fair->source);
+      fair->source = 0;
+    }
+    if (fair->session) {
+      kitty_session_close(fair->session);
+      fair->session = NULL;
+    }
   }
   if (state->session || state->engine) {
     gtk_gl_area_make_current(area);
@@ -857,6 +1046,9 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context,
 
   if (metrics_changed || width != state->framebuffer_width ||
       height != state->framebuffer_height) {
+    if (state->fairness_enabled && state->framebuffer_width > 0) {
+      state->fairness_resizes++;
+    }
     if (!kitty_session_set_viewport(state->session, width, height)) {
       restore_gl_state(&saved);
       show_error(state, "libkitty rejected the %d×%d framebuffer.", width,
@@ -883,6 +1075,15 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context,
   if (!drawn) {
     show_error(state, "libkitty failed to draw the terminal frame.");
     return TRUE;
+  }
+  if (state->fairness_enabled && state->fairness_frame_pending) {
+    gint64 latency =
+        g_get_monotonic_time() - state->fairness_frame_requested_us;
+    state->fairness_frame_pending = false;
+    state->fairness_frames++;
+    if (latency > state->fairness_max_frame_us) {
+      state->fairness_max_frame_us = latency;
+    }
   }
   if (!state->gl_state_reported) {
     state->gl_state_reported = true;
@@ -917,6 +1118,46 @@ static void close_clicked(GtkButton *button, gpointer userdata) {
 static gboolean auto_close(gpointer userdata) {
   AppState *state = userdata;
   if (state->window) gtk_window_close(GTK_WINDOW(state->window));
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean accessibility_probe(gpointer userdata) {
+  AppState *state = userdata;
+  GtkAccessible *terminal = GTK_ACCESSIBLE(state->gl_area);
+  GtkAccessible *entry = GTK_ACCESSIBLE(state->adjacent_entry);
+  char *label_error = gtk_test_accessible_check_property(
+      terminal, GTK_ACCESSIBLE_PROPERTY_LABEL, "Terminal");
+  bool terminal_role = gtk_test_accessible_has_role(
+      terminal, GTK_ACCESSIBLE_ROLE_TERMINAL);
+  bool entry_role =
+      gtk_test_accessible_has_role(entry, GTK_ACCESSIBLE_ROLE_TEXT_BOX);
+  bool focusable = gtk_accessible_get_platform_state(
+      terminal, GTK_ACCESSIBLE_PLATFORM_STATE_FOCUSABLE);
+  bool initially_focused = gtk_accessible_get_platform_state(
+      terminal, GTK_ACCESSIBLE_PLATFORM_STATE_FOCUSED);
+  gtk_widget_grab_focus(state->adjacent_entry);
+  bool entry_focused = gtk_accessible_get_platform_state(
+      entry, GTK_ACCESSIBLE_PLATFORM_STATE_FOCUSED);
+  bool terminal_released = !gtk_accessible_get_platform_state(
+      terminal, GTK_ACCESSIBLE_PLATFORM_STATE_FOCUSED);
+  gtk_widget_grab_focus(state->gl_area);
+  bool terminal_returned = gtk_accessible_get_platform_state(
+      terminal, GTK_ACCESSIBLE_PLATFORM_STATE_FOCUSED);
+
+  if (!terminal_role || !entry_role || label_error || !focusable ||
+      !initially_focused || !entry_focused || !terminal_released ||
+      !terminal_returned || !state->im_context) {
+    show_error(state, "GTK accessibility probe failed%s%s.",
+               label_error ? ": " : "", label_error ? label_error : "");
+    g_free(label_error);
+    return G_SOURCE_REMOVE;
+  }
+  g_free(label_error);
+  printf(
+      "GTK accessibility: role=terminal label=Terminal focusable=1 "
+      "focus-transfer=terminal-entry-terminal ime=%s\n",
+      G_OBJECT_TYPE_NAME(state->im_context));
+  fflush(stdout);
   return G_SOURCE_REMOVE;
 }
 
@@ -985,7 +1226,7 @@ static void activate(GtkApplication *application, gpointer userdata) {
   gtk_box_append(GTK_BOX(root), header);
 
   GtkWidget *overlay = gtk_overlay_new();
-  state->gl_area = gtk_gl_area_new();
+  state->gl_area = g_object_new(kitmux_terminal_area_get_type(), NULL);
   gtk_gl_area_set_allowed_apis(GTK_GL_AREA(state->gl_area), GDK_GL_API_GL);
   gtk_gl_area_set_required_version(GTK_GL_AREA(state->gl_area), 3, 3);
   gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(state->gl_area), FALSE);
@@ -993,6 +1234,9 @@ static void activate(GtkApplication *application, gpointer userdata) {
   gtk_widget_set_hexpand(state->gl_area, TRUE);
   gtk_widget_set_vexpand(state->gl_area, TRUE);
   gtk_widget_set_focusable(state->gl_area, TRUE);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(state->gl_area),
+                                 GTK_ACCESSIBLE_PROPERTY_LABEL, "Terminal",
+                                 -1);
 
   GtkEventController *key_controller = gtk_event_controller_key_new();
   g_signal_connect(key_controller, "key-pressed", G_CALLBACK(key_pressed),
@@ -1101,6 +1345,11 @@ static void activate(GtkApplication *application, gpointer userdata) {
   // The terminal, not the adjacent entry, owns the keyboard when the window
   // opens; GTK would otherwise focus the first focusable child.
   gtk_window_set_focus(GTK_WINDOW(state->window), state->gl_area);
+
+  const char *accessibility = g_getenv("KITMUX_GTK_ACCESSIBILITY_PROBE");
+  if (accessibility && *accessibility && g_strcmp0(accessibility, "0") != 0) {
+    g_idle_add(accessibility_probe, state);
+  }
 
   const char *close_on_exit = g_getenv("KITMUX_GTK_CLOSE_ON_CHILD_EXIT");
   state->close_on_child_exit = close_on_exit && *close_on_exit &&

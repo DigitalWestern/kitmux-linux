@@ -1,5 +1,5 @@
 schema_version: 1
-updated: 2026-07-25
+updated: 2026-07-26
 
 license: GPL-3.0-only  # ADR 0006; Kitty is GPL-3.0 and the host links it
 
@@ -33,9 +33,10 @@ gtk_host_evidence:
              focus-transfer, compose, dead-keys, altgr, non-us-layout, emoji,
              ibus-preedit-commit, native-wayland-client,
              webkit-coexistence-x11-wayland, fractional-scale-virtual-outputs,
-             live-cross-output-scale-change]
+             live-cross-output-scale-change, event-fairness,
+             relocated-gui-loader, terminal-accessibility-role-focus]
   unproven: [clipboard, paste, selection, mouse, search,
-             physical-gpu, fairness, packaging, cjk-conversion-engines,
+             physical-gpu, packaging, cjk-conversion-engines,
              surrounding-text, physical-wayland-libinput, physical-mixed-dpi,
              simultaneous-unlike-scale-windows]
   wayland_evidence:
@@ -75,11 +76,38 @@ gtk_host_evidence:
     exact_cells: [14x27, 27x54, 27x54]
     live_sequence: 100%-150%-200%-100%; one child PID; original metrics restored
     limitation: virtual nested outputs and software rendering, not physical mixed-DPI or performance
-  toolkit_decision: pending event-fairness and complete Slice 2.3 checks
+  fairness_evidence:
+    duration_seconds: 12
+    pty_source_priority: 200  # G_PRIORITY_DEFAULT_IDLE; priority 0 starved every frame
+    sessions: 5  # one visible and four hidden; all continuously readable
+    repeated_resizes: 60
+    heartbeats: 550
+    rendered_frames: 715
+    max_heartbeat_ms: 46.015
+    max_frame_latency_ms: 24.779
+    min_bytes_per_session: 107653266
+    max_single_pump_ms: 2.149
+    bounds_ms: {heartbeat: 250, frame: 500, single_pump: 500}
+    limitation: fairness bounds under X11 and llvmpipe, not physical-GPU performance
+  loader_evidence:
+    layout: [bin/kitmux_gtk_host, lib/libkitty.so, lib/libpython3.14.so.1.0]
+    host_runpath: "$ORIGIN/../lib"
+    libkitty_runpath: "$ORIGIN"
+    broad_ld_library_path: false
+    toolkit_libraries: distro GTK and WebKitGTK
+    live_result: X11 frame rendered and terminal child reaped from the installed layout
+    limitation: temporary installed tree, not a native package or clean-machine install
+  accessibility_evidence:
+    terminal_role: terminal
+    terminal_label: Terminal
+    focus_transfer: terminal-entry-terminal
+    text_input: GtkIMMulticontext with Compose and IBus paths proven by the desktop gate
+    limitation: semantic role/focus viability only; full AT-SPI screen-reader and terminal-content coverage is Phase 5
+  toolkit_decision: GTK 4 selected in Slice 2.3
   # Phase 2 reordered 2026-07-25: the checks that could disqualify GTK now run
   # first, as Slices 2.2C-2.2F. Selection, clipboard, paste, mouse, wheel, and
   # search moved to Phase 4 Slice 4.2 as product work.
-  remaining_kill_tests: [event-fairness]
+  remaining_kill_tests: []
   moved_to_phase_4: [selection, clipboard, paste-safety, mouse, wheel, search]
   physical_gpu: deferred to Phase 6; llvmpipe proves correctness, not drivers
 

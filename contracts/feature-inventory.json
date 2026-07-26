@@ -197,7 +197,10 @@
         "engine.session-create-close"
       ],
       "translation": "Reimplement as a pure Linux model type; the GLib main loop is a scheduler, not the fairness policy.",
-      "linux_status": "unproven; Slice 2.2F"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh"
+      ],
+      "linux_status": "five continuously readable GLib PTY sources all progress under UI load in Slice 2.2F; production duplicate coalescing, cancellation, and turn-budget policy remain Phase 5 work"
     },
     {
       "id": "terminal.damage-signal",
@@ -277,7 +280,7 @@
       "linux_tests": [
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven GTK 4.22.4 / llvmpipe over X11 (Slice 2.1) and a native Wayland client under nested Weston without Xwayland (Slice 2.2C); physical GPU unproven"
+      "linux_status": "proven GTK 4.22.4 / llvmpipe over X11 (Slice 2.1), a native Wayland client under nested Weston without Xwayland (Slice 2.2C), and a temporary installed bin/lib layout with relative runpaths and no broad LD_LIBRARY_PATH (Slice 2.3); physical GPU and native packaging unproven"
     },
     {
       "id": "render.gl-state-isolation",
@@ -389,7 +392,10 @@
         "engine.fair-pumping"
       ],
       "translation": "Fairness, not speed. Absolute numbers on llvmpipe are not performance evidence.",
-      "linux_status": "unproven; Slice 2.2F"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh"
+      ],
+      "linux_status": "proven in Slice 2.2F with one visible and four hidden continuously readable sessions, 60 live resizes, 715 frames, 46 ms maximum heartbeat gap, and 25 ms maximum frame latency over 12 seconds"
     },
     {
       "id": "keyboard.encoding",
@@ -479,7 +485,7 @@
         "kitmux-linux/tests/gtk_key_matrix.c",
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven for one Latin engine (m17n:t:latn-post) over X11 (Slice 2.2B) and native Wayland (Slice 2.2C), plus GTK's built-in Compose over X11; CJK candidate windows and surrounding-text are unproven"
+      "linux_status": "proven for one Latin engine (m17n:t:latn-post) over X11 (Slice 2.2B) and native Wayland (Slice 2.2C), plus GTK's built-in Compose over X11; Slice 2.3 confirmed the selected terminal widget retains its GtkIMMulticontext; CJK candidate windows and surrounding-text are unproven"
     },
     {
       "id": "keyboard.focus-ownership",
@@ -501,7 +507,7 @@
         "kitmux-linux/tests/gtk_key_matrix.c",
         "kitmux-linux/scripts/test-desktop.sh"
       ],
-      "linux_status": "proven over X11 with an adjacent GtkEntry (Slice 2.2A)"
+      "linux_status": "proven over X11 with an adjacent GtkEntry (Slice 2.2A); Slice 2.3 also proved the selected terminal widget exposes GTK's terminal role and label and transfers accessible focus terminal-entry-terminal"
     },
     {
       "id": "keyboard.paste-safety",
