@@ -21,5 +21,8 @@
     "libkitty/py/glue.py": "80ffb6ab55c13400cd0e8dc2895d655984dcb87be6b7fa9dc58254b2c1209798",
     "patches/0001-libkitty-render-exports.patch": "826e221d829add0597fe15eeab223625a6f531b319adf3a60bb31aa791fbcc40",
     "patches/0002-kitmux-default-zsh-prompt.patch": "f559b7025f547b7ff75fc169f0d6d05c0a50b034e34240e214bbdc544b521d46"
+  },
+  "cargo_lockfiles": {
+    "kitmux-linux/rust/model/Cargo.lock": "ceada9bd0756189d9cc4aeeb1c08b9a076664ec6e90dcf5bde110e11df11a24c"
   }
 }
