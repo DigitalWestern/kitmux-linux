@@ -197,7 +197,7 @@
         "engine.session-create-close"
       ],
       "translation": "Reimplement as a pure Linux model type; the GLib main loop is a scheduler, not the fairness policy.",
-      "linux_status": "unproven"
+      "linux_status": "unproven; Slice 2.2F"
     },
     {
       "id": "terminal.damage-signal",
@@ -702,7 +702,12 @@
         "contracts.snapshot-v1"
       ],
       "translation": "Implement as a pure model before binding any widgets.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::global_duplicate_pane_and_surface_ids_are_rejected",
+        "kitmux-linux/rust/model/tests/model_tests.rs::ids_are_stable_distinct_types_with_portable_uuid_encoding",
+        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_reorder_keeps_the_selected_object_active"
+      ],
+      "linux_status": "stable distinct ID types, portable UUID encoding, global duplicate pane/surface rejection, and active-object preservation across hierarchy reorder proven in Slice 3.1; duplicate rejection at every hierarchy level, full ID survival through all accepted operations, and cross-host comparison to macOS remain unproven for Slice 3.3"
     },
     {
       "id": "hierarchy.non-empty-invariant",
@@ -721,7 +726,11 @@
         "hierarchy.ownership"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::final_workspace_requires_host_close_without_destroying_live_runtime",
+        "kitmux-linux/rust/model/tests/model_tests.rs::closing_one_pane_collapses_tree_closes_all_surfaces_and_selects_neighbor"
+      ],
+      "linux_status": "live-model parent collapse and final-workspace host-close behavior proven in Slice 3.1, with empty-snapshot rejection proven in Slice 3.2; the exact collapse-shape cross-host comparison to macOS remains unproven for Slice 3.3"
     },
     {
       "id": "hierarchy.focus-successor",
@@ -740,7 +749,12 @@
         "hierarchy.non-empty-invariant"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::closing_one_pane_collapses_tree_closes_all_surfaces_and_selects_neighbor",
+        "kitmux-linux/rust/model/tests/model_tests.rs::close_chain_removes_tab_then_group_then_workspace",
+        "kitmux-linux/rust/model/tests/model_tests.rs::frozen_split_fixture_drives_linux_close_behavior"
+      ],
+      "linux_status": "single-pane neighbor selection, hierarchy close-chain removal, and frozen Linux split-fixture close behavior proven in Slice 3.1, with stored-index repair proven in Slice 3.2; the full four-node successor sequence and cross-host comparison to macOS remain unproven for Slice 3.3"
     },
     {
       "id": "hierarchy.reorder-and-rename",
@@ -760,7 +774,11 @@
         "hierarchy.ownership"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_reorder_keeps_the_selected_object_active",
+        "kitmux-linux/rust/model/tests/model_tests.rs::tab_focus_cycle_split_swap_and_surface_selection_are_pure_model_operations"
+      ],
+      "linux_status": "hierarchy reorder with active-object preservation and pane-position swap using stable IDs proven in Slice 3.1, with blank-title normalization proven in Slice 3.2; exact split-shape preservation and cross-host comparison to macOS remain unproven for Slice 3.3"
     },
     {
       "id": "hierarchy.hidden-vs-visible",
@@ -779,7 +797,11 @@
         "hierarchy.ownership"
       ],
       "translation": "Session ownership is permanent per surface; visibility is a projection.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::hidden_and_inactive_terminal_surfaces_keep_pumping_without_visibility_or_input",
+        "kitmux-linux/rust/model/tests/model_tests.rs::focusing_hidden_pane_selects_its_full_hierarchy"
+      ],
+      "linux_status": "hidden/inactive terminal ownership, pumping policy, input exclusion, and full-hierarchy focus selection proven in Slice 3.1; cross-host comparison to macOS remains unproven for Slice 3.3, while fair pumping and live accumulated-output/no-layout/no-draw evidence remain unproven for Slices 2.2F and 4.2"
     },
     {
       "id": "splits.tree-shape",
@@ -799,7 +821,11 @@
         "hierarchy.ownership"
       ],
       "translation": "The toolkit layout is a projection; it must not own the split model.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::split_tree_preserves_depth_first_order_and_collapses_on_close",
+        "kitmux-linux/rust/model/tests/model_tests.rs::frozen_split_fixture_drives_linux_close_behavior"
+      ],
+      "linux_status": "depth-first order, close collapse, unknown-pane no-op, and frozen Linux split-fixture close behavior proven in Slice 3.1; byte-identical re-encoding and cross-host leaf-order comparison to macOS remain unproven for Slice 3.3"
     },
     {
       "id": "splits.layout-arithmetic",
@@ -820,7 +846,10 @@
         "splits.tree-shape"
       ],
       "translation": "Pure integer arithmetic; port with the fixtures and no widget involvement.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::split_layout_uses_all_pixels_and_enforces_minimums"
+      ],
+      "linux_status": "all-pixel consumption at one odd size and minimum-size enforcement for a two-pane split proven in Slice 3.1; the full frozen nested-size/divider-frame matrix and cross-host comparison to macOS remain unproven for Slice 3.3"
     },
     {
       "id": "splits.ratio-constraints",
@@ -840,7 +869,10 @@
         "splits.layout-arithmetic"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::ratio_changes_clamp_to_geometry_bounds_and_ignore_non_finite_values"
+      ],
+      "linux_status": "set/adjust ratio clamping to calculated geometry bounds and non-finite-value handling proven in Slice 3.1; unknown-split and nested-minimum drag cases plus the exact cross-host macOS fixture matrix remain unproven for Slice 3.3"
     },
     {
       "id": "splits.divider-interaction",
@@ -880,7 +912,10 @@
         "splits.layout-arithmetic"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::directional_focus_prefers_aligned_nearest_neighbor"
+      ],
+      "linux_status": "aligned nearest-neighbor selection for right/up movement and no left candidate proven in Slice 3.1; the complete four-direction frozen-layout matrix and cross-host comparison to macOS remain unproven for Slice 3.3"
     },
     {
       "id": "navigation.command-catalog",

@@ -1,6 +1,6 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-07-25
+**Last inspected:** 2026-07-26
 
 **Implementation state:** Phase 0.4, Phase 1, GTK Slices 2.1 through 2.2E, and
 Phase 3 Slices 3.1 through 3.2 are closed. Separate Ubuntu ARM64 headless and
@@ -65,6 +65,29 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-26 — Slice 3.1 feature-inventory backfill
+
+- Backfilled Slice 3.1's inventory obligation for
+  `hierarchy.ownership`, `hierarchy.non-empty-invariant`,
+  `hierarchy.focus-successor`, `hierarchy.reorder-and-rename`,
+  `hierarchy.hidden-vs-visible`, `splits.tree-shape`,
+  `splits.layout-arithmetic`, `splits.ratio-constraints`, and
+  `splits.directional-focus`; each row now names its existing model tests and
+  separates proven Linux behavior from the cross-host work still assigned to
+  Slice 3.3. `splits.divider-interaction` remains unproven and unchanged.
+- Changed `engine.fair-pumping` from bare `unproven` to `unproven; Slice
+  2.2F`, matching the event-fairness gate that exercises several hidden
+  sessions under load.
+- Verification: `python3 contracts/validate-fixtures.py` passed 6 contracts,
+  20 cases, and 7 versioned JSON files; `python3
+  contracts/validate-inventory.py ../macos/kitmux` resolved 31 Linux test
+  references and 214 macOS references and reported `inventory OK`;
+  `kitmux-linux/scripts/test-model.sh` passed formatting, warnings-denied
+  Clippy, 18 contract/platform tests, and all 15 existing model tests.
+- This produced no new behavioral, cross-host, GUI, package, or clean-machine
+  evidence; it only recorded existing Slice 3.1 and Slice 3.2 evidence. Slice
+  2.2F event fairness remains the next slice.
 
 ### 2026-07-25 — Slice 2.2E fractional and mixed-output scaling
 
