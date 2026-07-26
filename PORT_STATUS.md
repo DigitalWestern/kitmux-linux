@@ -105,10 +105,11 @@ listed only in the checkout's local Git exclude file.
   — 20 cases across 7 versioned JSON files passed, and all 214 macOS source
   and test references resolved.
 - Ubuntu ARM64 source gate:
-  `CARGO_NET_OFFLINE=true kitmux-linux/scripts/test-model.sh` — the same
-  format, warnings-denied lint, frozen-fixture, codec, platform, and model
-  suite passed all 33 tests from an archive of the Slice 3.2 branch; locked
-  dependencies had already been fetched before the offline rerun.
+  `limactl shell kitmux-linux -- env CARGO_NET_OFFLINE=true
+  "$PWD/kitmux-linux/scripts/test-model.sh"` — the same format,
+  warnings-denied lint, frozen-fixture, codec, platform, and model suite passed
+  all 33 tests from the integrated checkout; locked dependencies had already
+  been fetched before the offline rerun.
 - GUI-tested: none; the slice has no GPU or display requirement.
 - Package-tested and clean-machine-tested: none. The Ubuntu result used the
   existing headless development VM and proves the Linux source lane, not a
