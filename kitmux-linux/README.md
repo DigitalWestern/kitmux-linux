@@ -10,7 +10,8 @@ Current scope:
 3. Compile the public header from C and C++.
 4. Port headless lifecycle and PTY tests.
 5. Run the bounded GTK 4/libkitty toolkit spike.
-6. Build the display-free Rust product model against frozen portable fixtures.
+6. Build the display-free Rust product model and bounded host contracts
+   against frozen portable fixtures.
 
 No browser UI, package installer, or production navigation shell belongs here
 yet. For complete VM lifecycle, gates, release/SBOM commands, loader
@@ -20,17 +21,18 @@ architecture, and limitations, see
 ## Display-free model
 
 `rust/model` owns stable workspace/group/tab/pane/surface/split identities,
-split geometry, navigation and reorder rules, close cascading, and abstract
-terminal/browser runtime ownership. It has no display, libkitty, WebKit,
-filesystem, shell, or network dependency. Run its complete Slice 3.1 gate
-from the repository root:
+split geometry, navigation and reorder rules, close cascading, abstract
+terminal/browser runtime ownership, bounded state/settings/control codecs,
+command semantics, and small Linux filesystem/path adapters. It has no
+display, libkitty, WebKit, shell-execution, or network-runtime dependency. Run
+its complete Slice 3.1 and 3.2 gate from the repository root:
 
 ```sh
 kitmux-linux/scripts/test-model.sh
 ```
 
-State/settings decoding, control framing, command semantics, and XDG adapters
-remain a separate Slice 3.2 boundary.
+Cross-host fixture exchange and the read-only macOS import preview remain the
+separate Slice 3.3 boundary.
 
 ## Current Ubuntu workflow
 

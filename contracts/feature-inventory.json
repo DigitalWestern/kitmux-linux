@@ -901,7 +901,7 @@
         "contracts.command-ids"
       ],
       "translation": "Command IDs are contract; their key chords are not.",
-      "linux_status": "unproven"
+      "linux_status": "exact 38-ID order and semantic-action mapping proven display-free in Slice 3.2; palette ranking remains product work"
     },
     {
       "id": "navigation.namespaced-chords",
@@ -963,7 +963,7 @@
         "persistence.round-trip"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_status": "frozen accept, repair, and reject cases plus structural bounds proven on Linux in Slice 3.2; cross-host fixture exchange remains Slice 3.3"
     },
     {
       "id": "persistence.version-probe",
@@ -982,7 +982,7 @@
         "persistence.round-trip"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_status": "legacy normalization and newer-version rejection proven in the Linux codec in Slice 3.2; untouched import-preview handling remains Slice 3.3"
     },
     {
       "id": "persistence.inert-resume-commands",
@@ -1003,7 +1003,7 @@
         "persistence.round-trip"
       ],
       "translation": "This is a security invariant, not a feature. It must hold for the macOS-state import preview too.",
-      "linux_status": "unproven"
+      "linux_status": "resume text is inert bounded data in the Slice 3.2 codec; import preview and explicit execution-review paths remain unproven"
     },
     {
       "id": "persistence.atomic-writes",
@@ -1021,7 +1021,7 @@
         "persistence.round-trip"
       ],
       "translation": "XDG state paths, write-and-rename plus fsync; reject unsafe symlinks and wrong-owner files.",
-      "linux_status": "unproven"
+      "linux_status": "private same-directory fsync-and-rename plus replacement watching proven in Slice 3.2; quarantine, read-only, and full-disk policy remain unproven"
     },
     {
       "id": "persistence.fresh-shells",
@@ -1060,7 +1060,7 @@
         "XDG config paths"
       ],
       "translation": "Exclude macOS window chrome, launch-at-login, and AppKit shortcut encodings.",
-      "linux_status": "unproven"
+      "linux_status": "all 17 portable keys, types, ranges, defaults, invalid fallbacks, and unknown-key exclusion proven in Slice 3.2"
     },
     {
       "id": "settings.store-durability",
@@ -1082,7 +1082,7 @@
         "settings.schema-bounds"
       ],
       "translation": "Use XDG config paths and atomic replace.",
-      "linux_status": "unproven"
+      "linux_status": "bounded decode, newer-version refusal, unknown-key round-trip, deterministic encode, and private atomic replace proven in Slice 3.2; launch quarantine policy remains unproven"
     },
     {
       "id": "settings.external-watching",
@@ -1103,7 +1103,7 @@
         "settings.store-durability"
       ],
       "translation": "Linux inotify semantics differ from FSEvents; editors that rename-replace are the normal case.",
-      "linux_status": "unproven"
+      "linux_status": "portable polling fingerprint detects create, in-place edit, atomic replacement, and removal in Slice 3.2; inotify, self-write suppression, and pre-directory arming remain unproven"
     },
     {
       "id": "safety.foreground-detection",
@@ -1241,7 +1241,7 @@
         "contracts.control-v1"
       ],
       "translation": "Values and bounds are contract; the socket address is not.",
-      "linux_status": "unproven"
+      "linux_status": "shared request fixtures, newline framing, method catalog, response invariants, error codes, and byte bounds proven in Slice 3.2"
     },
     {
       "id": "control.socket-identity",
@@ -1260,7 +1260,7 @@
         "control.framing-bounds"
       ],
       "translation": "Use SO_PEERCRED; handle missing or invalid XDG_RUNTIME_DIR explicitly.",
-      "linux_status": "unproven"
+      "linux_status": "XDG and fallback address resolution, Linux sun_path bounds, private runtime parent, and symlink rejection proven in Slice 3.2; socket bind, stale replacement, SO_PEERCRED, and timeouts remain unproven"
     },
     {
       "id": "control.cli-mapping",
@@ -1282,7 +1282,7 @@
         "contracts.command-ids"
       ],
       "translation": "Package-managed CLI with a diagnosable user-local fallback.",
-      "linux_status": "unproven"
+      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; Linux CLI parsing and package installation remain unproven"
     },
     {
       "id": "ssh.argv-never-shell",

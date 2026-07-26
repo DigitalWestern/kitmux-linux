@@ -9,12 +9,13 @@ disqualify GTK, cheapest and most dangerous first. The reasoning is in
 [Why Slice 2.2 was cut short](LINUX_PORT_PLAN.md#why-slice-22-was-cut-short)
 and ADR 0007.
 
-Phase 0.4's portable fixture corpus is closed. Phase 3 Slice 3.1's pure Rust
-model is also closed and consumes the frozen split-tree fixture. This file
-still assigns one Phase 2 slice; do not start Phase 3.2 incidentally from the
-Phase 2 handoff.
+Phase 0.4's portable fixture corpus and Phase 3 Slices 3.1 and 3.2 are closed.
+The Rust model now consumes the applicable frozen fixtures and owns the
+bounded Linux contract adapters. This file still assigns one Phase 2 slice;
+do not start the cross-host Slice 3.3 work incidentally from the Phase 2
+handoff.
 
-Do not begin product navigation UI, Phase 3.2 bounded contracts, browser
+Do not begin product navigation UI, Phase 3.3 compatibility/import, browser
 product functionality, packaging, or the monorepo migration.
 
 ## Preconditions
@@ -207,9 +208,9 @@ toolkit decision. It moved to Phase 6.
 
 - Selection, clipboard, safe paste, mouse, wheel, and search are Phase 4
   Slice 4.2, not Phase 2.
-- Phase 0.4's shared valid/invalid fixture corpus is frozen. Phase 3.1 is
-  closed; Phase 3.2 must still begin as its own explicitly assigned slice
-  rather than being folded into the current Phase 2 work.
+- Phase 0.4's shared valid/invalid fixture corpus is frozen. Phase 3.1 and
+  bounded-contract Slice 3.2 are closed; cross-host compatibility/import
+  Slice 3.3 still requires its own explicit assignment.
 - Phase 0.6 defines the macOS re-baselining ritual. Reference drift is
   currently unmeasured.
 - `contracts/feature-inventory.json` must reach per-behavior granularity
@@ -228,7 +229,8 @@ toolkit decision. It moved to Phase 6.
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, the Phase 2 section of
 LINUX_PORT_PLAN.md, and ADRs 0006 through 0008. Note that Phase 2 was
 reordered and Slices 2.2C native Wayland and 2.2D WebKitGTK coexistence are
-closed. Confirm the worktree and both VM baselines. Implement only Slice
+closed. Phase 3 Slices 3.1 and 3.2 are also closed; do not begin Slice 3.3.
+Confirm the worktree and both VM baselines. Implement only Slice
 2.2E: prove coordinates, framebuffer size, cell metrics, and rendered text at
 100%, a fractional scale, and 200%; then apply a scale change to a live
 session without session loss or cell-metric drift. Inspect how Kitty's render

@@ -486,7 +486,8 @@ rather than stalling the toolkit decision on hardware access.
 
 Goal: reproduce portable product behavior without a display or real terminal.
 
-Status: Slice 3.1 complete. Slice 3.2 is next when explicitly assigned.
+Status: Slices 3.1 and 3.2 complete. Slice 3.3 is next when explicitly
+assigned.
 
 #### Slice 3.1: Implement the pure model — complete
 
@@ -502,12 +503,22 @@ including the frozen split-tree accept/reject cases. It has no GTK, WebKit,
 libkitty, filesystem, shell, or network dependency. Exact results and limits
 are recorded in `PORT_STATUS.md`.
 
-#### Slice 3.2: Implement bounded contracts
+#### Slice 3.2: Implement bounded contracts — complete
 
 - State/settings decode and encode.
 - Control framing, method IDs, errors, and size bounds.
 - Command catalog IDs and semantic actions.
 - Linux adapters for XDG paths, file watching, hashing, and socket addresses.
+
+The 2026-07-25 implementation extends `kitmux-linux/rust/model` with bounded
+state and settings codecs, the frozen command catalog, the 44-method control
+surface and newline framing, XDG and Unix-socket address resolution, private
+atomic writes, SHA-256 fingerprints, and replacement-aware polling. Host and
+Ubuntu ARM64 gates pass 33 headless tests, including all applicable frozen
+fixtures and invalid, oversized, newer-version, unknown-field, symlink, and
+permission cases. The Ubuntu gate also passes with Cargo offline after its
+locked dependencies are present. Exact commands, partial inventory limits,
+and non-claims are recorded in `PORT_STATUS.md`.
 
 #### Slice 3.3: Prove compatibility and safe import
 

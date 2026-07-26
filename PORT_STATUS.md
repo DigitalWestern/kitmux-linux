@@ -3,24 +3,25 @@
 **Last inspected:** 2026-07-25
 
 **Implementation state:** Phase 0.4, Phase 1, GTK Slices 2.1 through 2.2D, and
-Phase 3 Slice 3.1 are closed. Separate Ubuntu ARM64 headless and XFCE desktop
-VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
+Phase 3 Slices 3.1 through 3.2 are closed. Separate Ubuntu ARM64 headless and
+XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
 Linux stress tests, a real one-session GTK 4 terminal host over X11 and native
 Wayland client paths, a deterministic keyboard and input-method harness, an
 authoritative portable contract corpus, and a display-free Rust product model
-exist. No Linux product navigation UI or native package exists yet.
+with bounded contract and Linux path/file adapters exist. No Linux product
+navigation UI or native package exists yet.
 
 **Active tracks:** Phase 2 — rendering and toolkit kill spike; Phase 3 —
 display-free model and compatibility harness.
 
-**Next slices:** Phase 2 Slice 2.2E — **scaling**; Phase 3 Slice 3.2 —
-**bounded contracts**, when separately assigned. Phase 2 was reordered on
-2026-07-25 so the checks that could disqualify GTK run before the expensive
-ones that almost certainly cannot. Selection, clipboard, safe paste, mouse,
-wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
-Phase 2 slices are scaling and event fairness. Phase 3.1 consumed the frozen
-Phase 0.4 split fixture and stopped before state/settings decode, control
-framing, command semantics, or XDG adapters.
+**Next slices:** Phase 2 Slice 2.2E — **scaling**; Phase 3 Slice 3.3 —
+**compatibility and safe import**, when separately assigned. Phase 2 was
+reordered on 2026-07-25 so the checks that could disqualify GTK run before the
+expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
+mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
+Phase 2 slices are scaling and event fairness. Phase 3.1 and 3.2 consume the
+applicable frozen Phase 0.4 fixtures and stop before cross-host fixture
+exchange or macOS-state import preview work.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 Operational VM, gate, runtime, and SBOM commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
@@ -65,6 +66,57 @@ listed only in the checkout's local Git exclude file.
 
 ## Evidence log
 
+### 2026-07-25 — Slice 3.2 bounded contracts and Linux adapters
+
+- Extended `kitmux-linux/rust/model` with bounded state and settings codecs.
+  State accepts the frozen v1 fixture, repairs legacy navigation drift, rejects
+  duplicate IDs and empty structure, normalizes safe pane detail, limits
+  snapshots to 8 MiB, and treats resume commands as inert data bounded to
+  2,048 UTF-8 bytes. Settings validates all 17 portable keys and their exact
+  defaults/ranges, limits documents to 1 MiB, rejects newer versions, and
+  preserves unknown keys across encode.
+- Added the exact 38-ID command catalog with display-free semantic actions and
+  the current 44-method control catalog. The control codec enforces protocol
+  version 1, 64 KiB request and 512 KiB response bounds, 256-byte request IDs,
+  128-byte methods, response success/error invariants, error codes, and
+  newline/CRLF stream framing.
+- Added Linux-facing XDG config/state/data/cache/runtime resolution,
+  `sun_path`-bounded Unix-socket addresses with a private fallback, owner and
+  mode validation for runtime parents, SHA-256 file fingerprints, bounded
+  symlink-rejecting reads, 0600 same-directory atomic writes with fsync, and a
+  polling watcher that detects create, in-place edit, rename-replace, and
+  removal.
+- The feature inventory records partial evidence precisely. Slice 3.2 does
+  not claim an inotify implementation, settings quarantine policy, real
+  socket bind/stale-socket replacement, `SO_PEERCRED`, CLI installation, or
+  cross-host fixture exchange. Those product and compatibility gates remain
+  in their assigned later slices.
+- Direct Rust dependencies are pinned in `Cargo.lock`. `serde`, `serde_json`,
+  `sha2`, and `uuid`, plus their locked transitive dependencies, use licences
+  compatible with the GPL-3.0-only Linux host. The new lockfile SHA-256 is
+  recorded in `source-lock.json`.
+- macOS-host source gate: `kitmux-linux/scripts/test-model.sh` — formatting,
+  Clippy with warnings denied, and 33 tests passed: 18 bounded-contract and
+  platform tests plus the existing 15 pure-model tests.
+- Portable-corpus gates:
+  `python3 contracts/validate-fixtures.py` and
+  `python3 contracts/validate-inventory.py
+  /Users/ethanabbate/Desktop/System/home-kitmux/operating-system/macos/kitmux`
+  — 20 cases across 7 versioned JSON files passed, and all 214 macOS source
+  and test references resolved.
+- Ubuntu ARM64 source gate:
+  `CARGO_NET_OFFLINE=true kitmux-linux/scripts/test-model.sh` — the same
+  format, warnings-denied lint, frozen-fixture, codec, platform, and model
+  suite passed all 33 tests from an archive of the Slice 3.2 branch; locked
+  dependencies had already been fetched before the offline rerun.
+- GUI-tested: none; the slice has no GPU or display requirement.
+- Package-tested and clean-machine-tested: none. The Ubuntu result used the
+  existing headless development VM and proves the Linux source lane, not a
+  package or fresh-system install.
+- Slice 3.2 is closed. Slice 3.3 is the next Phase 3 slice and must remain
+  bounded to cross-host fixture consumption plus a read-only, non-executing
+  macOS-state import preview.
+
 ### 2026-07-25 — Slice 3.1 display-free Rust model
 
 - Added `kitmux-linux/rust/model`, a GPL-3.0-only Rust crate with distinct
@@ -100,9 +152,10 @@ listed only in the checkout's local Git exclude file.
 - Package-tested and clean-machine-tested: none. The Ubuntu result used the
   existing headless development VM and proves the Linux source lane, not a
   package or fresh-system install.
-- Slice 3.1 is closed. Slice 3.2 is the next Phase 3 slice and must remain
-  bounded to state/settings decode, control framing and errors, command
-  semantics, and Linux XDG/file-watch/hash/socket adapters.
+- Slice 3.1 closed with Slice 3.2 bounded to state/settings decode, control
+  framing and errors, command semantics, and Linux
+  XDG/file-watch/hash/socket adapters; that follow-on is now closed in the
+  evidence entry above.
 
 ### 2026-07-25 — Slice 2.2D WebKitGTK conflict probe
 
@@ -607,8 +660,9 @@ clean-machine release evidence.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
 - Shared portable fixtures are frozen and byte-identical in the current macOS
-  mirror. Phase 3.1 now consumes the split-tree fixture; the remaining fixture
-  consumers belong to bounded-contract Slice 3.2 and compatibility Slice 3.3.
+  mirror. Phase 3.1 and 3.2 consume the applicable Linux-side fixtures; Linux
+  fixture production, macOS consumption, and safe import preview belong to
+  compatibility Slice 3.3.
 - The clean release gate currently proves ARM64 userspaces. Tier-1 x86_64,
   physical-GPU, native package, and clean desktop-install evidence remain
   future gates.
@@ -661,12 +715,13 @@ loss. Inspect the Kitty render scale against GTK's integer scale APIs before
 choosing a harness mechanism; do not infer fractional correctness from an
 integer widget scale factor.
 
-The independently assigned Phase 3.1 lane is also closed. If Phase 3 is the
-next assignment instead, begin only Slice 3.2 against
-`kitmux-linux/rust/model` and the remaining frozen fixtures; stop before the
-cross-host import work in Slice 3.3.
+The independently assigned Phase 3.1 and 3.2 lane is also closed. If Phase 3
+is the next assignment instead, begin only Slice 3.3 against
+`kitmux-linux/rust/model` and the frozen fixtures: prove Linux-produced
+fixtures on macOS and implement the read-only import preview without executing
+resume commands or mutating source state.
 
 Classify every new file as durable or disposable per ADR 0007 before writing
 it. Do not begin selection, clipboard, mouse, or search — those are Phase 4
-Slice 4.2 now. Do not begin product chrome, Phase 3.2 incidentally, browser
+Slice 4.2 now. Do not begin product chrome, Phase 3.3 incidentally, browser
 product functionality, packaging, or repository migration.
