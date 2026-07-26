@@ -86,14 +86,18 @@ limactl shell kitmux-linux-desktop -- \
   "$PWD/kitmux-linux/scripts/test-desktop.sh"
 ```
 
-The desktop gate now builds and launches one real libkitty shell in
-`GtkGLArea`, pumps its PTY through GLib, resizes it twice, checks tracked GL
-state restoration and child reaping, exercises the visible error path, and
-writes `gtk-terminal-host-proof.png`.
+The desktop gate builds and launches real libkitty shells in `GtkGLArea` and
+checks rendering, resize, tracked GL state, child reaping, keyboard/IME,
+native Wayland, and bounded WebKitGTK coexistence behavior. Its scaling run
+moves one live session across nested Sway outputs at 100%, 150%, and 200%,
+asserts exact surface/backing scales, framebuffer and cell metrics, and
+returns to the original 100% state without session loss. Proof images are
+listed in [`../docs/LINUX_DEVELOPMENT.md`](../docs/LINUX_DEVELOPMENT.md).
 
-The current VM uses Mesa `llvmpipe`. It proves one functional X11 rendering
-and lifecycle slice, not physical-GPU performance, Wayland, terminal input,
-fractional scaling, or the final GTK toolkit decision.
+The current VM uses Mesa `llvmpipe`, nested Weston, and nested Sway/pixman.
+It proves the tested X11 and native-Wayland client paths, including virtual
+fractional scaling. It does not prove physical-GPU performance, physical
+mixed-DPI hardware, packaging, or the final GTK toolkit decision.
 
 ## Release-shaped engine runtime
 

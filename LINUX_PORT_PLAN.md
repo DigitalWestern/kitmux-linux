@@ -11,8 +11,8 @@
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phase 1 and Slices 2.1 through 2.2D are complete. Slice
-2.2E, the scaling proof, is next. See
+**Current progress:** Phase 1 and Slices 2.1 through 2.2E are complete. Slice
+2.2F, the event-fairness proof, is next. See
 [`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
@@ -306,7 +306,7 @@ Failure here blocks all product UI work.
 
 Goal: prove or reject GTK before product UI depends on it.
 
-Status: Slices 2.1 through 2.2D complete. Slice 2.2E is next. Slices
+Status: Slices 2.1 through 2.2E complete. Slice 2.2F is next. Slices
 2.2C–2.2F are the reordered kill tests; see
 [Why Slice 2.2 was cut short](#why-slice-22-was-cut-short).
 
@@ -446,6 +446,14 @@ chrome would be the single most expensive mistake available in this phase.
 
 Gate: exact framebuffer and cell assertions at each scale, and a scale change
 applied to a live session.
+
+Result: passed 2026-07-25. Nested Sway exposed 100%, 150%, and 200% virtual
+outputs plus the fractional-scale and viewporter protocols. GTK reported
+surface scales `1/1.5/2` and `GtkGLArea` backing factors `1/2/2`; Kitty rebuilt
+its atlas for the backing factor. One child session moved across every output
+and back to 100%, with exact framebuffer/cell/grid assertions and no PID,
+content, or return-metric drift. This is virtual-output correctness evidence,
+not physical mixed-DPI, GPU-performance, or packaging evidence.
 
 #### Slice 2.2F: Prove event fairness
 
@@ -874,11 +882,11 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Finish the Phase 2 kill tests** — Slices 2.2E and 2.2F. Cheap, and
-   they decide whether anything else in this plan survives.
-2. **Start Phase 3 against the frozen Slice 0.4 fixtures** once the current
-   Phase 2 assignment closes. The fixture dependency is satisfied; the Rust
-   product model remains the critical path to Phases 4 and 5.
+1. **Finish the final Phase 2 kill test** — Slice 2.2F event fairness — then
+   run the complete Slice 2.3 toolkit decision gate.
+2. **Continue Phase 3 only when separately assigned.** Slices 3.1 and 3.2 are
+   closed against the frozen fixtures; Slice 3.3 cross-host compatibility and
+   safe import remains the next display-free boundary.
 3. **Decompose the feature inventory** before Phase 5 builds the hierarchy.
 4. **ADR 0008 R1 and R2** — standalone buildability and one automated gate —
    before Phase 8, and before any second contributor.
@@ -891,8 +899,8 @@ items that unblock everything else stay open.
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2E is next under the reordered
-Phase 2: prove 100%, fractional, and 200% scaling plus a live scale change.
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2F is next under the reordered
+Phase 2: prove bounded event fairness during PTY flood, repeated resize, and
+multiple hidden sessions.
 Do not start browser product behavior, selection, clipboard, mouse, or search
-— those belong to later phases. The shared fixtures are frozen; begin the Rust
-product model only when Phase 3 is explicitly assigned.
+— those belong to later phases. Slice 3.3 also requires a separate assignment.

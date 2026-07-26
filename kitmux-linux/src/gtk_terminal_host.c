@@ -2,6 +2,7 @@
 #include <gio/gio.h>
 #include <glib-unix.h>
 #include <gtk/gtk.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -28,10 +29,17 @@ typedef struct {
   // press is a malformed event.
   kitmux_key_tracker im_consumed;
   guint pty_source;
+  guint status_update_source;
   int framebuffer_width;
   int framebuffer_height;
   int cell_width;
   int cell_height;
+  double last_scale_sample;
+  int last_scale_sample_width;
+  int last_scale_sample_height;
+  int last_scale_sample_cell_width;
+  int last_scale_sample_cell_height;
+  double pending_status_scale;
   bool first_frame_reported;
   bool pty_output_reported;
   bool gl_state_reported;
@@ -74,6 +82,18 @@ typedef struct {
   GLboolean depth_mask;
   GLboolean color_mask[4];
 } GLState;
+
+static GdkSurface *widget_surface(GtkWidget *widget) {
+  GtkNative *native = gtk_widget_get_native(widget);
+  return native ? gtk_native_get_surface(native) : NULL;
+}
+
+static double widget_surface_scale(GtkWidget *widget) {
+  GdkSurface *surface = widget_surface(widget);
+  if (surface) return gdk_surface_get_scale(surface);
+  int factor = gtk_widget_get_scale_factor(widget);
+  return factor > 0 ? (double)factor : 1.0;
+}
 
 static void capture_gl_state(GLState *state) {
   glGetIntegerv(GL_CURRENT_PROGRAM, &state->program);
@@ -148,6 +168,10 @@ static void restore_gl_state(const GLState *state) {
 }
 
 static void show_error(AppState *state, const char *format, ...) {
+  if (state->status_update_source) {
+    g_source_remove(state->status_update_source);
+    state->status_update_source = 0;
+  }
   char message[1024];
   va_list arguments;
   va_start(arguments, format);
@@ -157,6 +181,26 @@ static void show_error(AppState *state, const char *format, ...) {
   gtk_widget_set_visible(state->error_label, TRUE);
   gtk_label_set_text(GTK_LABEL(state->status_label), "Terminal unavailable");
   fprintf(stderr, "%s\n", message);
+}
+
+static gboolean update_terminal_status(gpointer userdata) {
+  AppState *state = userdata;
+  state->status_update_source = 0;
+  if (!state->session) return G_SOURCE_REMOVE;
+
+  char status[128];
+  snprintf(status, sizeof(status),
+           "Live shell · cell %d×%d px · scale %.2f", state->cell_width,
+           state->cell_height, state->pending_status_scale);
+  gtk_label_set_text(GTK_LABEL(state->status_label), status);
+  return G_SOURCE_REMOVE;
+}
+
+static void schedule_terminal_status(AppState *state, double surface_scale) {
+  state->pending_status_scale = surface_scale;
+  if (!state->status_update_source) {
+    state->status_update_source = g_idle_add(update_terminal_status, state);
+  }
 }
 
 static void on_damage(void *userdata) {
@@ -178,6 +222,10 @@ static void on_bell(void *userdata) {
 
 static void on_child_exit(void *userdata, int status) {
   AppState *state = userdata;
+  if (state->status_update_source) {
+    g_source_remove(state->status_update_source);
+    state->status_update_source = 0;
+  }
   char message[96];
   snprintf(message, sizeof(message), "Shell exited with status %d", status);
   gtk_label_set_text(GTK_LABEL(state->status_label), message);
@@ -268,18 +316,18 @@ static void place_composition(AppState *state) {
   if (!kitty_session_cursor_cell(state->session, &column, &row, &visible)) {
     return;
   }
-  int scale = gtk_widget_get_scale_factor(state->gl_area);
-  if (scale <= 0) scale = 1;
-  int x = column * state->cell_width / scale;
-  int y = row * state->cell_height / scale;
+  int buffer_scale = gtk_widget_get_scale_factor(state->gl_area);
+  if (buffer_scale <= 0) buffer_scale = 1;
+  int x = (int)lround((double)column * state->cell_width / buffer_scale);
+  int y = (int)lround((double)row * state->cell_height / buffer_scale);
   gtk_widget_set_margin_start(state->preedit_label, x);
   gtk_widget_set_margin_top(state->preedit_label, y);
   if (state->im_context) {
     GdkRectangle area = {
         .x = x,
         .y = y,
-        .width = state->cell_width / scale,
-        .height = state->cell_height / scale,
+        .width = (int)lround((double)state->cell_width / buffer_scale),
+        .height = (int)lround((double)state->cell_height / buffer_scale),
     };
     gtk_im_context_set_cursor_location(state->im_context, &area);
   }
@@ -612,7 +660,8 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
 
   int cell_width = 0;
   int cell_height = 0;
-  double scale = (double)gtk_widget_get_scale_factor(GTK_WIDGET(area));
+  double scale =
+      (double)gtk_widget_get_scale_factor(GTK_WIDGET(area));
   if (!kitty_render_init(state->engine, scale, &cell_width, &cell_height,
                          error, sizeof(error))) {
     show_error(state, "libkitty renderer initialization failed: %s", error);
@@ -649,12 +698,16 @@ static void initialize_terminal(GtkGLArea *area, AppState *state) {
            cell_height);
   gtk_label_set_text(GTK_LABEL(state->status_label), status);
   gtk_widget_set_visible(state->error_label, FALSE);
-  printf("GTK terminal ready: cell=%dx%d fd=%d\n", cell_width, cell_height,
-         fd);
+  printf("GTK terminal ready: cell=%dx%d scale=%.3f fd=%d\n", cell_width,
+         cell_height, scale, fd);
   fflush(stdout);
 }
 
 static void teardown_terminal(GtkGLArea *area, AppState *state) {
+  if (state->status_update_source) {
+    g_source_remove(state->status_update_source);
+    state->status_update_source = 0;
+  }
   if (state->pty_source) {
     g_source_remove(state->pty_source);
     state->pty_source = 0;
@@ -684,25 +737,125 @@ static void unrealized(GtkGLArea *area, gpointer userdata) {
   teardown_terminal(area, userdata);
 }
 
+static void surface_scale_changed(GdkSurface *surface, GParamSpec *spec,
+                                  gpointer userdata) {
+  (void)spec;
+  AppState *state = userdata;
+  double surface_scale = gdk_surface_get_scale(surface);
+  if (state->session) schedule_terminal_status(state, surface_scale);
+  printf("GTK surface scale notification: scale=%.3f factor=%d\n",
+         surface_scale, gdk_surface_get_scale_factor(surface));
+  fflush(stdout);
+  gtk_gl_area_queue_render(GTK_GL_AREA(state->gl_area));
+}
+
+static void report_scale_sample(AppState *state, double surface_scale,
+                                int logical_width, int logical_height,
+                                int framebuffer_width,
+                                int framebuffer_height) {
+  const char *probe = g_getenv("KITMUX_GTK_SCALE_PROBE");
+  if (!probe || !*probe || g_strcmp0(probe, "0") == 0) return;
+  if (fabs(state->last_scale_sample - surface_scale) < 0.000001 &&
+      state->last_scale_sample_width == framebuffer_width &&
+      state->last_scale_sample_height == framebuffer_height &&
+      state->last_scale_sample_cell_width == state->cell_width &&
+      state->last_scale_sample_cell_height == state->cell_height) {
+    return;
+  }
+
+  char *text = kitty_session_text(state->session);
+  bool has_fixture = text && strstr(text, "recorder-ready");
+  g_free(text);
+  if (!has_fixture) return;
+
+  GdkSurface *surface = widget_surface(state->gl_area);
+  GdkDisplay *display = gtk_widget_get_display(state->gl_area);
+  GdkMonitor *monitor =
+      surface && display ? gdk_display_get_monitor_at_surface(display, surface)
+                         : NULL;
+  const char *connector = monitor ? gdk_monitor_get_connector(monitor) : NULL;
+  int columns = framebuffer_width / state->cell_width;
+  int rows = framebuffer_height / state->cell_height;
+  printf(
+      "GTK scale sample: output=%s surface=%.3f factor=%d logical=%dx%d "
+      "framebuffer=%dx%d cell=%dx%d logical-cell=%.3fx%.3f "
+      "device-cell=%.3fx%.3f grid=%dx%d content=recorder-ready pid=%d\n",
+      connector ? connector : "unknown", surface_scale,
+      surface ? gdk_surface_get_scale_factor(surface)
+              : gtk_widget_get_scale_factor(state->gl_area),
+      logical_width, logical_height, framebuffer_width, framebuffer_height,
+      state->cell_width, state->cell_height,
+      (double)state->cell_width /
+          (surface ? gdk_surface_get_scale_factor(surface)
+                   : gtk_widget_get_scale_factor(state->gl_area)),
+      (double)state->cell_height /
+          (surface ? gdk_surface_get_scale_factor(surface)
+                   : gtk_widget_get_scale_factor(state->gl_area)),
+      (double)state->cell_width /
+          (surface ? gdk_surface_get_scale_factor(surface)
+                   : gtk_widget_get_scale_factor(state->gl_area)) *
+          surface_scale,
+      (double)state->cell_height /
+          (surface ? gdk_surface_get_scale_factor(surface)
+                   : gtk_widget_get_scale_factor(state->gl_area)) *
+          surface_scale,
+      columns, rows,
+      kitty_session_child_pid(state->session));
+  fflush(stdout);
+  state->last_scale_sample = surface_scale;
+  state->last_scale_sample_width = framebuffer_width;
+  state->last_scale_sample_height = framebuffer_height;
+  state->last_scale_sample_cell_width = state->cell_width;
+  state->last_scale_sample_cell_height = state->cell_height;
+}
+
 static gboolean render(GtkGLArea *area, GdkGLContext *context,
                        gpointer userdata) {
   (void)context;
   AppState *state = userdata;
   if (!state->session) return TRUE;
 
-  int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
-  int width = gtk_widget_get_width(GTK_WIDGET(area)) * scale;
-  int height = gtk_widget_get_height(GTK_WIDGET(area)) * scale;
-  if (width <= 0 || height <= 0) return TRUE;
-
   GLState saved = {0};
   capture_gl_state(&saved);
+  int logical_width = gtk_widget_get_width(GTK_WIDGET(area));
+  int logical_height = gtk_widget_get_height(GTK_WIDGET(area));
+  int width = saved.viewport[2];
+  int height = saved.viewport[3];
+  if (logical_width <= 0 || logical_height <= 0 || width <= 0 || height <= 0) {
+    return TRUE;
+  }
+
+  double surface_scale = widget_surface_scale(GTK_WIDGET(area));
+  double buffer_scale =
+      (double)gtk_widget_get_scale_factor(GTK_WIDGET(area));
+  double render_scale = kitty_render_scale(state->engine);
+  bool metrics_changed = fabs(buffer_scale - render_scale) >= 0.000001;
+  if (metrics_changed) {
+    char error[1024] = {0};
+    if (!kitty_render_set_scale(state->engine, buffer_scale,
+                                &state->cell_width, &state->cell_height, error,
+                                sizeof(error))) {
+      restore_gl_state(&saved);
+      show_error(state, "libkitty rejected GL buffer scale %.3f: %s",
+                 buffer_scale, error);
+      return TRUE;
+    }
+    schedule_terminal_status(state, surface_scale);
+    printf(
+        "GTK terminal renderer scale: old=%.3f new=%.3f cell=%dx%d "
+        "font=%.3f\n",
+        render_scale, buffer_scale, state->cell_width, state->cell_height,
+        kitty_render_font_size(state->engine));
+    fflush(stdout);
+    place_composition(state);
+  }
+
   glViewport(0, 0, width, height);
   glDisable(GL_SCISSOR_TEST);
   glClearColor(0.04f, 0.05f, 0.07f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  if (width != state->framebuffer_width ||
+  if (metrics_changed || width != state->framebuffer_width ||
       height != state->framebuffer_height) {
     if (!kitty_session_set_viewport(state->session, width, height)) {
       restore_gl_state(&saved);
@@ -712,7 +865,11 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context,
     }
     state->framebuffer_width = width;
     state->framebuffer_height = height;
-    printf("GTK terminal viewport: %dx%d scale=%d\n", width, height, scale);
+    printf(
+        "GTK terminal viewport: %dx%d logical=%dx%d surface-scale=%.3f "
+        "factor=%d\n",
+        width, height, logical_width, logical_height, surface_scale,
+        gtk_widget_get_scale_factor(GTK_WIDGET(area)));
     fflush(stdout);
   }
   bool drawn = kitty_session_draw(state->session);
@@ -734,14 +891,20 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context,
   }
   if (!state->first_frame_reported) {
     state->first_frame_reported = true;
-    printf("GTK terminal frame: %dx%d scale=%d pid=%d\n", width, height, scale,
-           kitty_session_child_pid(state->session));
+    printf(
+        "GTK terminal frame: %dx%d logical=%dx%d surface-scale=%.3f "
+        "factor=%d pid=%d\n",
+        width, height, logical_width, logical_height, surface_scale,
+        gtk_widget_get_scale_factor(GTK_WIDGET(area)),
+        kitty_session_child_pid(state->session));
     fflush(stdout);
   }
   if (!state->layout_reported) {
     state->layout_reported = true;
     report_layout(state);
   }
+  report_scale_sample(state, surface_scale, logical_width, logical_height,
+                      width, height);
   return TRUE;
 }
 
@@ -784,7 +947,12 @@ static void activate(GtkApplication *application, gpointer userdata) {
 
   state->window = gtk_application_window_new(application);
   gtk_window_set_title(GTK_WINDOW(state->window), "Kitmux GTK Terminal Host");
-  gtk_window_set_default_size(GTK_WINDOW(state->window), 900, 580);
+  const char *scale_probe = g_getenv("KITMUX_GTK_SCALE_PROBE");
+  bool scale_probe_enabled =
+      scale_probe && *scale_probe && g_strcmp0(scale_probe, "0") != 0;
+  gtk_window_set_default_size(GTK_WINDOW(state->window),
+                              scale_probe_enabled ? 480 : 900,
+                              scale_probe_enabled ? 320 : 580);
 
   GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
@@ -808,7 +976,9 @@ static void activate(GtkApplication *application, gpointer userdata) {
   g_signal_connect(adjacent_focus, "enter",
                    G_CALLBACK(adjacent_focus_entered), state);
   gtk_widget_add_controller(state->adjacent_entry, adjacent_focus);
-  gtk_box_append(GTK_BOX(header), state->adjacent_entry);
+  if (!scale_probe_enabled) {
+    gtk_box_append(GTK_BOX(header), state->adjacent_entry);
+  }
   GtkWidget *close_button = gtk_button_new_with_label("Close");
   g_signal_connect(close_button, "clicked", G_CALLBACK(close_clicked), state);
   gtk_box_append(GTK_BOX(header), close_button);
@@ -923,6 +1093,11 @@ static void activate(GtkApplication *application, gpointer userdata) {
   }
   gtk_window_set_child(GTK_WINDOW(state->window), root);
   gtk_window_present(GTK_WINDOW(state->window));
+  GdkSurface *surface = widget_surface(state->window);
+  if (surface) {
+    g_signal_connect(surface, "notify::scale",
+                     G_CALLBACK(surface_scale_changed), state);
+  }
   // The terminal, not the adjacent entry, owns the keyboard when the window
   // opens; GTK would otherwise focus the first focusable child.
   gtk_window_set_focus(GTK_WINDOW(state->window), state->gl_area);

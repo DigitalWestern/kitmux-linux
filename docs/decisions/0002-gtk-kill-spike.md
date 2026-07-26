@@ -18,8 +18,8 @@ libkitty shell rendered, PTY output arrived through a GLib file-descriptor
 source, two framebuffer resizes applied, tracked OpenGL state restored after
 draw, and close reaped the terminal child. This closes only the rendering and
 lifecycle slice; GTK is not chosen until input, IME, Wayland, scale, fairness,
-and the bounded WebKit conflict checks pass. Input/IME, native Wayland, and
-WebKit coexistence have since passed; scaling and fairness remain open.
+and the bounded WebKit conflict checks pass. Input/IME, native Wayland,
+WebKit coexistence, and scaling have since passed; fairness remains open.
 
 ## 2026-07-25 scope correction
 
@@ -74,6 +74,25 @@ enter the process closure. The VM install added 43 packages and 166 MB, which
 is a dependency-cost warning for future packaging rather than a package-size
 measurement. This closes the coexistence kill check only; it does not select
 GTK, implement browser behavior, or prove a distributable layout.
+
+## 2026-07-25 fractional scaling result
+
+Slice 2.2E passed under nested Sway 1.11 with virtual outputs at 100%, 150%,
+and 200%. The compositor advertised `wp_fractional_scale_manager_v1` and
+`wp_viewporter`. GTK's double surface scale reported `1/1.5/2`, while the
+`GtkGLArea` backing buffer used integer factors `1/2/2`; those values serve
+different coordinate systems and must remain separate.
+
+A hash-locked Linux overlay adds a narrow libkitty backing-scale setter. It
+rebuilds the shared font atlas at the new DPI while retaining the configured
+point size and live sessions. One recorder session moved through all three
+outputs and back to 100%, with exact framebuffer, cell, grid, content, and
+child-PID assertions. Its original 100% metrics returned exactly.
+
+This closes the fractional and unlike-output correctness check. It does not
+claim physical mixed-DPI hardware, GPU or compositor performance, a
+release-shaped GUI dependency layout, or GTK selection; event fairness and the
+complete Slice 2.3 decision gate remain open.
 
 ## Loader boundary retained
 

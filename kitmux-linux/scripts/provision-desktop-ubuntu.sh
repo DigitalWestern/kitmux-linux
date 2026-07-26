@@ -11,6 +11,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
   cmake \
   dbus-x11 \
+  grim \
   ibus \
   ibus-gtk4 \
   libgtk-4-dev \
@@ -21,10 +22,12 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   novnc \
   pkg-config \
   scrot \
+  sway \
   tigervnc-standalone-server \
   tigervnc-tools \
   websockify \
   weston \
+  wayland-utils \
   xdg-desktop-portal \
   xdg-desktop-portal-gtk \
   ibus-m17n \

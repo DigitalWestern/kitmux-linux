@@ -21,6 +21,9 @@ preedit_proof_image="${source_root}/gtk-preedit-proof.png"
 wayland_proof_image="${source_root}/gtk-wayland-proof.png"
 webkit_x11_proof_image="${source_root}/gtk-webkit-x11-proof.png"
 webkit_wayland_proof_image="${source_root}/gtk-webkit-wayland-proof.png"
+scale_100_proof_image="${source_root}/gtk-scale-100-proof.png"
+scale_150_proof_image="${source_root}/gtk-scale-150-proof.png"
+scale_200_proof_image="${source_root}/gtk-scale-200-proof.png"
 export DISPLAY=":${display_number}"
 
 case "$(uname -m)" in
@@ -119,6 +122,10 @@ wayland_child_log="$(mktemp /tmp/kitmux-gtk-wayland-child.XXXXXX.log)"
 webkit_wayland_host_log="$(mktemp /tmp/kitmux-gtk-webkit-wayland-host.XXXXXX.log)"
 webkit_wayland_child_log="$(mktemp /tmp/kitmux-gtk-webkit-wayland-child.XXXXXX.log)"
 weston_log="$(mktemp /tmp/kitmux-weston.XXXXXX.log)"
+sway_runtime_dir="$(mktemp -d /tmp/kitmux-sway-runtime.XXXXXX)"
+sway_log="${sway_runtime_dir}/sway.log"
+sway_host_log="${sway_runtime_dir}/host.log"
+sway_child_log="${sway_runtime_dir}/child.log"
 cleanup() {
   if [[ -n "${host_pid:-}" ]] && kill -0 "${host_pid}" 2>/dev/null; then
     kill "${host_pid}" 2>/dev/null || true
@@ -128,12 +135,16 @@ cleanup() {
     kill "${weston_pid}" 2>/dev/null || true
     wait "${weston_pid}" 2>/dev/null || true
   fi
+  if [[ -n "${sway_pid:-}" ]] && kill -0 "${sway_pid}" 2>/dev/null; then
+    kill "${sway_pid}" 2>/dev/null || true
+    wait "${sway_pid}" 2>/dev/null || true
+  fi
   xset r on 2>/dev/null || true
   setxkbmap -layout us 2>/dev/null || true
   rm -rf -- "${proof_log}" "${error_log}" "${key_dir}" \
     "${wayland_runtime_dir}" "${wayland_host_log}" "${wayland_child_log}" \
     "${webkit_wayland_host_log}" "${webkit_wayland_child_log}" \
-    "${weston_log}"
+    "${weston_log}" "${sway_runtime_dir}"
 }
 trap cleanup EXIT
 
@@ -626,10 +637,12 @@ wait_for_line "${host_log}" '^GTK focus: terminal$' \
 
 xdotool windowactivate --sync "${wayland_window_id}"
 xdotool windowsize --sync "${wayland_window_id}" 760 500
-wait_for_line "${host_log}" '^GTK terminal viewport: 760x450 scale=1$' \
+wait_for_line "${host_log}" \
+  '^GTK terminal viewport: 760x450 logical=760x450 surface-scale=1\.000 factor=1$' \
   "the first Wayland framebuffer resize"
 xdotool windowsize --sync "${wayland_window_id}" 980 640
-wait_for_line "${host_log}" '^GTK terminal viewport: 980x590 scale=1$' \
+wait_for_line "${host_log}" \
+  '^GTK terminal viewport: 980x590 logical=980x590 surface-scale=1\.000 factor=1$' \
   "the second Wayland framebuffer resize"
 
 # One ordinary press/release plus a real compositor-generated repeat series.
@@ -754,6 +767,193 @@ if grep -qE '^GTK WebKit (probe load failed|process terminated):' "${host_log}";
 fi
 echo "WebKitGTK render, GL coexistence, and focus-return proof under native Wayland: OK"
 
+# ---------------------------------------------------------------------------
+# Slice 2.2E true fractional scaling and live output moves
+# ---------------------------------------------------------------------------
+
+# Weston exposes only integer output scales. Sway on wlroots supplies three
+# nested X11 outputs, wp_fractional_scale_v1, and live output moves. GTK's
+# surface scale is the physical-output mapping (1.0/1.5/2.0), while its
+# GtkGLArea backing buffer uses ceil(scale) (1/2/2). Kitty must build its font
+# atlas for the latter and let the compositor perform the 1.5 downsample.
+if [[ -n "${weston_pid:-}" ]] && kill -0 "${weston_pid}" 2>/dev/null; then
+  kill "${weston_pid}"
+  wait "${weston_pid}" 2>/dev/null || true
+  weston_pid=""
+fi
+
+chmod 700 "${sway_runtime_dir}"
+env \
+  DISPLAY="${DISPLAY}" \
+  XDG_RUNTIME_DIR="${sway_runtime_dir}" \
+  WLR_BACKENDS=x11 \
+  WLR_RENDERER=pixman \
+  WLR_X11_OUTPUTS=3 \
+  sway -c /dev/null >"${sway_log}" 2>&1 &
+sway_pid=$!
+
+sway_wayland_socket=""
+sway_socket=""
+for _ in $(seq 1 100); do
+  if ! kill -0 "${sway_pid}" 2>/dev/null; then
+    echo "Sway exited before its Wayland and IPC sockets became ready." >&2
+    cat "${sway_log}" >&2
+    exit 1
+  fi
+  sway_wayland_socket="$(
+    find "${sway_runtime_dir}" -maxdepth 1 -type s -name 'wayland-*' \
+      -printf '%f\n' | head -n 1
+  )"
+  sway_socket="$(
+    find "${sway_runtime_dir}" -maxdepth 1 -type s \
+      -name 'sway-ipc.*.sock' -print | head -n 1
+  )"
+  if [[ -n "${sway_wayland_socket}" && -n "${sway_socket}" ]]; then break; fi
+  sleep 0.1
+done
+if [[ -z "${sway_wayland_socket}" || -z "${sway_socket}" ]]; then
+  echo "Sway did not publish both required sockets." >&2
+  cat "${sway_log}" >&2
+  exit 1
+fi
+
+sway_command() {
+  env SWAYSOCK="${sway_socket}" swaymsg "$@"
+}
+
+sway_protocols="$(
+  env \
+    XDG_RUNTIME_DIR="${sway_runtime_dir}" \
+    WAYLAND_DISPLAY="${sway_wayland_socket}" \
+    wayland-info
+)"
+grep -q "interface: 'wp_fractional_scale_manager_v1'" <<<"${sway_protocols}"
+grep -q "interface: 'wp_viewporter'" <<<"${sway_protocols}"
+
+sway_command default_border pixel 0 >/dev/null
+sway_command output X11-1 scale 1 pos 0 0 >/dev/null
+sway_command output X11-2 scale 1.5 pos 1024 0 >/dev/null
+sway_command output X11-3 scale 2 pos 1706 0 >/dev/null
+sway_command focus output X11-1 >/dev/null
+sway_outputs="$(sway_command -t get_outputs)"
+grep -q '"name": "X11-1"' <<<"${sway_outputs}"
+grep -q '"name": "X11-2"' <<<"${sway_outputs}"
+grep -q '"name": "X11-3"' <<<"${sway_outputs}"
+grep -q '"scale": 1.5' <<<"${sway_outputs}"
+grep -q '"scale": 2.0' <<<"${sway_outputs}"
+
+host_log="${sway_host_log}"
+child_log="${sway_child_log}"
+key_label="scaling"
+env "${libkitty_environment[@]}" \
+  DISPLAY="${DISPLAY}" \
+  XDG_RUNTIME_DIR="${sway_runtime_dir}" \
+  WAYLAND_DISPLAY="${sway_wayland_socket}" \
+  GDK_BACKEND=wayland \
+  GTK_IM_MODULE=gtk-im-context-simple \
+  NO_AT_BRIDGE=1 \
+  GTK_THEME=Adwaita \
+  GSK_RENDERER=gl \
+  KITMUX_GTK_SCALE_PROBE=1 \
+  KITMUX_GTK_CHILD="${recorder}" \
+  KITMUX_RECORDER_LOG="${child_log}" \
+  KITMUX_GTK_AUTO_CLOSE_MS=90000 \
+  "${host_binary}" >"${host_log}" 2>&1 &
+host_pid=$!
+
+for _ in $(seq 1 200); do
+  sway_tree="$(sway_command -t get_tree)"
+  if grep -q '"app_id": "dev.kitmux.gtk-terminal-host"' <<<"${sway_tree}"; then
+    break
+  fi
+  sleep 0.1
+done
+sway_tree="$(sway_command -t get_tree)"
+if ! grep -q '"app_id": "dev.kitmux.gtk-terminal-host"' <<<"${sway_tree}"; then
+  echo "Sway never mapped the GTK scaling host." >&2
+  cat "${host_log}" >&2
+  exit 1
+fi
+
+scale_criterion='[app_id="dev.kitmux.gtk-terminal-host"]'
+sway_command "${scale_criterion} floating enable" >/dev/null
+sway_command \
+  "${scale_criterion} resize set width 480 px height 320 px" >/dev/null
+
+scale_100_pattern='^GTK scale sample: output=X11-1 surface=1\.000 factor=1 logical=480x270 framebuffer=480x270 cell=14x27 logical-cell=14\.000x27\.000 device-cell=14\.000x27\.000 grid=34x10 content=recorder-ready pid=[0-9]+$'
+scale_150_pattern='^GTK scale sample: output=X11-2 surface=1\.500 factor=2 logical=480x270 framebuffer=960x540 cell=27x54 logical-cell=13\.500x27\.000 device-cell=20\.250x40\.500 grid=35x10 content=recorder-ready pid=[0-9]+$'
+scale_200_pattern='^GTK scale sample: output=X11-3 surface=2\.000 factor=2 logical=480x270 framebuffer=960x540 cell=27x54 logical-cell=13\.500x27\.000 device-cell=27\.000x54\.000 grid=35x10 content=recorder-ready pid=[0-9]+$'
+
+sway_command "${scale_criterion} move container to output X11-1" >/dev/null
+sway_command \
+  "${scale_criterion} resize set width 480 px height 320 px" >/dev/null
+wait_for_line "${host_log}" "${scale_100_pattern}" "the exact 100% scale sample"
+sleep 1
+env \
+  XDG_RUNTIME_DIR="${sway_runtime_dir}" \
+  WAYLAND_DISPLAY="${sway_wayland_socket}" \
+  grim -o X11-1 "${scale_100_proof_image}"
+
+sway_command "${scale_criterion} move container to output X11-2" >/dev/null
+sway_command \
+  "${scale_criterion} resize set width 480 px height 320 px" >/dev/null
+wait_for_line "${host_log}" "${scale_150_pattern}" "the exact 150% scale sample"
+sleep 1
+env \
+  XDG_RUNTIME_DIR="${sway_runtime_dir}" \
+  WAYLAND_DISPLAY="${sway_wayland_socket}" \
+  grim -o X11-2 "${scale_150_proof_image}"
+
+sway_command "${scale_criterion} move container to output X11-3" >/dev/null
+sway_command \
+  "${scale_criterion} resize set width 480 px height 320 px" >/dev/null
+wait_for_line "${host_log}" "${scale_200_pattern}" "the exact 200% scale sample"
+sleep 1
+env \
+  XDG_RUNTIME_DIR="${sway_runtime_dir}" \
+  WAYLAND_DISPLAY="${sway_wayland_socket}" \
+  grim -o X11-3 "${scale_200_proof_image}"
+
+# Return to 100% in the same process. The original exact cell/framebuffer
+# metrics must recur, proving the atlas and PTY grid do not drift.
+sway_command "${scale_criterion} move container to output X11-1" >/dev/null
+sway_command \
+  "${scale_criterion} resize set width 480 px height 320 px" >/dev/null
+wait_for_count "${host_log}" "${scale_100_pattern}" 2 \
+  "the exact 100% metrics before and after live scale changes"
+
+grep -q \
+  '^GTK terminal renderer scale: old=1\.000 new=2\.000 cell=27x54 font=17\.000$' \
+  "${host_log}"
+grep -q \
+  '^GTK terminal renderer scale: old=2\.000 new=1\.000 cell=14x27 font=17\.000$' \
+  "${host_log}"
+
+mapfile -t scale_child_pids < <(
+  sed -n 's/^GTK scale sample: .* pid=\([0-9][0-9]*\)$/\1/p' "${host_log}" \
+    | sort -u
+)
+if [[ "${#scale_child_pids[@]}" -ne 1 ]]; then
+  echo "Scaling run did not preserve one terminal child across output moves." >&2
+  cat "${host_log}" >&2
+  exit 1
+fi
+child_pid="${scale_child_pids[0]}"
+
+sway_command "${scale_criterion} kill" >/dev/null
+wait "${host_pid}"
+host_pid=""
+if kill -0 "${child_pid}" 2>/dev/null; then
+  echo "Scaling run left terminal child ${child_pid} alive after close." >&2
+  exit 1
+fi
+sway_command exit >/dev/null 2>&1 || true
+wait "${sway_pid}" 2>/dev/null || true
+sway_pid=""
+
+echo "GTK 100%, 150%, 200%, and live cross-output scale proof: OK"
+echo "Scaling boundary: surface scale 1/1.5/2; GL buffer factor 1/2/2"
+
 env -u PYTHONHOME -u KITTY_SRC -u LIBKITTY_PY -u LIBKITTY_TEST_CONFIG \
   GTK_THEME=Adwaita \
   GSK_RENDERER=gl \
@@ -769,3 +969,6 @@ echo "Visible preedit proof: ${preedit_proof_image}"
 echo "Visible Wayland proof: ${wayland_proof_image}"
 echo "Visible WebKitGTK X11 proof: ${webkit_x11_proof_image}"
 echo "Visible WebKitGTK Wayland proof: ${webkit_wayland_proof_image}"
+echo "Visible 100% scale proof: ${scale_100_proof_image}"
+echo "Visible 150% scale proof: ${scale_150_proof_image}"
+echo "Visible 200% scale proof: ${scale_200_proof_image}"

@@ -1,11 +1,12 @@
 # Kitmux Linux next steps
 
-Start with Slice 2.2E — **scaling**. Slices 2.2A through 2.2D are closed.
+Start with Slice 2.2F — **event fairness**. Slices 2.2A through 2.2E are
+closed.
 
 Phase 2 was reordered on 2026-07-25. Slice 2.2C is no longer selection and
 clipboard: those, along with mouse, wheel, and search, moved to Phase 4 as
-product work. The remaining Phase 2 slices are the checks that could actually
-disqualify GTK, cheapest and most dangerous first. The reasoning is in
+product work. The remaining Phase 2 work is the last check that could
+disqualify GTK: event fairness. The reasoning is in
 [Why Slice 2.2 was cut short](LINUX_PORT_PLAN.md#why-slice-22-was-cut-short)
 and ADR 0007.
 
@@ -23,7 +24,7 @@ product functionality, packaging, or the monorepo migration.
 1. Read `PORT_STATUS.md`, this file, the Phase 2 section of
    `LINUX_PORT_PLAN.md`, and ADRs 0006, 0007, and 0008.
 2. Confirm `git status --short` is clean and inspect commits newer than the
-   Slice 2.2D entry in `PORT_STATUS.md`.
+   Slice 2.2E entry in `PORT_STATUS.md`.
 3. Run:
 
    ```sh
@@ -155,24 +156,26 @@ This is deliberately early. It is cheap, it is a known-hard interaction, and a
 failure changes the toolkit decision. Finding it after Phase 4 exists would be
 the most expensive mistake available in this phase.
 
+### 2.2E — Scaling — done 2026-07-25
+
+- Nested Sway advertises the fractional-scale and viewporter protocols and
+  supplies virtual outputs at 100%, 150%, and 200%.
+- GTK's double surface scale maps logical coordinates to output pixels; its
+  integer widget factor sizes the `GtkGLArea` backing buffer. The sequence is
+  `1/1`, `1.5/2`, and `2/2`. Kitty rebuilds its font atlas for the integer
+  backing factor and lets the compositor downsample at 150%.
+- One live recorder session moved through all three outputs and back to 100%.
+  Exact framebuffer, cell, logical/device cell, grid, content, and child-PID
+  assertions passed; the original 100% metrics returned without drift.
+- The narrow libkitty scale API is a hash-locked Linux overlay applied to the
+  authoritative tagged source during materialization. It is display-free C
+  behind the existing FFI boundary, not a second libkitty copy.
+- Exact values, commands, proof images, and limitations are in
+  `PORT_STATUS.md`.
+
 ## Remaining Phase 2 sequence
 
-### 2.2E — Scaling — next
-
-- Coordinates, framebuffer size, cell metrics, and rendered text at 100%, a
-  fractional scale, and 200%.
-- A live window moved between unlike monitor scales, without session loss or
-  cell-metric drift.
-- Watch `kitty_render_init`'s scale argument against
-  `gtk_widget_get_scale_factor` under fractional scaling. `place_composition`
-  in the host already divides by that factor; fractional scale is where GTK
-  and Kitty are most likely to disagree, and where an integer scale factor
-  stops being the right question.
-
-Gate: exact framebuffer and cell assertions at each scale, plus one scale
-change applied to a live session.
-
-### 2.2F — Event fairness
+### 2.2F — Event fairness — next
 
 - Heartbeat and frame latency during sustained PTY flood, repeated resize, and
   several hidden sessions pumping at once.
@@ -228,13 +231,14 @@ toolkit decision. It moved to Phase 6.
 ```text
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, the Phase 2 section of
 LINUX_PORT_PLAN.md, and ADRs 0006 through 0008. Note that Phase 2 was
-reordered and Slices 2.2C native Wayland and 2.2D WebKitGTK coexistence are
-closed. Phase 3 Slices 3.1 and 3.2 are also closed; do not begin Slice 3.3.
-Confirm the worktree and both VM baselines. Implement only Slice
-2.2E: prove coordinates, framebuffer size, cell metrics, and rendered text at
-100%, a fractional scale, and 200%; then apply a scale change to a live
-session without session loss or cell-metric drift. Inspect how Kitty's render
-scale relates to GTK's integer widget scale factor before choosing the
-display harness. Classify any new file per ADR 0007, run the headless and
-desktop gates, update evidence docs, and stop before Slice 2.2F.
+reordered and Slices 2.2C native Wayland, 2.2D WebKitGTK coexistence, and
+2.2E fractional scaling are closed. Phase 3 Slices 3.1 and 3.2 are also
+closed; do not begin Slice 3.3. Confirm the worktree and both VM baselines.
+Implement only Slice 2.2F: measure bounded heartbeat and frame latency during
+sustained PTY output, repeated resize, and several hidden sessions pumping at
+once. Prove the GLib main loop does not starve UI events and decide from
+evidence whether the current G_PRIORITY_DEFAULT PTY source remains defensible.
+Treat llvmpipe figures as fairness bounds, not performance claims. Classify
+any new file per ADR 0007, run the headless and desktop gates, update evidence
+docs, and stop before Slice 2.3.
 ```

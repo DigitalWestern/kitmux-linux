@@ -177,7 +177,7 @@
         "engine.session-create-close"
       ],
       "translation": "None.",
-      "linux_status": "proven headless; GTK framebuffer resize proven over X11, fractional scale unproven"
+      "linux_status": "proven headless; live GTK framebuffer resize proven over X11, native Wayland, and virtual outputs at 100%, 150%, and 200%"
     },
     {
       "id": "engine.fair-pumping",
@@ -332,8 +332,8 @@
       "dependencies": [
         "render.live-frame"
       ],
-      "translation": "gtk_widget_get_scale_factor is an integer; fractional scaling is where GTK and Kitty are most likely to disagree.",
-      "linux_status": "unproven; Slice 2.2E"
+      "translation": "Track GTK's fractional surface scale separately from the integer GtkGLArea backing-buffer factor; Kitty builds its font atlas for the latter.",
+      "linux_status": "proven in Slice 2.2E under nested Sway: exact 100%/150%/200% and return-to-100% metrics with one live child; physical mixed-DPI remains unproven"
     },
     {
       "id": "render.init-failure-visible",

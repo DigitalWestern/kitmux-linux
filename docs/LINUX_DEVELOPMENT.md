@@ -28,6 +28,10 @@ host commands from the Linux repository root on the macOS machine.
   under X11 and native Wayland without GL-state, loader, or focus conflict.
   The live host resolved 139 native libraries while keeping pinned libpython
   isolated from the distro WebKitGTK/GTK dependency set.
+- Under nested Sway, one native-Wayland session moves through virtual outputs
+  at 100%, 150%, and 200% and back to 100%. Exact surface/backing scales,
+  framebuffer, cell, grid, content, and child-PID assertions pass without
+  session or return-metric drift.
 
 ## What is not proven
 
@@ -36,8 +40,10 @@ host commands from the Linux repository root on the macOS machine.
 - CJK or other conversion engines with candidate windows, and
   surrounding-text requests; the input-method evidence covers one Latin
   engine.
-- A physical Wayland desktop/libinput path, fractional/mixed-monitor scaling,
-  physical-GPU behavior, or accessibility.
+- A physical Wayland desktop/libinput path, physical mixed-DPI monitors,
+  simultaneous windows on unlike scales, physical-GPU behavior, or
+  accessibility. The fractional result uses virtual nested outputs and
+  software rendering.
 - Main-loop fairness during sustained PTY output and resize pressure.
 - Browser navigation, web data-session policy, web-process recovery, or a
   packaged WebKitGTK dependency layout. The bounded coexistence probe is not
@@ -49,7 +55,10 @@ host commands from the Linux repository root on the macOS machine.
 ## Materialize the locked source
 
 The Linux spike reads only hash-locked files from the tagged macOS baseline.
-Run this once after cloning or after deleting the ignored `.source` cache:
+Materialization also verifies and applies the hash-locked Linux render-scale
+overlay in `kitmux-linux/patches/libkitty/`; it does not create a separately
+maintained libkitty copy. Run this once after cloning or after deleting the
+ignored `.source` cache:
 
 ```sh
 kitmux-linux/scripts/materialize-reference.sh
@@ -118,16 +127,21 @@ limactl shell kitmux-linux-desktop -- \
 The gate covers rendering, resize, PTY, clean close, the Slice 2.2A/2.2B
 keyboard and input-method harness over X11, the Slice 2.2C native Wayland
 client path under nested Weston, and the Slice 2.2D static WebKitGTK
-coexistence probe under both backends. It writes
+coexistence probe under both backends. Slice 2.2E then starts nested Sway with
+100%, 150%, and 200% virtual outputs and moves one live session through all
+three and back. It writes
 `kitmux-linux/gtk-terminal-host-proof.png`,
 `kitmux-linux/gtk-keyboard-focus-proof.png`, and
 `kitmux-linux/gtk-preedit-proof.png`, plus
 `kitmux-linux/gtk-wayland-proof.png`, plus
 `kitmux-linux/gtk-webkit-x11-proof.png` and
-`kitmux-linux/gtk-webkit-wayland-proof.png`. While it runs it changes X auto-repeat,
-the keyboard layout, and the active IBus engine — restoring auto-repeat and
-the US layout on exit — so run it on the project VNC session rather than a
-desktop you are using.
+`kitmux-linux/gtk-webkit-wayland-proof.png`, plus
+`kitmux-linux/gtk-scale-100-proof.png`,
+`kitmux-linux/gtk-scale-150-proof.png`, and
+`kitmux-linux/gtk-scale-200-proof.png`. While it runs it changes X
+auto-repeat, the keyboard layout, and the active IBus engine — restoring
+auto-repeat and the US layout on exit — so run it on the project VNC session
+rather than a desktop you are using.
 
 The keyboard harness has two halves:
 
@@ -154,6 +168,11 @@ The keyboard harness has two halves:
   web view and back, assert exact terminal bytes, and reject missing loader
   objects, WebKit process termination, or leakage of Kitty's private native
   dependency directory. They prove coexistence, not browser functionality.
+- The scaling run checks both `gdk_surface_get_scale()` and GTK's integer
+  backing factor. Kitty uses the backing factor `1/2/2` for its font atlas,
+  while the compositor maps the logical surface at `1/1.5/2`. It asserts the
+  same child survives `100% -> 150% -> 200% -> 100%` and restores the original
+  framebuffer, cell, and grid metrics.
 
 Stop desktop services and the VM without deleting either:
 
@@ -235,13 +254,14 @@ separate process. Do not repair the problem with a global `LD_LIBRARY_PATH`.
 
 The local desktop VM is ARM64, XFCE/X11, and software-rendered with llvmpipe.
 Nested Weston now proves the GTK client's native Wayland GL/input/IME path,
-but not a physical Wayland desktop, libinput device, latency, frame pacing,
-fractional scaling, mixed-DPI monitors, or vendor GPU drivers.
+and nested Sway proves fractional scaling over three virtual unlike outputs.
+Neither proves a physical Wayland desktop, libinput device, latency, frame
+pacing, physical mixed-DPI monitors, or vendor GPU drivers.
 
-The remaining Phase 2 checks are scaling and PTY/frame fairness. The minimal
-adjacent WebKitGTK probe passed both display backends. WebKit is not part of
-the terminal-first alpha; the probe exists only to expose loader, GL, focus,
-and dependency conflicts early.
+The remaining Phase 2 check is PTY/frame fairness. The minimal adjacent
+WebKitGTK probe passed both display backends. WebKit is not part of the
+terminal-first alpha; the probe exists only to expose loader, GL, focus, and
+dependency conflicts early.
 
 GTK becomes the production choice only after the complete decision gate
 passes on the support matrix. A concrete technical failure triggers one

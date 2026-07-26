@@ -6,6 +6,7 @@ linux_root="$(cd "$script_dir/../.." && pwd)"
 macos_repo="${KITMUX_MACOS_REPO:-$linux_root/../macos/kitmux}"
 lock_file="$linux_root/source-lock.json"
 destination="$linux_root/.source/reference"
+overlay_dir="$linux_root/kitmux-linux/patches/libkitty"
 expected_commit="e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4"
 reference_tag="macos-linux-port-baseline-2026-07-23"
 
@@ -24,7 +25,7 @@ mkdir -p "$destination"
 git -C "$macos_repo" archive "$reference_tag" libkitty patches \
   | tar -x -C "$destination"
 
-python3 - "$destination" "$lock_file" <<'PY'
+python3 - "$destination" "$lock_file" "$linux_root" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -32,10 +33,36 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 lock = json.loads(pathlib.Path(sys.argv[2]).read_text())
+repo_root = pathlib.Path(sys.argv[3])
 for relative, expected in lock["sha256"].items():
     path = root / relative
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != expected:
         raise SystemExit(f"hash mismatch for {relative}: {actual} != {expected}")
-print(f"materialized and verified {len(lock['sha256'])} locked reference files")
+locked_overlays = lock.get("linux_overlays", {})
+overlay_root = repo_root / "kitmux-linux" / "patches" / "libkitty"
+actual_overlays = {
+    path.relative_to(repo_root).as_posix() for path in overlay_root.glob("*.patch")
+}
+if actual_overlays != set(locked_overlays):
+    missing = sorted(set(locked_overlays) - actual_overlays)
+    extra = sorted(actual_overlays - set(locked_overlays))
+    raise SystemExit(f"Linux overlay lock mismatch: missing={missing}, extra={extra}")
+for relative, expected in locked_overlays.items():
+    path = repo_root / relative
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected:
+        raise SystemExit(
+            f"hash mismatch for Linux overlay {relative}: {actual} != {expected}"
+        )
+print(
+    f"materialized and verified {len(lock['sha256'])} locked reference files "
+    f"and {len(locked_overlays)} Linux overlay"
+)
 PY
+
+for overlay in "$overlay_dir"/*.patch; do
+  [[ -f "$overlay" ]] || continue
+  patch -d "$destination" -p1 --batch <"$overlay"
+  echo "applied Linux overlay: $(basename "$overlay")"
+done

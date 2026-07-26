@@ -2,24 +2,24 @@
 
 **Last inspected:** 2026-07-25
 
-**Implementation state:** Phase 0.4, Phase 1, GTK Slices 2.1 through 2.2D, and
+**Implementation state:** Phase 0.4, Phase 1, GTK Slices 2.1 through 2.2E, and
 Phase 3 Slices 3.1 through 3.2 are closed. Separate Ubuntu ARM64 headless and
 XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
 Linux stress tests, a real one-session GTK 4 terminal host over X11 and native
-Wayland client paths, a deterministic keyboard and input-method harness, an
-authoritative portable contract corpus, and a display-free Rust product model
-with bounded contract and Linux path/file adapters exist. No Linux product
-navigation UI or native package exists yet.
+Wayland client paths, deterministic keyboard, input-method, and fractional
+scaling harnesses, an authoritative portable contract corpus, and a
+display-free Rust product model with bounded contract and Linux path/file
+adapters exist. No Linux product navigation UI or native package exists yet.
 
 **Active tracks:** Phase 2 — rendering and toolkit kill spike; Phase 3 —
 display-free model and compatibility harness.
 
-**Next slices:** Phase 2 Slice 2.2E — **scaling**; Phase 3 Slice 3.3 —
+**Next slices:** Phase 2 Slice 2.2F — **event fairness**; Phase 3 Slice 3.3 —
 **compatibility and safe import**, when separately assigned. Phase 2 was
 reordered on 2026-07-25 so the checks that could disqualify GTK run before the
 expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
 mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
-Phase 2 slices are scaling and event fairness. Phase 3.1 and 3.2 consume the
+Phase 2 slice is event fairness. Phase 3.1 and 3.2 consume the
 applicable frozen Phase 0.4 fixtures and stop before cross-host fixture
 exchange or macOS-state import preview work.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
@@ -59,12 +59,62 @@ listed only in the checkout's local Git exclude file.
   macOS paths.
 - GTK 4 is the first toolkit candidate, not a final choice. The disposable
   host is C to test the direct libkitty/GTK boundary; Rust now owns the
-  display-free product model. Input, scale, display-backend, and event-loop
-  evidence still decide the production UI stack.
+  display-free product model. Event-loop evidence and the complete Slice 2.3
+  gate still decide the production UI stack.
 - The first user-facing target is a terminal-only alpha. Browser panes and
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-07-25 — Slice 2.2E fractional and mixed-output scaling
+
+- Added a deterministic native-Wayland scaling gate under nested Sway 1.11
+  with three X11-backed outputs configured at 100%, 150%, and 200%. The
+  compositor advertises `wp_fractional_scale_manager_v1` and `wp_viewporter`;
+  the test takes its display and runtime paths from the environment.
+- GTK exposes two distinct quantities that cannot be collapsed:
+  `gdk_surface_get_scale()` reported the compositor mapping `1.0`, `1.5`, and
+  `2.0`, while `GtkGLArea` used integer backing-buffer factors `1`, `2`, and
+  `2`. Kitty must build its font atlas against the latter; the compositor
+  downsamples that two-times buffer for the 150% output.
+- Added a narrow, hash-locked Linux overlay on the authoritative tagged
+  libkitty source. `kitty_render_set_scale` rebuilds shared font data at the
+  new backing scale while preserving point size and live sessions;
+  `kitty_render_scale` reports the current backing scale. The overlay SHA-256
+  is recorded in `source-lock.json`, and materialization verifies and applies
+  it after extracting the tagged source rather than maintaining a duplicate
+  libkitty tree.
+- With a fixed 480x270 logical terminal area, exact samples were:
+  100% — framebuffer 480x270, cell 14x27, grid 34x10;
+  150% — framebuffer 960x540, cell 27x54, logical cell 13.5x27, grid 35x10;
+  200% — framebuffer 960x540, cell 27x54, device cell 27x54, grid 35x10.
+  Moving the same window back to 100% restored the original framebuffer,
+  cell, and grid metrics exactly.
+- All four samples contained `recorder-ready` and one unchanged child PID.
+  The renderer rebuilt `1 -> 2 -> 1`, retained the 17-point font size, and
+  clean close reaped the child. This proves the live terminal session survived
+  unlike output scales without atlas or metric drift.
+- GUI-tested:
+  `limactl shell kitmux-linux-desktop --
+  "$PWD/kitmux-linux/scripts/test-desktop.sh"` — every earlier X11, keyboard,
+  Compose/layout, IBus, native Wayland, and WebKitGTK coexistence gate remained
+  green before the new scaling gate passed. Visually inspected evidence is
+  `kitmux-linux/gtk-scale-100-proof.png`,
+  `kitmux-linux/gtk-scale-150-proof.png`, and
+  `kitmux-linux/gtk-scale-200-proof.png`.
+- Source-tested:
+  `limactl shell kitmux-linux --
+  "$PWD/kitmux-linux/scripts/test-headless.sh"` — all six C/C++/ELF/engine/
+  session/stress tests passed in 6.47 seconds plus the Rust/C header layout
+  check. `kitmux-linux/scripts/test-model.sh` also passed all 33 display-free
+  model and contract tests.
+- Package-tested and clean-machine desktop-tested: none. This is ARM64,
+  llvmpipe client rendering under a nested Sway/pixman compositor with virtual
+  outputs. It does not prove physical mixed-DPI monitors, vendor GPUs,
+  simultaneous windows on unlike scales, GNOME/KDE behavior, x86_64,
+  performance, or a distributable GUI layout.
+- Slice 2.2E is closed. Slice 2.2F event fairness is the final remaining
+  Phase 2 kill test; GTK is still only a candidate until Slice 2.3 passes.
 
 ### 2026-07-25 — Slice 3.2 bounded contracts and Linux adapters
 
@@ -640,10 +690,12 @@ clean-machine release evidence.
   control on X11, Compose, dead keys, AltGr, a non-US layout, and a real IBus
   preedit/commit flow on both display backends. It does not prove performance
   or driver behavior. A physical Wayland desktop/libinput path, physical GPU,
-  selection, clipboard/paste, mouse/wheel, search, fractional or mixed-monitor
-  scaling, accessibility, and PTY/frame fairness remain untested. The bounded
-  WebKitGTK coexistence check passed, but browser product behavior remains
-  unimplemented and out of scope for the terminal-first alpha.
+  selection, clipboard/paste, mouse/wheel, search, physical mixed-DPI monitor
+  behavior, accessibility, and PTY/frame fairness remain untested. Fractional
+  and unlike-output scaling passed under nested Sway with virtual outputs; it
+  is correctness evidence, not physical hardware or performance evidence.
+  The bounded WebKitGTK coexistence check passed, but browser product behavior
+  remains unimplemented and out of scope for the terminal-first alpha.
 - Input-method evidence covers one Latin conversion engine. CJK engines,
   candidate windows, and surrounding-text requests are unproven; IBus already
   warns that the host has no surrounding-text capability.
@@ -682,9 +734,11 @@ none is due today.
 - **R1 — the repository cannot be built standalone.**
   `scripts/materialize-reference.sh` requires the private macOS repository at
   `../macos/kitmux` at the baseline tag, and extracts `libkitty/` and
-  `patches/` from it. `kitmux-linux/patches/` is empty in this tree. A clone of
-  this repository alone fails at the first step. Due at the monorepo
-  migration, which is now a Phase 8 prerequisite.
+  `patches/` from it. The hash-locked Linux render-scale overlay is local, but
+  it intentionally patches that authoritative extracted source rather than
+  duplicating libkitty. A clone of this repository alone still fails at the
+  first step. Due at the monorepo migration, which is now a Phase 8
+  prerequisite.
 - **R2 — no automated gate.** Nothing runs on commit. The containerized
   headless gate is already hermetic; only the trigger is missing. Due with the
   first Git remote.
@@ -705,16 +759,16 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22e-prove-scaling)
+Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22f-prove-event-fairness)
 using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-Phase 2 was reordered on 2026-07-25. Slices 2.2A through 2.2D are closed;
-begin with only Slice 2.2E, **scaling**. Prove coordinates, framebuffer size,
-cell metrics, and rendered text at 100%, a fractional scale, and 200%, then
-apply a scale change to a live session without cell-metric drift or session
-loss. Inspect the Kitty render scale against GTK's integer scale APIs before
-choosing a harness mechanism; do not infer fractional correctness from an
-integer widget scale factor.
+Phase 2 was reordered on 2026-07-25. Slices 2.2A through 2.2E are closed;
+begin with only Slice 2.2F, **event fairness**. Measure bounded heartbeat and
+frame latency during sustained PTY output, repeated resize, and multiple
+hidden sessions pumping at once. Prove the GLib main loop does not starve UI
+events and record whether `g_unix_fd_add_full` at `G_PRIORITY_DEFAULT` remains
+defensible. Absolute figures under llvmpipe are diagnostic bounds, not
+physical-GPU performance evidence.
 
 The independently assigned Phase 3.1 and 3.2 lane is also closed. If Phase 3
 is the next assignment instead, begin only Slice 3.3 against

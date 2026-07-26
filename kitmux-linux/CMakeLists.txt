@@ -111,7 +111,7 @@ if(KITMUX_BUILD_GTK_HOST)
 
   add_executable(kitmux_gtk_host src/gtk_terminal_host.c)
   target_link_libraries(kitmux_gtk_host PRIVATE
-    kitmux_key_translation PkgConfig::WEBKITGTK)
+    kitmux_key_translation PkgConfig::WEBKITGTK m)
   target_compile_options(kitmux_gtk_host PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
 

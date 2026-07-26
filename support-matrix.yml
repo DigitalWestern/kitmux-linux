@@ -32,10 +32,12 @@ gtk_host_evidence:
              key-press-release-repeat, key-encoding-live-terminal-state,
              focus-transfer, compose, dead-keys, altgr, non-us-layout, emoji,
              ibus-preedit-commit, native-wayland-client,
-             webkit-coexistence-x11-wayland]
-  unproven: [clipboard, paste, selection, mouse, search, scaling,
+             webkit-coexistence-x11-wayland, fractional-scale-virtual-outputs,
+             live-cross-output-scale-change]
+  unproven: [clipboard, paste, selection, mouse, search,
              physical-gpu, fairness, packaging, cjk-conversion-engines,
-             surrounding-text, physical-wayland-libinput]
+             surrounding-text, physical-wayland-libinput, physical-mixed-dpi,
+             simultaneous-unlike-scale-windows]
   wayland_evidence:
     compositor: Weston 14.0.2 nested with its X11 backend and no Xwayland
     client_backend: GdkWaylandDisplay
@@ -63,11 +65,21 @@ gtk_host_evidence:
     loader_boundary: isolated libpython; distro WebKitGTK, JavaScriptCoreGTK, and GTK
     install_observation: 43 packages and 166 MB added to the development VM
     limitation: coexistence proof only; no browser product or package claim
-  toolkit_decision: pending scale and fairness checks
+  scaling_evidence:
+    compositor: Sway 1.11 nested with three X11 outputs and pixman rendering
+    protocols: [wp_fractional_scale_manager_v1, wp_viewporter]
+    surface_scales: [1.0, 1.5, 2.0]
+    gl_backing_factors: [1, 2, 2]
+    logical_terminal_size: 480x270
+    exact_framebuffers: [480x270, 960x540, 960x540]
+    exact_cells: [14x27, 27x54, 27x54]
+    live_sequence: 100%-150%-200%-100%; one child PID; original metrics restored
+    limitation: virtual nested outputs and software rendering, not physical mixed-DPI or performance
+  toolkit_decision: pending event-fairness and complete Slice 2.3 checks
   # Phase 2 reordered 2026-07-25: the checks that could disqualify GTK now run
   # first, as Slices 2.2C-2.2F. Selection, clipboard, paste, mouse, wheel, and
   # search moved to Phase 4 Slice 4.2 as product work.
-  remaining_kill_tests: [scaling, event-fairness]
+  remaining_kill_tests: [event-fairness]
   moved_to_phase_4: [selection, clipboard, paste-safety, mouse, wheel, search]
   physical_gpu: deferred to Phase 6; llvmpipe proves correctness, not drivers
 
@@ -97,16 +109,16 @@ environments:
     support: development
     image: Ubuntu 26.04 LTS cloud image 20260720
     architecture: aarch64
-    desktop: XFCE 4.20 over TigerVNC/noVNC with nested Weston 14.0.2
+    desktop: XFCE 4.20 over TigerVNC/noVNC with nested Weston 14.0.2 and Sway 1.11
     display_backends: [x11, wayland]
     gpu: Mesa llvmpipe software renderer
     compiler: GCC 15.2
     python: 3.14.6
     toolkit: GTK 4.22.4
     packages: []
-    input_tools: [xdotool, libxtst-dev, ibus, weston]
+    input_tools: [xdotool, libxtst-dev, ibus, weston, sway, wayland-info, grim]
     webkit: WebKitGTK 2.52.3
-    purpose: local visible GTK, GtkGLArea, WebKitGTK, input, and desktop integration tests
+    purpose: local visible GTK, GtkGLArea, WebKitGTK, input, scaling, and desktop integration tests
 
   - id: ubuntu-26.04-x86_64-gnome
     support: tier-1

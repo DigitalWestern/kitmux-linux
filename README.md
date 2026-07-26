@@ -14,7 +14,7 @@ reviewed session.
 | Platform | Current state |
 | --- | --- |
 | macOS | Daily-driver application for macOS 13+ on Apple silicon. Terminal, navigation, persistence, settings, local control, SSH, browser panes, reliability gates, and local arm64 packaging exist. Public distribution still needs Developer ID signing, notarization, stapling, and real macOS 13 hardware qualification. |
-| Linux | Experimental, GPL-3.0-only. Phase 1 and GTK Slices 2.1 through 2.2D are complete: the engine passes headless and clean-runtime gates; one real terminal renders, accepts deterministic keyboard/IME input, and closes correctly in GTK 4 over X11 and native Wayland with Mesa llvmpipe; and a bounded WebKitGTK coexistence probe passed both backends without GL, loader, or focus conflict. Scaling, fairness, selection/clipboard/mouse/search, x86_64, physical-GPU behavior, browser product behavior, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. |
+| Linux | Experimental, GPL-3.0-only. Phase 1 and GTK Slices 2.1 through 2.2E are complete: the engine passes headless and clean-runtime gates; one real terminal renders, accepts deterministic keyboard/IME input, and closes correctly in GTK 4 over X11 and native Wayland with Mesa llvmpipe; the bounded WebKitGTK coexistence probe passed both backends; and fractional scaling passed across virtual 100%/150%/200% outputs without session loss. Event fairness, selection/clipboard/mouse/search, x86_64, physical-GPU and mixed-DPI hardware behavior, browser product behavior, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. |
 
 Linux is not yet a production application or downloadable desktop package.
 GTK is the leading toolkit candidate, not a final selection.
@@ -75,10 +75,11 @@ control, SSH, reliability, and soak gates required for changes in those areas.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK
 run before the expensive ones that almost certainly cannot.
 
-1. Finish the remaining Phase 2 kill tests: scaling and event fairness. Select
-   GTK only if they pass.
-2. Build the pure Linux product model against the frozen shared portable
-   fixtures. This is the critical path to a shippable alpha.
+1. Finish the final Phase 2 kill test, event fairness, then run the complete
+   toolkit decision gate.
+2. Continue the pure Linux product-model compatibility/import lane only when
+   separately assigned; its model and bounded contract adapters already
+   consume the frozen portable fixtures.
 3. Build the terminal-first desktop alpha, including the selection, clipboard,
    paste-safety, mouse, and search behavior that moved out of Phase 2.
 4. Add multiplexer behavior, reliability, and native packages.

@@ -1,0 +1,173 @@
+diff --git a/libkitty/include/libkitty.h b/libkitty/include/libkitty.h
+index 62dfcce..5df61bf 100644
+--- a/libkitty/include/libkitty.h
++++ b/libkitty/include/libkitty.h
+@@ -200,6 +200,14 @@ double kitty_render_font_size(kitty_engine *e);
+ bool kitty_render_set_font_size(kitty_engine *e, double font_size_points,
+                                 int *cell_width_px, int *cell_height_px,
+                                 char *errbuf, size_t errbuf_len);
++// Replace shared font data at a new backing scale while preserving the
++// configured point size and all live sessions. Requires the host GL context.
++// Reports the new backing-pixel cell size.
++bool kitty_render_set_scale(kitty_engine *e, double scale,
++                            int *cell_width_px, int *cell_height_px,
++                            char *errbuf, size_t errbuf_len);
++// Current renderer backing scale, or 0 before render initialization.
++double kitty_render_scale(kitty_engine *e);
+
+ // Per-view sizing: call after render init and again on every view resize,
+ // GL context current. Sizes the render viewport AND resizes the terminal
+diff --git a/libkitty/py/glue.py b/libkitty/py/glue.py
+index 4c94404..e35d8a1 100644
+--- a/libkitty/py/glue.py
++++ b/libkitty/py/glue.py
+@@ -1048,21 +1048,29 @@ def render_init(scale):
+     return opts.font_size, cw, ch
+
+
+-def render_set_font_size(size):
++def _replace_fonts(size, scale):
+     from kitty import fast_data_types as fdt
+     # load_fonts_data may trim/move the previous font group. Drop every stub
+     # that points into that group before asking kitty for its replacement.
+     sessions = tuple(_sessions)
+     for session in sessions:
+         session.stub = None
+-    dpi = 96.0 * _render['scale']
++    dpi = 96.0 * scale
+     cap, cw, ch = fdt.libkitty_create_fonts_data(size, dpi, dpi)
+-    _render.update(cap=cap, size=size, cw=cw, ch=ch)
++    _render.update(cap=cap, size=size, scale=scale, cw=cw, ch=ch)
+     for session in sessions:
+         fdt.libkitty_set_screen_cell_size(session.screen, cw, ch)
+     return cw, ch
+
+
++def render_set_font_size(size):
++    return _replace_fonts(size, _render['scale'])
++
++
++def render_set_scale(scale):
++    return _replace_fonts(_render['size'], scale)
++
++
+ def set_viewport(session, fb_w, fb_h):
+     # v0 behavior: the session fills the whole framebuffer.
+     set_geometry(session, fb_w, fb_h, 0, 0, fb_w, fb_h)
+diff --git a/libkitty/src/internal.h b/libkitty/src/internal.h
+index 504e0af..6844b15 100644
+--- a/libkitty/src/internal.h
++++ b/libkitty/src/internal.h
+@@ -13,6 +13,7 @@ struct kitty_engine {
+     bool render_ready;
+     int cell_w, cell_h;      // pixels, valid once render_ready
+     double font_size;        // points, valid once render_ready
++    double render_scale;     // backing pixels per logical pixel
+ };
+
+ struct kitty_session {
+diff --git a/libkitty/src/render.c b/libkitty/src/render.c
+index f3c3a72..a576f67 100644
+--- a/libkitty/src/render.c
++++ b/libkitty/src/render.c
+@@ -11,11 +11,13 @@ kitty_render_init(kitty_engine *e, double scale,
+                   int *cell_width_px, int *cell_height_px,
+                   char *errbuf, size_t errbuf_len) {
+     if (errbuf && errbuf_len) errbuf[0] = 0;
+-    if (!e) return false;
++    if (!e || !isfinite(scale) || scale <= 0.0) {
++        if (errbuf && errbuf_len) snprintf(errbuf, errbuf_len, "scale must be finite and positive");
++        return false;
++    }
+     if (e->render_ready) {
+-        if (cell_width_px) *cell_width_px = e->cell_w;
+-        if (cell_height_px) *cell_height_px = e->cell_h;
+-        return true;
++        return kitty_render_set_scale(e, scale, cell_width_px, cell_height_px,
++                                      errbuf, errbuf_len);
+     }
+     PyGILState_STATE g = PyGILState_Ensure();
+     PyObject *r = PyObject_CallMethod(e->glue, "render_init", "d", scale);
+@@ -24,6 +26,7 @@ kitty_render_init(kitty_engine *e, double scale,
+         e->font_size = PyFloat_AsDouble(PyTuple_GET_ITEM(r, 0));
+         e->cell_w = (int)PyLong_AsLong(PyTuple_GET_ITEM(r, 1));
+         e->cell_h = (int)PyLong_AsLong(PyTuple_GET_ITEM(r, 2));
++        e->render_scale = scale;
+         e->render_ready = ok = true;
+     } else if (!r) {
+         lk_format_py_error(errbuf, errbuf_len);
+@@ -42,6 +45,11 @@ kitty_render_font_size(kitty_engine *e) {
+     return e && e->render_ready ? e->font_size : 0.0;
+ }
+
++double
++kitty_render_scale(kitty_engine *e) {
++    return e && e->render_ready ? e->render_scale : 0.0;
++}
++
+ bool
+ kitty_render_set_font_size(kitty_engine *e, double font_size_points,
+                            int *cell_width_px, int *cell_height_px,
+@@ -79,6 +87,48 @@ kitty_render_set_font_size(kitty_engine *e, double font_size_points,
+ }
+
+ bool
++kitty_render_set_scale(kitty_engine *e, double scale,
++                       int *cell_width_px, int *cell_height_px,
++                       char *errbuf, size_t errbuf_len) {
++    if (errbuf && errbuf_len) errbuf[0] = 0;
++    if (!e || !e->render_ready) {
++        if (errbuf && errbuf_len) snprintf(errbuf, errbuf_len, "renderer is not initialized");
++        return false;
++    }
++    if (!isfinite(scale) || scale <= 0.0) {
++        if (errbuf && errbuf_len) snprintf(errbuf, errbuf_len, "scale must be finite and positive");
++        return false;
++    }
++    if (fabs(scale - e->render_scale) < 0.000001) {
++        if (cell_width_px) *cell_width_px = e->cell_w;
++        if (cell_height_px) *cell_height_px = e->cell_h;
++        return true;
++    }
++    PyGILState_STATE g = PyGILState_Ensure();
++    PyObject *r = PyObject_CallMethod(e->glue, "render_set_scale", "d", scale);
++    bool ok = false;
++    if (r && PyTuple_Check(r) && PyTuple_GET_SIZE(r) == 2) {
++        int cell_w = (int)PyLong_AsLong(PyTuple_GET_ITEM(r, 0));
++        int cell_h = (int)PyLong_AsLong(PyTuple_GET_ITEM(r, 1));
++        if (!PyErr_Occurred() && cell_w > 0 && cell_h > 0) {
++            e->render_scale = scale;
++            e->cell_w = cell_w;
++            e->cell_h = cell_h;
++            ok = true;
++        }
++    }
++    if (!ok && PyErr_Occurred()) lk_format_py_error(errbuf, errbuf_len);
++    else if (!ok && errbuf && errbuf_len) snprintf(errbuf, errbuf_len, "invalid font metrics");
++    Py_XDECREF(r);
++    PyGILState_Release(g);
++    if (ok) {
++        if (cell_width_px) *cell_width_px = e->cell_w;
++        if (cell_height_px) *cell_height_px = e->cell_h;
++    }
++    return ok;
++}
++
++bool
+ kitty_session_set_viewport(kitty_session *s, int fb_width_px, int fb_height_px) {
+     return kitty_session_set_geometry(s, fb_width_px, fb_height_px,
+                                       0, 0, fb_width_px, fb_height_px);
+diff --git a/libkitty/tests/test_engine.c b/libkitty/tests/test_engine.c
+index 6913ac2..512bf23 100644
+--- a/libkitty/tests/test_engine.c
++++ b/libkitty/tests/test_engine.c
+@@ -12,6 +12,10 @@ int main(void) {
+     if (!e) { fprintf(stderr, "init failed: %s\n", err); return 1; }
+     assert(kitty_render_font_size(e) == 0.0);
++    assert(kitty_render_scale(e) == 0.0);
++    int cell_width = 0, cell_height = 0;
++    assert(!kitty_render_set_scale(e, 2.0, &cell_width, &cell_height,
++                                   err, sizeof err));
+     kitty_engine_shutdown(e);
+     printf("engine lifecycle OK\n");
+     return 0;
