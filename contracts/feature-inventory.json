@@ -1,12 +1,13 @@
 {
   "schema_version": 2,
   "reference_tag": "macos-linux-port-baseline-2026-07-23",
-  "updated": "2026-07-25",
+  "updated": "2026-07-28",
   "notes": {
     "granularity": "Schema 2 decomposed the original 16 subsystem rows into per-behavior rows. At subsystem granularity a Phase 9 parity claim was unfalsifiable: an entire area could be marked shipped while half of it was missing. Every row here states one observable behavior and names the macOS test that pins it.",
-    "macos_tests": "Entries using file::testName name a real test function in the tagged baseline. Entries naming only a file mean the behavior is covered by that file but has not yet been pinned to specific cases; tightening those is ordinary upkeep.",
+    "macos_tests": "An entry is `path` or `path::anchor`. An anchor names a Swift, Python, or C function definition, or — for the monolithic C gates, which are one main() with no per-case functions — the `// vN.M feature` comment that labels the block asserting that behavior. `contracts/validate-inventory.py` resolves every anchor against the macOS checkout; a bare `path` means the whole file is the case (test_engine.c) or that no finer anchor exists in it. All anchors here were resolved by hand against tag macos-linux-port-baseline-2026-07-23 on 2026-07-28.",
     "linux_status": "'unproven' is the default and is not a defect. Statuses are claims of evidence and must match PORT_STATUS.md; a status here without a PORT_STATUS entry is a bug.",
-    "areas": "The 17 area IDs are the schema 1 rows, retained so earlier references resolve."
+    "areas": "The 17 area IDs are the schema 1 rows, retained so earlier references resolve.",
+    "macos_test_gaps": "The 2026-07-28 anchor pass emptied four rows whose file-level claim did not hold: the named file exists but asserts nothing about that behavior at the tag. render.gl-state-isolation: no glGet call exists anywhere in the baseline, because the macOS host is the only GL client and has no foreign state to preserve. render.scale-correctness: backingScaleFactor appears only in TerminalView sources, never in a test or smoke. render.init-failure-visible: no smoke asserts the diagnostic surface. keyboard.press-release-repeat: AppKit delivers no key-up to the terminal, so the release and repeat paths are Linux-only behavior with no macOS counterpart. For these four, Phase 9 parity must be argued against macOS sources and the Linux gate, not against a macOS test. Partial anchors, recorded so they are not read as full coverage: keyboard.focus-ownership pins pane focus via runControlSmoke but nothing asserts the terminal owns Tab; hierarchy.hidden-vs-visible pins fair pumping but nothing asserts a hidden pane skips layout and draw."
   },
   "classifications": {
     "terminal-alpha": "Required for the first Linux terminal alpha.",
@@ -170,7 +171,7 @@
         "libkitty/src/session.c"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_render_smoke.c::v0.8 app-wide font reconfiguration"
       ],
       "linux_acceptance": "Resize a live session across many sizes, including degenerate ones, and confirm TIOCSWINSZ and screen geometry agree.",
       "dependencies": [
@@ -249,8 +250,11 @@
         "macos/KitmuxApp/Sources/KitmuxCore/BellPolicy.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c",
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/BellPolicyTests.swift"
+        "libkitty/tests/test_session.c::v0.9 notifications",
+        "libkitty/tests/test_session.c::v0.11 user vars",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/BellPolicyTests.swift::testViewedPaneUsesAudioAndVisualButNeverHostOrTabAlerts",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/BellPolicyTests.swift::testHiddenPaneUsesHostNotificationOnlyWhenEnabled",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runBellSmoke"
       ],
       "linux_acceptance": "Each OSC surface fires its callback with the expected payload, and bell policy maps to the configured audible/visual response.",
       "dependencies": [
@@ -290,9 +294,7 @@
       "macos_sources": [
         "libkitty/src/render.c"
       ],
-      "macos_tests": [
-        "libkitty/tests/test_render_smoke.c"
-      ],
+      "macos_tests": [],
       "linux_acceptance": "Capture, draw, restore, re-capture, and byte-compare the tracked GL state; any divergence is a visible failure.",
       "dependencies": [
         "render.live-frame"
@@ -309,7 +311,7 @@
         "libkitty/src/render.c"
       ],
       "macos_tests": [
-        "libkitty/tests/test_render_smoke.c"
+        "libkitty/tests/test_render_smoke.c::v0.8 app-wide font reconfiguration"
       ],
       "linux_acceptance": "Two or more framebuffer sizes applied to a live session preserve scrollback and cursor position.",
       "dependencies": [
@@ -328,9 +330,7 @@
         "libkitty/src/render.c",
         "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"
       ],
-      "macos_tests": [
-        "libkitty/tests/test_render_smoke.c"
-      ],
+      "macos_tests": [],
       "linux_acceptance": "Exact framebuffer and cell assertions at 100%, a fractional scale, and 200%, plus one live move between unlike monitor scales.",
       "dependencies": [
         "render.live-frame"
@@ -346,9 +346,7 @@
       "macos_sources": [
         "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"
       ],
-      "macos_tests": [
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift"
-      ],
+      "macos_tests": [],
       "linux_acceptance": "A run with a deliberately broken runtime shows a specific diagnostic naming the failed stage.",
       "dependencies": [
         "render.live-frame"
@@ -384,7 +382,8 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalPumpScheduler.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/FairReadyQueueTests.swift"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/FairReadyQueueTests.swift::testContinuouslyReadyItemsRotateFairly",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/FairReadyQueueTests.swift::testTurnBudgetLeavesRemainingWorkQueued"
       ],
       "linux_acceptance": "Bounded, recorded heartbeat and frame latency during flood, repeated resize, and several hidden sessions pumping at once.",
       "dependencies": [
@@ -407,8 +406,10 @@
         "macos/KitmuxApp/Sources/Kitmux/KeyTranslator.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_keys.py",
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_keys.py::test_legacy_encodings",
+        "libkitty/tests/test_keys.py::test_kitty_protocol_flag_stack",
+        "libkitty/tests/test_keys.py::test_vim_decckm_and_movement",
+        "libkitty/tests/test_session.c::v0.1 key encoding"
       ],
       "linux_acceptance": "A fixed key matrix produces exact expected bytes in the default state, under DECCKM, and under keyboard-protocol flags, with expectations derived from Kitty's pinned key_encoding.c.",
       "dependencies": [
@@ -429,9 +430,7 @@
       "macos_sources": [
         "macos/KitmuxApp/Sources/Kitmux/KeyTranslator.swift"
       ],
-      "macos_tests": [
-        "libkitty/tests/test_keys.py"
-      ],
+      "macos_tests": [],
       "linux_acceptance": "Press, repeat, and release each carry distinct bytes end to end under the kitty keyboard protocol, and no bytes under the legacy protocol.",
       "dependencies": [
         "keyboard.encoding"
@@ -452,7 +451,7 @@
         "macos/KitmuxApp/Sources/Kitmux/KeyTranslator.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_keys.py"
+        "libkitty/tests/test_keys.py::test_legacy_encodings"
       ],
       "linux_acceptance": "A non-US layout and an AltGr level report the correct base key with no spurious modifier bit.",
       "dependencies": [
@@ -474,7 +473,7 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalView+TextInput.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_keys.py"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runIMESmoke"
       ],
       "linux_acceptance": "Compose sequences, dead keys, and an engine conversion produce a visible preedit at the cursor cell and commit the expected UTF-8.",
       "dependencies": [
@@ -496,7 +495,7 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runControlSmoke"
       ],
       "linux_acceptance": "Focus transfer to an ordinary toolkit control is observable; the terminal child receives nothing while unfocused and resumes on refocus.",
       "dependencies": [
@@ -560,7 +559,8 @@
         "macos/KitmuxApp/Sources/Kitmux/ScrollbackStore.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::v0.4 scrollback",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runScrollbackSaveStage"
       ],
       "linux_acceptance": "Two sessions retain independent scroll position across focus changes; clear-scrollback affects only the target session.",
       "dependencies": [
@@ -578,7 +578,8 @@
         "libkitty/include/libkitty.h"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::v0.5 selection",
+        "libkitty/tests/test_session.c::v0.12 word/line selection"
       ],
       "linux_acceptance": "Two sessions hold independent selections; extracted selection text matches the rendered cells including wrapped lines.",
       "dependencies": [
@@ -597,7 +598,8 @@
         "libkitty/py/glue.py"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::v0.10 search",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runSearchSmoke"
       ],
       "linux_acceptance": "Two sessions hold independent search state; markers appear and clear on cancel.",
       "dependencies": [
@@ -638,7 +640,8 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::v0.7 mouse reporting",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runMouseSmoke"
       ],
       "linux_acceptance": "Press, release, drag, and hover produce reporting bytes in reporting mode and local selection otherwise; Shift preserves local selection and scrolling in both.",
       "dependencies": [
@@ -657,7 +660,8 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::v0.7 mouse reporting",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runMouseSmoke"
       ],
       "linux_acceptance": "Discrete wheel and smooth touchpad deltas both scroll correctly and do not interrupt PTY pumping.",
       "dependencies": [
@@ -795,7 +799,7 @@
         "macos/KitmuxApp/Sources/Kitmux/PaneRuntime.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/FairReadyQueueTests.swift"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/FairReadyQueueTests.swift::testContinuouslyReadyItemsRotateFairly"
       ],
       "linux_acceptance": "Hidden sessions receive output and fire no layout or draw; making one visible shows the accumulated output without loss.",
       "dependencies": [
@@ -820,7 +824,8 @@
       "macos_tests": [
         "macos/KitmuxApp/Tests/KitmuxCoreTests/SplitTreeTests.swift::testNestedSplitsKeepDepthFirstPaneOrder",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/SplitTreeTests.swift::testTreeRoundTripsThroughCodableRepresentation",
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/SplitTreeTests.swift::testRemovingUnknownPaneLeavesTreeUnchanged"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/SplitTreeTests.swift::testRemovingUnknownPaneLeavesTreeUnchanged",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/PortableContractFixtureTests.swift::testLinuxProducedPortableFixturesWhenProvided"
       ],
       "linux_acceptance": "Frozen split fixtures produce the same leaf order and re-encode byte-identically; removing an unknown pane is a no-op.",
       "dependencies": [
@@ -831,7 +836,7 @@
         "kitmux-linux/rust/model/tests/model_tests.rs::split_tree_preserves_depth_first_order_and_collapses_on_close",
         "kitmux-linux/rust/model/tests/model_tests.rs::frozen_split_fixture_drives_linux_close_behavior"
       ],
-      "linux_status": "depth-first order, close collapse, unknown-pane no-op, and frozen Linux split-fixture close behavior proven in Slice 3.1; byte-identical re-encoding and cross-host leaf-order comparison to macOS remain unproven for Slice 3.3"
+      "linux_status": "depth-first order, close collapse, unknown-pane no-op, frozen canonical re-encoding, and cross-host macOS consumption with matching leaf order proven in Slices 3.1 and 3.3"
     },
     {
       "id": "splits.layout-arithmetic",
@@ -942,7 +947,7 @@
         "contracts.command-ids"
       ],
       "translation": "Command IDs are contract; their key chords are not.",
-      "linux_status": "exact 38-ID order and semantic-action mapping proven display-free in Slice 3.2; palette ranking remains product work"
+      "linux_status": "exact 38-ID order, semantic-action mapping, and macOS consumption of the Linux-produced catalog proven display-free in Slices 3.2 and 3.3; palette ranking remains product work"
     },
     {
       "id": "navigation.namespaced-chords",
@@ -975,14 +980,18 @@
       "macos_tests": [
         "macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift::testRoundTripPreservesEverything",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift::testFrozenV1FixtureAlwaysDecodes",
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift::testSurfaceStacksRoundTripAndValidateWithoutVersionBump"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift::testSurfaceStacksRoundTripAndValidateWithoutVersionBump",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/PortableContractFixtureTests.swift::testLinuxProducedPortableFixturesWhenProvided"
       ],
       "linux_acceptance": "Linux round-trips every frozen v1 fixture byte-identically, and macOS consumes Linux-produced fixtures.",
       "dependencies": [
         "contracts.snapshot-v1"
       ],
       "translation": "Values only; no platform paths in the portable fixture.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_state_snapshot_corpus_accepts_repairs_and_rejects"
+      ],
+      "linux_status": "canonical v1 state values round-trip without loss on Linux and macOS consumes Linux-produced state values in Slice 3.3"
     },
     {
       "id": "persistence.validation-and-repair",
@@ -1004,7 +1013,7 @@
         "persistence.round-trip"
       ],
       "translation": "None.",
-      "linux_status": "frozen accept, repair, and reject cases plus structural bounds proven on Linux in Slice 3.2; cross-host fixture exchange remains Slice 3.3"
+      "linux_status": "frozen accept, repair, and reject cases plus structural bounds proven on Linux in Slice 3.2; macOS consumption of Linux-normalized accepted and repaired state values proven in Slice 3.3"
     },
     {
       "id": "persistence.version-probe",
@@ -1023,7 +1032,10 @@
         "persistence.round-trip"
       ],
       "translation": "None.",
-      "linux_status": "legacy normalization and newer-version rejection proven in the Linux codec in Slice 3.2; untouched import-preview handling remains Slice 3.3"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::import_preview_rejects_newer_state_without_rewriting_and_bounds_inputs"
+      ],
+      "linux_status": "legacy normalization and newer-version rejection proven in the Linux codec in Slice 3.2; Slice 3.3 proves the preview leaves newer-version source bytes untouched, while deterministic legacy ID migration remains product import work"
     },
     {
       "id": "persistence.inert-resume-commands",
@@ -1037,14 +1049,19 @@
       "macos_tests": [
         "macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift::testValidationOfResumeCommands",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/StateSnapshotTests.swift::testPaneDetailResumeCommandRoundTripsAndOldFixtureDecodes",
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/ResumeCommandSelectionPolicyTests.swift"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/ResumeCommandSelectionPolicyTests.swift::testUnselectedRowsNeverExecute",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/ResumeCommandSelectionPolicyTests.swift::testUnknownUndisplayedRowCannotBeSelectedOrExecuted"
       ],
       "linux_acceptance": "No load, import, or restore path executes saved command text; every command is presented unchecked for explicit review and revalidated immediately before execution.",
       "dependencies": [
         "persistence.round-trip"
       ],
       "translation": "This is a security invariant, not a feature. It must hold for the macOS-state import preview too.",
-      "linux_status": "resume text is inert bounded data in the Slice 3.2 codec; import preview and explicit execution-review paths remain unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::resume_command_bound_is_utf8_bytes_and_rejects_controls",
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::macos_state_import_preview_is_read_only_translates_paths_and_keeps_commands_inert"
+      ],
+      "linux_status": "resume text is inert bounded data in the Slice 3.2 codec; Slice 3.3 reports valid commands as requiring explicit approval and proves preview neither executes them nor changes source bytes; execution-time revalidation remains Phase 6 product work"
     },
     {
       "id": "persistence.atomic-writes",
@@ -1055,7 +1072,9 @@
         "macos/KitmuxApp/Sources/Kitmux/StatePersistence.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsStoreTests.swift"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsStoreTests.swift::testSaveWritesPrettySortedJSONWithVersion",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsStoreTests.swift::testBrokenExternalWriteKeepsCurrentAndNeverQuarantines",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsStoreTests.swift::testMalformedJSONIsQuarantinedAtLaunch"
       ],
       "linux_acceptance": "Missing, corrupt, newer-schema, read-only, and full-disk cases behave per contract, and file-watcher recovery survives rename/replacement.",
       "dependencies": [
@@ -1073,7 +1092,8 @@
         "macos/KitmuxApp/Sources/Kitmux/ModelSnapshotCoordinator.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/NewSessionCwdPolicyTests.swift"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/NewSessionCwdPolicyTests.swift::testEnabledInheritanceKeepsAnExistingAbsoluteDirectory",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/NewSessionCwdPolicyTests.swift::testInvalidInheritedDirectoriesFallBackToHome"
       ],
       "linux_acceptance": "Restoring a snapshot launches new children in the recorded safe cwd, with no command executed.",
       "dependencies": [
@@ -1101,7 +1121,7 @@
         "XDG config paths"
       ],
       "translation": "Exclude macOS window chrome, launch-at-login, and AppKit shortcut encodings.",
-      "linux_status": "all 17 portable keys, types, ranges, defaults, invalid fallbacks, and unknown-key exclusion proven in Slice 3.2"
+      "linux_status": "all 17 portable keys, types, ranges, defaults, invalid fallbacks, unknown-key exclusion, and macOS consumption of Linux-produced settings proven in Slices 3.2 and 3.3"
     },
     {
       "id": "settings.store-durability",
@@ -1155,7 +1175,8 @@
         "libkitty/src/session.c"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::test_foreground_process_signal",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runProcessCloseSmoke"
       ],
       "linux_acceptance": "Foreground, stopped-foreground, and background-only job cases classify identically to the macOS matrix.",
       "dependencies": [
@@ -1215,7 +1236,8 @@
         "libkitty/src/session.c"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runGUIStressSmoke",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runProcessCloseSmoke"
       ],
       "linux_acceptance": "24 forced-close cycles leave no live children, no zombies, and an exact file-descriptor baseline.",
       "dependencies": [
@@ -1236,7 +1258,8 @@
         "libkitty/include/libkitty.h"
       ],
       "macos_tests": [
-        "libkitty/tests/test_session.c"
+        "libkitty/tests/test_session.c::v0.3 paste",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runDailySmoke"
       ],
       "linux_acceptance": "A copy/paste round trip completes under both display backends while a session floods output.",
       "dependencies": [
@@ -1255,7 +1278,10 @@
         "macos/KitmuxApp/Sources/Kitmux/NativeNotificationPoster.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/NotificationBadgeTests.swift"
+        "libkitty/tests/test_session.c::v0.9 notifications",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/NotificationBadgeTests.swift::testZeroAndNegativeCountsClearTheBadge",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/NotificationBadgeTests.swift::testCountsAboveNineAreCapped",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runNotifySmoke"
       ],
       "linux_acceptance": "OSC notifications post through GIO or the portal, and unread state clears on focus per the badge fixture matrix.",
       "dependencies": [
@@ -1282,7 +1308,7 @@
         "contracts.control-v1"
       ],
       "translation": "Values and bounds are contract; the socket address is not.",
-      "linux_status": "shared request fixtures, newline framing, method catalog, response invariants, error codes, and byte bounds proven in Slice 3.2"
+      "linux_status": "shared request fixtures, newline framing, method catalog, response invariants, error codes, byte bounds, and macOS consumption of Linux-produced requests proven in Slices 3.2 and 3.3"
     },
     {
       "id": "control.socket-identity",
@@ -1362,7 +1388,11 @@
         "ssh.argv-never-shell"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_ssh_corpus_validates_documents_and_builds_data_only_review",
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields"
+      ],
+      "linux_status": "recorded ssh -G parsing, review contents, fingerprint, external-forward approval, unknown-field preservation, and macOS consumption of Linux-produced review data proven display-free in Slice 3.3; live SSH resolution and edit-driven approval clearing remain Phase 6 work"
     },
     {
       "id": "ssh.store-safety",
@@ -1383,7 +1413,10 @@
         "persistence.atomic-writes"
       ],
       "translation": "Keep secrets and expanded private arguments out of structured diagnostics.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields"
+      ],
+      "linux_status": "bounded profile documents, duplicate ID/name rejection, invalid command rejection, and unknown-field round-trip proven in Slice 3.3; no Linux SSH store, quarantine, or concurrent mutation path is claimed before Phase 6"
     },
     {
       "id": "browser.owned-session",
@@ -1395,7 +1428,8 @@
         "macos/KitmuxApp/Sources/KitmuxCore/BrowserNavigation.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Tests/KitmuxCoreTests/BrowserNavigationTests.swift"
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/BrowserNavigationTests.swift::testResolverRejectsEmbeddedNonWebSchemesAndOversizedInput",
+        "macos/KitmuxApp/Tests/KitmuxCoreTests/BrowserNavigationTests.swift::testPersistedURLAllowsOnlyBoundedHTTPAndHTTPS"
       ],
       "linux_acceptance": "Mixed and browser-only layouts pass under both display backends; web-process failure cannot crash or corrupt the workspace; unsupported operations fail visibly.",
       "dependencies": [

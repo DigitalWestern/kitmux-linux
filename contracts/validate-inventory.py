@@ -16,6 +16,7 @@ Exits non-zero on any failure.
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 VALID_CLASSIFICATIONS = {
@@ -26,6 +27,49 @@ REQUIRED_FIELDS = (
     "macos_tests", "linux_acceptance", "dependencies", "translation",
     "linux_status",
 )
+
+
+# A reference that exists only past the baseline tag has to say why. Phase 3.3's
+# cross-host consumer test is the one intentional case: it was added on macOS
+# after the freeze, and the reference-drift report already records that commit.
+POST_BASELINE_ALLOWED = {
+    "macos/KitmuxApp/Tests/KitmuxCoreTests/PortableContractFixtureTests.swift":
+        "Phase 3.3 cross-host consumer test, added by the recorded post-baseline "
+        "commit; see the drift report in PORT_STATUS.md.",
+}
+
+
+def tagged_reader(macos: pathlib.Path, tag: str):
+    """Return read(path) -> text at `tag`, or None when the path is absent."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", "-C", str(macos), *args], capture_output=True, text=True)
+
+    if git("rev-parse", "--verify", f"{tag}^{{commit}}").returncode != 0:
+        print(f"{macos} is not a checkout carrying {tag}; "
+              "falling back to its working tree.")
+        return lambda path: (
+            (macos / path).read_text() if (macos / path).exists() else None)
+
+    def read(path: str) -> str | None:
+        done = git("show", f"{tag}:{path}")
+        return done.stdout if done.returncode == 0 else None
+
+    return read
+
+
+def anchored(text: str, anchor: str) -> bool:
+    """Does `anchor` name something real in this file?
+
+    A function definition in any of the three languages the baseline uses, or —
+    for the two C gates, which are one main() with no per-case functions — the
+    `// vN.M feature` comment labelling the block that asserts the behavior.
+    A definition name never contains a space, so the two forms cannot collide.
+    """
+    if " " in anchor:
+        return f"// {anchor}" in text
+    name = re.escape(anchor)
+    return bool(re.search(rf"(func|def|static\s+void)\s+{name}\b", text))
 
 
 def main() -> int:
@@ -99,23 +143,43 @@ def main() -> int:
         print(f"macOS baseline not found at {macos}; skipped reference checks.")
         print("Pass its path as the first argument to check them.")
     else:
+        # Read at the locked tag, not the working tree. The checkout is allowed
+        # to be ahead of the baseline, and a reference that resolves only
+        # against newer macOS work is exactly the silent claim this checks for.
+        tag = document["reference_tag"]
+        read = tagged_reader(macos, tag)
         resolved = 0
+        post_baseline: set[str] = set()
+        unverified: set[str] = set()
         for feature in features:
             refs = feature.get("macos_sources", []) + feature.get("macos_tests", [])
             for ref in refs:
                 path, _, test_name = ref.partition("::")
-                target = macos / path
-                if not target.exists():
-                    failures.append(f"{feature['id']}: missing {path}")
+                text = read(path)
+                if text is None and path in POST_BASELINE_ALLOWED:
+                    # Declared as newer than the baseline on purpose. Check it
+                    # against the working tree when this checkout has it, and
+                    # say so out loud when it cannot be checked at all.
+                    if (macos / path).exists():
+                        text = (macos / path).read_text()
+                        post_baseline.add(path)
+                    else:
+                        unverified.add(path)
+                        continue
+                if text is None:
+                    failures.append(f"{feature['id']}: missing {path} at {tag}")
                     continue
-                if test_name and not re.search(
-                    r"func\s+" + re.escape(test_name) + r"\b", target.read_text()
-                ):
+                if test_name and not anchored(text, test_name):
                     failures.append(
                         f"{feature['id']}: {path} has no test {test_name}")
                     continue
                 resolved += 1
-        print(f"resolved {resolved} macOS source and test references")
+        print(f"resolved {resolved} macOS source and test references at {tag}")
+        for path in sorted(post_baseline):
+            print(f"  post-baseline, checked against the working tree: {path}")
+            print(f"    {POST_BASELINE_ALLOWED[path]}")
+        for path in sorted(unverified):
+            print(f"  post-baseline and absent here, UNVERIFIED: {path}")
 
     alpha = sum(1 for f in features if f["classification"] == "terminal-alpha")
     print(f"{len(features)} features across {len(areas)} areas ({alpha} terminal-alpha)")
