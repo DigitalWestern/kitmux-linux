@@ -70,6 +70,15 @@ even if it succeeded.
 Due: with R2, since the first automated gate should cover both architectures
 or explicitly declare that it does not.
 
+Resolved 2026-07-28, ahead of that date, because it was a one-value edit and
+holding it hostage to CI kept a Tier-1 architecture unpinned for no reason.
+`linux-64.tar.xz` is locked from the same upstream build as the arm64 bundle;
+the evidence and the exact provenance are in `PORT_STATUS.md`. The rule below
+stands: this pins the input, it does not claim the architecture. Locking also
+exposed a defect this ADR did not name — the bundle URL carries no version or
+content address, so both hashes go stale together whenever upstream rebuilds.
+That is tracked as R5 in `PORT_STATUS.md` and is due with R1.
+
 ## Rules that hold now
 
 - A gate that cannot be run by someone other than the author is evidence with
