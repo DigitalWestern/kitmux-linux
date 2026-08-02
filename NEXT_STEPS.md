@@ -277,8 +277,8 @@ Exact evidence and non-claims are in `PORT_STATUS.md`.
   through cross-host compatibility and the read-only import preview.
 - Phase 0.6's macOS reference-drift report and guarded re-lock are complete.
   Run the report at every phase boundary and record even a no-drift result.
-- `contracts/feature-inventory.json` now has per-behavior status and 75
-  resolving Linux test references. Keep it current as Phase 5 adds behavior.
+- `contracts/feature-inventory.json` now has per-behavior status and 97
+  resolving Linux test references. Keep it current as Phase 6 adds behavior.
 - ADR 0008 R1 and R2 remain: standalone buildability and one automated gate.
   R3 and R4 closed on 2026-07-28: the desktop gate is display-portable and
   restores touched session state, and both architecture bundles are locked.

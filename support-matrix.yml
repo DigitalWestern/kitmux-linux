@@ -1,5 +1,5 @@
 schema_version: 1
-updated: 2026-08-01
+updated: 2026-08-02
 
 license: GPL-3.0-only  # ADR 0006; Kitty is GPL-3.0 and the host links it
 
@@ -172,7 +172,7 @@ gtk_host_evidence:
     terminal_label: Terminal
     focus_transfer: terminal-entry-terminal
     text_input: GtkIMMulticontext with Compose and IBus paths proven by the desktop gate
-    limitation: semantic role/focus viability only; full AT-SPI screen-reader and terminal-content coverage is Phase 5
+    limitation: semantic role/focus viability only; Slice 5.3 added native roles, labels, and keyboard-only focus order, but full AT-SPI screen-reader and terminal-content coverage remains a Phase 9 accessibility-review obligation
   toolkit_decision: GTK 4 selected in Slice 2.3
   # Phase 2 reordered 2026-07-25: the checks that could disqualify GTK now run
   # first, as Slices 2.2C-2.2F. Selection, clipboard, paste, mouse, wheel, and
