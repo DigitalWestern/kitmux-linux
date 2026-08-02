@@ -32,7 +32,7 @@ host commands from the Linux repository root on the macOS machine.
   at 100%, 150%, and 200% and back to 100%. Exact surface/backing scales,
   framebuffer, cell, grid, content, and child-PID assertions pass without
   session or return-metric drift.
-- The display-free Rust model gate passes 48 model/contract/interaction/
+- The display-free Rust model gate passes 52 model/contract/interaction/
   persistence tests on
   macOS and Ubuntu ARM64. Nine macOS fixture tests consume Linux-produced
   state, settings, split, command, control, and SSH values. The state import
@@ -54,21 +54,35 @@ host commands from the Linux repository root on the macOS machine.
   with 1,090 interaction cycles and 160 shell heartbeats (220 ms maximum), and
   child cleanup. The release app also launches in a runtime-only Ubuntu 26.04
   Xvfb container with no SDK; that container base is digest-pinned.
-- Slice 5.1's display-free navigation foundation passes on macOS and Ubuntu
-  ARM64: bounded workspace/group/tab naming, stable-ID reorder and explicit
-  non-empty closes, stable-command navigation overrides, and separate
-  Super+number workspace versus Alt+number terminal-tab namespaces. The GTK
-  app compiles against this model; product sidebar/tab-strip behavior is not
-  yet GUI-proven.
+- Phase 5 is closed. Slice 5.1's hierarchy — bounded workspace/group/tab naming,
+  stable-ID reorder, explicit non-empty closes, and separate Super+number workspace
+  versus Alt+number terminal-tab namespaces — is proven display-free on macOS and
+  Ubuntu ARM64 and GUI-proven through a responsive GTK sidebar, group row, and tab
+  row on X11 and native Wayland.
+- Slice 5.2 gives every live terminal surface a permanent libkitty child and
+  idle-priority GLib PTY source keyed by stable SurfaceId. One GTK GL area renders
+  the active tab's nested split leaves through a scissored multi-region C bridge;
+  inactive tabs stay owned and keep draining without entering layout or draw.
+  Pointer divider drag, pointer/cycle/directional focus, and Super-based keyboard
+  resize pass focused X11 and native-Wayland gates from fresh release runtimes.
+- Slice 5.3 adds a native command palette over the frozen 38-ID catalog and a native
+  settings dialog over the bounded settings document. State round-trips the complete
+  hierarchy, nested ratios, schema-supported IDs, names/titles, selection, surface
+  stacks, and safe per-surface cwd into fresh passwd shells without executing saved
+  resume text; a corrupt primary recovers the last-good hierarchy. Pane, group,
+  workspace, and window closes share one scoped live foreground recheck, and native
+  terminal/button roles with terminal → Commands → Settings → terminal focus transfer
+  pass on both backends.
 
 ## What is not proven
 - CJK or other conversion engines with candidate windows, and
   surrounding-text requests; the input-method evidence covers one Latin
   engine.
 - A physical Wayland desktop/libinput path, physical mixed-DPI monitors,
-  simultaneous windows on unlike scales, physical-GPU behavior, or
-  accessibility. The fractional result uses virtual nested outputs and
-  software rendering.
+  simultaneous windows on unlike scales, or physical-GPU behavior. The
+  fractional result uses virtual nested outputs and software rendering.
+- Complete AT-SPI screen-reader and terminal-content coverage. Slice 5.3 proves native
+  roles, labels, and keyboard-only focus order; it does not prove a screen reader.
 - Physical touchpad/libinput behavior, end-to-end default URL-handler launch,
   and physical GPU. External clipboard interoperability is proven on X11 and
   native Wayland.
