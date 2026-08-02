@@ -1431,7 +1431,7 @@
       "linux_tests": [
         "kitmux-linux/scripts/test-phase6-control.sh::Slice 6.1 secure local control and CLI gate"
       ],
-      "linux_status": "XDG and fallback address resolution, Linux sun_path bounds, and private runtime parent are proven in Slice 3.2; Slice 6.1 proves 0600 owner/type checks, stale replacement, symlink rejection, SO_PEERCRED, bounded clients, and timeouts"
+      "linux_status": "XDG and fallback address resolution, Linux sun_path bounds, and private runtime parent are proven in Slice 3.2; the recorded Slice 6.1 gate proves 0600 owner/type checks, stale replacement, symlink rejection, SO_PEERCRED, and bounded framing. Client-cap, total-deadline, and timeout evidence is not run"
     },
     {
       "id": "control.cli-mapping",
@@ -1457,7 +1457,7 @@
         "kitmux-linux/rust/model/tests/contracts_tests.rs::cli_parser_maps_bounded_commands_without_shell_strings",
         "kitmux-linux/scripts/test-phase6-control.sh::Slice 6.1 secure local control and CLI gate"
       ],
-      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; Slice 6.1 proves bounded CLI parsing, local dispatch, release-runtime installation, and the user-local fallback"
+      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; the recorded Slice 6.1 gate proves bounded CLI parsing, local dispatch, and release-runtime installation. The user-local fallback is not run"
     },
     {
       "id": "ssh.argv-never-shell",

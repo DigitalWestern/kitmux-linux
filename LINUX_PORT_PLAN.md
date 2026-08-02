@@ -7,7 +7,7 @@
 
 **Reference commit:** `3088295003c0842d7c3198102d0d05378da4dc62`
 
-**Last reviewed:** 2026-08-02 (Phase 5, Slice 6.1, and v0.21 rebaseline complete; Slice 6.2 next)
+**Last reviewed:** 2026-08-02 (Phase 5 and v0.21 rebaseline complete; Slice 6.1 audit remediation in progress)
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
@@ -737,16 +737,20 @@ toolkit-decision blocker.
 
 #### Slice 6.1: Secure local control and CLI
 
-Completed 2026-08-02. The Ubuntu ARM64 X11 release-runtime gate proves the
-private socket, owner/type/symlink checks, Linux peer credentials, bounded
-clients and I/O, stale replacement, event history, CLI dispatch, explicit
-multiple-instance behavior, and the user-local CLI fallback.
+Audit remediation is in progress. The recorded Ubuntu ARM64 X11 release-runtime
+gate proves the private socket, owner/type/symlink checks, Linux peer
+credentials, bounded frames, stale replacement, event history, and basic CLI
+dispatch. It did not run the bounded-client cap, total deadlines,
+multiple-instance behavior, default XDG resolution, user-local CLI fallback, or
+pane-targeting cases; Slice 6.1 is not closed until those claims have direct
+evidence.
 
 - Private XDG runtime directory and `0600` socket.
 - Owner/type/symlink checks and Linux peer credentials.
-- Bounded frames, clients, reads, writes, timeouts, and event history.
-- Explicit multiple-instance behavior.
-- Package-managed CLI and a diagnosable user-local fallback.
+- Bounded frames and event history; client caps, I/O deadlines, and timeout
+  behavior remain unproven.
+- Multiple-instance behavior remains unproven.
+- Package-managed CLI is present; the user-local fallback remains unproven.
 
 #### Slice 6.2: SSH and agent workflows
 
@@ -977,9 +981,10 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Begin Slice 6.2 SSH and agent workflows**: Slice 6.1's secure local
-   control and CLI gate passed on 2026-08-02 after the clean v0.21 tag and
-   guarded Ubuntu headless rebaseline.
+1. **Close the Slice 6.1 audit, then begin Slice 6.2 SSH and agent
+   workflows**: the secure local control and CLI baseline exists, but its
+   missing cap, timeout, pane, multiple-instance, and fallback evidence must
+   be closed first.
 2. **Prove one physical Mesa GPU during Phase 6** before beta; do not treat
    llvmpipe correctness as driver evidence.
 3. **Keep Phases 3 through 5 closed.** Cross-host compatibility, the read-only

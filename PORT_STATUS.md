@@ -15,13 +15,13 @@ command/settings controls, full safe hierarchy persistence, close-chain
 foreground review, and initial accessible roles/focus order. Native packaging
 does not exist yet.
 
-**Active track:** Phase 5 — terminal multiplexer alpha — and Slice 6.1 secure
-local control and CLI are closed. The mandatory macOS/libkitty v0.21 rebaseline
-is complete. Slice 6.2 SSH and agent workflows is next.
+**Active track:** Slice 6.1 secure local control and CLI audit remediation.
+The mandatory macOS/libkitty v0.21 rebaseline is complete. Slice 6.2 SSH and
+agent workflows remains blocked until this audit closes.
 
-**Next gate:** Begin Slice 6.2 SSH and agent workflows only. Physical-Mesa GPU
-rendering and interaction remain a Phase 6 beta obligation; native packaging
-remains Phase 8 work.
+**Next gate:** Finish the Slice 6.1 audit plan, then begin Slice 6.2 SSH and
+agent workflows. Physical-Mesa GPU rendering and interaction remain a Phase 6
+beta obligation; native packaging remains Phase 8 work.
 Phase 4's shell/editor,
 X11/Wayland, 30-minute interaction-soak, and clean no-SDK gates all pass.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK ran
@@ -43,15 +43,15 @@ repository root.
 
 Adjacent macOS checkout: `../macos/kitmux/`
 
-### 2026-08-02 — Slice 6.1 secure local control and CLI complete
+### 2026-08-02 — Slice 6.1 secure local control and CLI baseline; audit in progress
 
 - Added the Linux control server and CLI over a bounded newline-delimited
   protocol: private XDG socket resolution, `0600` mode, owner/type/symlink
-  checks, Linux `SO_PEERCRED`, bounded clients/frames/I/O/timeouts, and a
-  bounded event history with cursor filtering.
-- Added explicit non-unique app behavior, release-runtime `kitmuxctl`
-  installation, and `scripts/install-user-cli.sh` for a diagnosable user-local
-  fallback that creates a symlink into the user's bin directory.
+  checks, Linux `SO_PEERCRED`, bounded frames, and a bounded event history with
+  cursor filtering.
+- Added release-runtime `kitmuxctl` installation and
+  `scripts/install-user-cli.sh`; the user-local fallback was not exercised by
+  the pre-audit gate.
 - `cargo test --locked --manifest-path kitmux-linux/rust/model/Cargo.toml`
   passed the model, contract, interaction, and persistence suite. The CLI
   parser test is `cli_parser_maps_bounded_commands_without_shell_strings`.
@@ -59,10 +59,13 @@ Adjacent macOS checkout: `../macos/kitmux/`
   kitmux-linux/scripts/build-release-runtime.sh` passed in the Ubuntu ARM64
   desktop VM, including dependency closure, SPDX SBOM, release metadata, the
   16-session flood, 24 forced-close cycles, and FD restoration.
-- `DISPLAY=:1 kitmux-linux/scripts/test-phase6-control.sh` passed in the Ubuntu
-  ARM64 desktop VM. It proved socket mode/ownership/type, ping/identify/tree,
-  hierarchy dispatch, event peer identity, slow-client responsiveness,
-  malformed/oversized errors, stale replacement, and symlink refusal.
+- The recorded pre-audit `DISPLAY=:1
+  kitmux-linux/scripts/test-phase6-control.sh` gate proved socket
+  mode/ownership/type, ping/identify/tree, hierarchy dispatch, event peer
+  identity, one idle-client responsiveness check, malformed/oversized errors,
+  stale replacement, and symlink refusal. It did not run the client cap,
+  deadline, multiple-instance, default-XDG, user-local-CLI, or pane cases;
+  those are not evidence yet.
 - Source-tested: yes on macOS and Ubuntu ARM64; GUI/release-runtime-tested:
   Ubuntu 26.04 ARM64 X11 with Mesa llvmpipe. Native-package-tested,
   clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and
