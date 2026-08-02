@@ -1,15 +1,15 @@
 use kitmux_model::{
     AtomicWriteError, CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CliParseError,
-    CommandId, ControlCodecError, ControlMethod, ControlResponse, FileChange, ImportPreviewError,
-    LineFrameDecoder, PollingFileWatcher, RuntimePathError, SemanticAction, SettingsCodecError,
-    SnapshotCodecError, SshCodecError, SshProfile, SshResolution, UnixSocketAddress, XdgPaths,
-    atomic_write_private, decode_control_request, decode_control_response, decode_settings,
-    decode_snapshot, decode_ssh_profiles, encode_control_response, encode_settings,
-    encode_snapshot, encode_ssh_profiles, parse_cli, preview_macos_state_file, read_bounded,
-    sha256_bytes, sha256_file, valid_resume_command,
+    CommandId, ControlCodecError, ControlMethod, ControlRequest, ControlResponse, FileChange,
+    ImportPreviewError, LineFrameDecoder, PollingFileWatcher, RuntimePathError, SemanticAction,
+    SettingsCodecError, SnapshotCodecError, SshCodecError, SshProfile, SshResolution,
+    UnixSocketAddress, XdgPaths, atomic_write_private, decode_control_request,
+    decode_control_response, decode_settings, decode_snapshot, decode_ssh_profiles,
+    encode_control_response, encode_settings, encode_snapshot, encode_ssh_profiles, parse_cli,
+    preview_macos_state_file, read_bounded, sha256_bytes, sha256_file, valid_resume_command,
 };
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
@@ -293,6 +293,40 @@ fn frozen_control_protocol_corpus_enforces_envelope_and_byte_bounds() {
             );
         }
     }
+}
+
+#[test]
+fn control_request_params_are_bounded_at_the_decode_boundary() {
+    let request = |method: &str, params: BTreeMap<String, String>| ControlRequest {
+        version: 1,
+        id: "param-test".to_owned(),
+        method: method.to_owned(),
+        params,
+        context: None,
+    };
+
+    let mut controls = BTreeMap::new();
+    controls.insert("message".to_owned(), "alert\u{1b}[31m".to_owned());
+    let data = serde_json::to_vec(&request("pane.notify", controls)).unwrap();
+    assert_eq!(
+        decode_control_request(&data).unwrap_err().response_code(),
+        "invalid_params"
+    );
+
+    let mut pane_send = BTreeMap::new();
+    pane_send.insert("text".to_owned(), "echo hi\n".to_owned());
+    let data = serde_json::to_vec(&request("pane.send", pane_send)).unwrap();
+    assert!(decode_control_request(&data).is_ok());
+
+    let mut too_many = BTreeMap::new();
+    for index in 0..33 {
+        too_many.insert(format!("key-{index}"), "value".to_owned());
+    }
+    let data = serde_json::to_vec(&request("ping", too_many)).unwrap();
+    assert_eq!(
+        decode_control_request(&data).unwrap_err().response_code(),
+        "invalid_params"
+    );
 }
 
 #[test]

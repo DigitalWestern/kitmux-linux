@@ -9,6 +9,9 @@ pub const CONTROL_MAX_REQUEST_BYTES: usize = 64 * 1024;
 pub const CONTROL_MAX_RESPONSE_BYTES: usize = 512 * 1024;
 pub const CONTROL_MAX_REQUEST_ID_BYTES: usize = 256;
 pub const CONTROL_MAX_METHOD_BYTES: usize = 128;
+pub const CONTROL_MAX_PARAM_COUNT: usize = 32;
+pub const CONTROL_MAX_PARAM_KEY_BYTES: usize = 128;
+pub const CONTROL_MAX_PARAM_VALUE_BYTES: usize = 48 * 1024;
 
 macro_rules! control_methods {
     ($(($variant:ident, $id:literal)),+ $(,)?) => {
@@ -150,6 +153,7 @@ pub enum ControlCodecError {
     RequestTooLarge,
     ResponseTooLarge,
     MalformedRequest,
+    InvalidParams,
     MalformedResponse,
     UnsupportedVersion(i64),
     InvalidEnvelope,
@@ -163,6 +167,7 @@ impl ControlCodecError {
         match self {
             Self::RequestTooLarge => "request_too_large",
             Self::ResponseTooLarge => "response_too_large",
+            Self::InvalidParams => "invalid_params",
             Self::UnsupportedVersion(_) => "unsupported_version",
             Self::InvalidEnvelope | Self::InvalidResponse => "invalid_request",
             Self::MalformedRequest | Self::MalformedResponse | Self::IncompleteFrame => {
@@ -178,6 +183,7 @@ impl fmt::Display for ControlCodecError {
             Self::RequestTooLarge => f.write_str("request exceeds 64 KiB"),
             Self::ResponseTooLarge => f.write_str("response exceeds 512 KiB"),
             Self::MalformedRequest => f.write_str("request is not valid protocol JSON"),
+            Self::InvalidParams => f.write_str("request parameters are invalid or exceed bounds"),
             Self::MalformedResponse => f.write_str("response is not valid protocol JSON"),
             Self::UnsupportedVersion(version) => {
                 write!(f, "unsupported protocol version {version}")
@@ -209,7 +215,28 @@ pub fn decode_control_request(data: &[u8]) -> Result<ControlRequest, ControlCode
     {
         return Err(ControlCodecError::InvalidEnvelope);
     }
+    validate_control_params(&request)?;
     Ok(request)
+}
+
+fn validate_control_params(request: &ControlRequest) -> Result<(), ControlCodecError> {
+    if request.params.len() > CONTROL_MAX_PARAM_COUNT {
+        return Err(ControlCodecError::InvalidParams);
+    }
+    for (key, value) in &request.params {
+        let allows_control_value =
+            request.method_id() == Some(ControlMethod::PaneSend) && key == "text";
+        if key.is_empty()
+            || key.len() > CONTROL_MAX_PARAM_KEY_BYTES
+            || key.chars().any(char::is_control)
+            || value.is_empty()
+            || value.len() > CONTROL_MAX_PARAM_VALUE_BYTES
+            || (!allows_control_value && value.chars().any(char::is_control))
+        {
+            return Err(ControlCodecError::InvalidParams);
+        }
+    }
+    Ok(())
 }
 
 pub fn encode_control_request(request: &ControlRequest) -> Result<Vec<u8>, ControlCodecError> {

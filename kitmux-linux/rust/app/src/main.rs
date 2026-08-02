@@ -1110,6 +1110,17 @@ fn control_send(terminal: &Rc<RefCell<Terminal>>, request: &ControlRequest) -> C
     if !select_pane(terminal, id) {
         return control_failure(request, "not_found", "pane was not found");
     }
+    let force = request.params.get("force").is_some_and(|value| value == "true");
+    if !force {
+        let threshold = terminal.borrow().paste_confirmation_threshold;
+        if let Some(reason) = paste_confirmation_reason(text, threshold) {
+            return control_failure(
+                request,
+                "confirmation_required",
+                format!("pane.send requires confirmation ({})", paste_reason(reason)),
+            );
+        }
+    }
     terminal.borrow_mut().paste(text);
     control_success(request, json!({"byteCount": text.len()}))
 }

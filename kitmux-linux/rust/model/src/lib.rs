@@ -24,6 +24,7 @@ mod state;
 pub use cli::{CliInvocation, CliParseError, cli_help, parse_cli};
 pub use commands::{CommandId, SemanticAction, command_palette_matches};
 pub use control::{
+    CONTROL_MAX_PARAM_COUNT, CONTROL_MAX_PARAM_KEY_BYTES, CONTROL_MAX_PARAM_VALUE_BYTES,
     CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CONTROL_PROTOCOL_VERSION,
     ControlCodecError, ControlError, ControlMethod, ControlRequest, ControlResponse,
     LineFrameDecoder, decode_control_request, decode_control_response, encode_control_request,
