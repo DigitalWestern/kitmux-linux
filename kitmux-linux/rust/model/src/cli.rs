@@ -1,4 +1,7 @@
-use crate::{CONTROL_PROTOCOL_VERSION, ControlMethod, ControlRequest, UnixSocketAddress, XdgPaths};
+use crate::{
+    CONTROL_PROTOCOL_VERSION, ControlMethod, ControlRequest, UnixSocketAddress,
+    resolve_control_socket,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::PathBuf;
@@ -23,7 +26,7 @@ impl fmt::Display for CliParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Help => formatter.write_str(cli_help()),
-            Self::Version => formatter.write_str("kitmuxctl 0.1.0"),
+            Self::Version => formatter.write_str(concat!("kitmuxctl ", env!("CARGO_PKG_VERSION"))),
             Self::Usage(message) => write!(formatter, "{message}\n\n{}", cli_help()),
         }
     }
@@ -73,13 +76,7 @@ pub fn parse_cli(
 fn socket_from_environment(
     environment: &HashMap<String, String>,
 ) -> Result<UnixSocketAddress, CliParseError> {
-    let home = environment
-        .get("HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-    let xdg = XdgPaths::resolve(environment, &home).map_err(|error| usage(error.to_string()))?;
-    UnixSocketAddress::resolve(environment, &xdg, unsafe { libc::geteuid() })
+    resolve_control_socket(environment, unsafe { libc::geteuid() })
         .map_err(|error| usage(error.to_string()))
 }
 

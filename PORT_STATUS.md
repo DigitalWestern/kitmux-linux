@@ -66,6 +66,9 @@ Adjacent macOS checkout: `../macos/kitmux/`
   stale replacement, and symlink refusal. It did not run the client cap,
   deadline, multiple-instance, default-XDG, user-local-CLI, or pane cases;
   those are not evidence yet.
+- Known limitation: if the runtime socket file is removed while the server is
+  still running, restart Kitmux or set `KITMUX_SOCKET_PATH`; no auto-rebind
+  watcher is implemented.
 - Source-tested: yes on macOS and Ubuntu ARM64; GUI/release-runtime-tested:
   Ubuntu 26.04 ARM64 X11 with Mesa llvmpipe. Native-package-tested,
   clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and

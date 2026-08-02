@@ -200,6 +200,10 @@ kitmux-linux/scripts/install-user-cli.sh /path/to/runtime/bin/kitmuxctl
 The script prints the destination and warns when the destination directory is
 not on `PATH`; it does not alter shell configuration.
 
+If the runtime socket file is removed while Kitmux is still running, restart
+Kitmux or set `KITMUX_SOCKET_PATH` to a stable private path; the server does not
+auto-rebind it.
+
 ## Release-shaped engine runtime
 
 Inside the headless Ubuntu VM:

@@ -56,7 +56,8 @@ pub use persistence::{
 };
 pub use platform::{
     AtomicWriteError, FileChange, FileFingerprint, PollingFileWatcher, RuntimePathError,
-    UnixSocketAddress, XdgPaths, atomic_write_private, read_bounded, sha256_bytes, sha256_file,
+    UnixSocketAddress, XdgPaths, atomic_write_private, read_bounded, resolve_control_socket,
+    sha256_bytes, sha256_file,
 };
 pub use runtime::{
     BrowserRuntime, MockBrowserRuntime, MockRuntimeProbe, MockRuntimeSnapshot, MockTerminalRuntime,

@@ -15,10 +15,11 @@ use kitmux_model::{
     PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES, SNAPSHOT_VERSION,
     SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis, SplitId, SplitLayout,
     SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime, TerminalTabSnapshot,
-    UnixSocketAddress, WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
+    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
     accumulate_scroll_lines, command_palette_matches, detected_url, load_settings_at_launch,
     load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
-    encode_control_response, save_settings, save_state, terminal_cell_scaled,
+    encode_control_response, resolve_control_socket, save_settings, save_state,
+    terminal_cell_scaled,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
@@ -45,6 +46,52 @@ const SPLIT_GAP: i32 = 4;
 const MINIMUM_PANE: PixelSize = PixelSize::new(80, 50);
 static UNSAFE_PASTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static FOREGROUND_CLOSE_COUNT: AtomicUsize = AtomicUsize::new(0);
+const IMPLEMENTED_CONTROL_METHODS: &[ControlMethod] = &[
+    ControlMethod::Ping,
+    ControlMethod::Tree,
+    ControlMethod::Identify,
+    ControlMethod::Capabilities,
+    ControlMethod::EventList,
+    ControlMethod::WorkspaceCreate,
+    ControlMethod::WorkspaceSelect,
+    ControlMethod::WorkspaceRename,
+    ControlMethod::WorkspaceMove,
+    ControlMethod::WorkspaceClose,
+    ControlMethod::GroupCreate,
+    ControlMethod::GroupSelect,
+    ControlMethod::GroupRename,
+    ControlMethod::GroupMove,
+    ControlMethod::GroupClose,
+    ControlMethod::TabCreate,
+    ControlMethod::TabSelect,
+    ControlMethod::TabRename,
+    ControlMethod::TabMove,
+    ControlMethod::TabClose,
+    ControlMethod::PaneSplit,
+    ControlMethod::PaneFocus,
+    ControlMethod::PaneMove,
+    ControlMethod::PaneClose,
+    ControlMethod::PaneSend,
+    ControlMethod::PaneSendKey,
+    ControlMethod::PaneReadScreen,
+    ControlMethod::PaneNotify,
+];
+
+#[cfg(test)]
+mod control_surface_tests {
+    use super::*;
+
+    #[test]
+    fn implemented_control_methods_are_catalogued() {
+        assert_eq!(IMPLEMENTED_CONTROL_METHODS.len(), 28);
+        assert!(
+            IMPLEMENTED_CONTROL_METHODS
+                .iter()
+                .all(|method| ControlMethod::ALL.contains(method))
+        );
+        assert!(!IMPLEMENTED_CONTROL_METHODS.contains(&ControlMethod::PaneRename));
+    }
+}
 
 #[repr(C)]
 struct TerminalRegion {
@@ -601,10 +648,8 @@ fn changed(value: bool) -> NavigationEffect {
 }
 
 fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String> {
-    let account = account();
     let environment: HashMap<String, String> = env::vars().collect();
-    let xdg = XdgPaths::resolve(&environment, &account.home).map_err(|error| error.to_string())?;
-    let address = UnixSocketAddress::resolve(&environment, &xdg, unsafe { libc::geteuid() })
+    let address = resolve_control_socket(&environment, unsafe { libc::geteuid() })
         .map_err(|error| error.to_string())?;
     let queue = Arc::new(Mutex::new(VecDeque::new()));
     let history = terminal.borrow().control_history.clone();
@@ -710,7 +755,7 @@ fn dispatch_control_request(
             json!({
                 "pid": std::process::id(),
                 "uid": unsafe { libc::geteuid() },
-                "version": "0.1.0"
+                "version": env!("CARGO_PKG_VERSION")
             }),
         ),
         ControlMethod::Capabilities => control_success(
@@ -718,14 +763,7 @@ fn dispatch_control_request(
             json!({
                 "protocolVersion": 1,
                 "methods": ControlMethod::ALL.iter().map(|method| method.as_str()).collect::<Vec<_>>(),
-                "implemented": [
-                    "ping", "tree", "identify", "capabilities", "event.list",
-                    "workspace.create", "workspace.select", "workspace.rename", "workspace.move", "workspace.close",
-                    "group.create", "group.select", "group.rename", "group.move", "group.close",
-                    "tab.create", "tab.select", "tab.rename", "tab.move", "tab.close",
-                    "pane.split", "pane.focus", "pane.move", "pane.close", "pane.send", "pane.send_key",
-                    "pane.read_screen", "pane.notify"
-                ]
+                "implemented": IMPLEMENTED_CONTROL_METHODS.iter().map(|method| method.as_str()).collect::<Vec<_>>()
             }),
         ),
         ControlMethod::Tree => {

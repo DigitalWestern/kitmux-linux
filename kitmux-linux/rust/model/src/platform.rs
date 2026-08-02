@@ -1,10 +1,12 @@
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
@@ -133,6 +135,42 @@ impl UnixSocketAddress {
             Err(error) => Err(RuntimePathError::Io(error)),
         }
     }
+}
+
+pub fn resolve_control_socket(
+    environment: &HashMap<String, String>,
+    uid: u32,
+) -> Result<UnixSocketAddress, RuntimePathError> {
+    let home = current_user_home(environment);
+    let xdg = XdgPaths::resolve(environment, &home)?;
+    UnixSocketAddress::resolve(environment, &xdg, uid)
+}
+
+fn current_user_home(environment: &HashMap<String, String>) -> PathBuf {
+    unsafe {
+        let mut entry: libc::passwd = std::mem::zeroed();
+        let mut result = ptr::null_mut();
+        let mut buffer = vec![0_u8; 16 * 1024];
+        if libc::getpwuid_r(
+            libc::geteuid(),
+            &mut entry,
+            buffer.as_mut_ptr().cast(),
+            buffer.len(),
+            &mut result,
+        ) == 0
+            && !result.is_null()
+            && !entry.pw_dir.is_null()
+            && let Ok(home) = CStr::from_ptr(entry.pw_dir).to_str()
+            && Path::new(home).is_absolute()
+        {
+            return PathBuf::from(home);
+        }
+    }
+    environment
+        .get("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
 fn validate_private_directory(
