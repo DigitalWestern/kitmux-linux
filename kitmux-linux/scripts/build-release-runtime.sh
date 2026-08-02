@@ -100,7 +100,11 @@ install -d \
 install -m 0755 "${build_dir}/linux_session_stress" "${staging}/bin/"
 if [[ "${build_app}" == "1" ]]; then
   install -m 0755 "${build_dir}/cargo-app/release/kitmux" "${staging}/bin/"
-  install -m 0755 "${build_dir}/cargo-cli/release/kitmuxctl" "${staging}/bin/"
+  cli_binary="${build_dir}/cargo-app/release/kitmuxctl"
+  if [[ ! -f "${cli_binary}" ]]; then
+    cli_binary="${build_dir}/cargo-cli/release/kitmuxctl"
+  fi
+  install -m 0755 "${cli_binary}" "${staging}/bin/"
 fi
 install -m 0755 "${build_dir}/libkitty.so" "${staging}/lib/"
 cp -a "${python_root}" "${staging}/lib/"

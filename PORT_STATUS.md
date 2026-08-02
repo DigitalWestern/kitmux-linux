@@ -69,6 +69,11 @@ Adjacent macOS checkout: `../macos/kitmux/`
 - Known limitation: if the runtime socket file is removed while the server is
   still running, restart Kitmux or set `KITMUX_SOCKET_PATH`; no auto-rebind
   watcher is implemented.
+- Task 14 clean app-runtime builds now share `build-release/cargo-app`: both
+  `kitmux` and `kitmuxctl` were produced, with no `cargo-cli` directory. The
+  measured split-target baseline was 50.845s real and the shared-target build
+  was 50.668s real (0.177s / 0.35% faster); this is not a material performance
+  claim, but confirms the shared-target build path.
 - Source-tested: yes on macOS and Ubuntu ARM64; GUI/release-runtime-tested:
   Ubuntu 26.04 ARM64 X11 with Mesa llvmpipe. Native-package-tested,
   clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and
