@@ -1,12 +1,13 @@
 use kitmux_model::{
     AtomicWriteError, CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CliParseError,
-    CommandId, ControlCodecError, ControlMethod, ControlRequest, ControlResponse, FileChange,
-    ImportPreviewError, LineFrameDecoder, PollingFileWatcher, RuntimePathError, SemanticAction,
-    SettingsCodecError, SnapshotCodecError, SshCodecError, SshProfile, SshResolution,
-    UnixSocketAddress, XdgPaths, atomic_write_private, decode_control_request,
-    decode_control_response, decode_settings, decode_snapshot, decode_ssh_profiles,
-    encode_control_response, encode_settings, encode_snapshot, encode_ssh_profiles, parse_cli,
-    preview_macos_state_file, read_bounded, sha256_bytes, sha256_file, valid_resume_command,
+    CommandId, ControlCodecError, ControlEventHistory, ControlMethod, ControlRequest,
+    ControlResponse, FileChange, ImportPreviewError, LineFrameDecoder, PollingFileWatcher,
+    RuntimePathError, SemanticAction, SettingsCodecError, SnapshotCodecError, SshCodecError,
+    SshProfile, SshResolution, UnixSocketAddress, XdgPaths, atomic_write_private,
+    decode_control_request, decode_control_response, decode_settings, decode_snapshot,
+    decode_ssh_profiles, encode_control_response, encode_settings, encode_snapshot,
+    encode_ssh_profiles, parse_cli, preview_macos_state_file, read_bounded, sha256_bytes,
+    sha256_file, valid_resume_command,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -327,6 +328,20 @@ fn control_request_params_are_bounded_at_the_decode_boundary() {
         decode_control_request(&data).unwrap_err().response_code(),
         "invalid_params"
     );
+}
+
+#[test]
+fn control_history_keeps_cursor_and_rejection_metadata_across_filters() {
+    let history = ControlEventHistory::default();
+    history.record("ssh.connect", "req-1", false, 1000);
+    history.record("pane.send", "req-2", true, 1000);
+
+    let events = history.list(0, 500, Some("ssh"));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].request_id, "req-1");
+    assert!(!events[0].ok);
+    assert_eq!(history.cursor(), 2);
+    assert!(events[0].monotonic_ms <= history.list(0, 500, None)[1].monotonic_ms);
 }
 
 #[test]

@@ -607,13 +607,16 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
     let address = UnixSocketAddress::resolve(&environment, &xdg, unsafe { libc::geteuid() })
         .map_err(|error| error.to_string())?;
     let queue = Arc::new(Mutex::new(VecDeque::new()));
+    let history = terminal.borrow().control_history.clone();
     let handler_queue = Arc::clone(&queue);
-    let server = ControlServer::start(address.clone(), move |request, peer| {
+    let handler_history = history.clone();
+    let server = ControlServer::start(address.clone(), history.clone(), move |request, peer| {
         let (sender, receiver) = mpsc::sync_channel(1);
         let mut queue = handler_queue
             .lock()
             .expect("control dispatch queue lock poisoned");
         if queue.len() >= 128 {
+            handler_history.record(&request.method, &request.id, false, peer.uid);
             return ControlResponse::failure(request.id, "busy", "control dispatch queue is full");
         }
         queue.push_back(PendingControlCall {
@@ -622,14 +625,15 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
             response: sender,
         });
         drop(queue);
-        receiver
-            .recv_timeout(Duration::from_secs(2))
-            .unwrap_or_else(|_| {
-                ControlResponse::failure("", "timeout", "control request timed out")
-            })
+        match receiver.recv_timeout(Duration::from_secs(2)) {
+            Ok(response) => response,
+            Err(_) => {
+                handler_history.record(&request.method, &request.id, false, peer.uid);
+                ControlResponse::failure(request.id, "timeout", "control request timed out")
+            }
+        }
     })
     .map_err(|error| error.to_string())?;
-    let history = terminal.borrow().control_history.clone();
     let weak = Rc::downgrade(terminal);
     let dispatch_queue = Arc::clone(&queue);
     let dispatch_source = glib::timeout_add_local(Duration::from_millis(10), move || {
@@ -646,7 +650,7 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
         for call in calls {
             let method = call.request.method.clone();
             let response = dispatch_control_request(&terminal, call.request, &history);
-            history.record(&method, response.ok, call.peer_uid);
+            history.record(&method, &response.id, response.ok, call.peer_uid);
             let _ = call.response.send(response);
         }
         glib::ControlFlow::Continue
@@ -733,10 +737,10 @@ fn dispatch_control_request(
         }
         ControlMethod::EventList => {
             let after = parse_u64(&request, "after").unwrap_or(0);
-            let limit = parse_usize(&request, "limit").unwrap_or(100).min(500);
+            let limit = parse_usize(&request, "limit").unwrap_or(100);
             let category = request.params.get("category").map(String::as_str);
             let events = history.list(after, limit, category);
-            let cursor = events.last().map_or(0, |event| event.cursor);
+            let cursor = history.cursor();
             control_success(&request, json!({"events": events, "eventCursor": cursor}))
         }
         ControlMethod::WorkspaceCreate => {

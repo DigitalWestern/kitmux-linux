@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const CONTROL_MAX_CLIENTS: usize = 32;
 pub const CONTROL_IO_TIMEOUT: Duration = Duration::from_secs(2);
@@ -68,7 +68,11 @@ pub struct ControlServer {
 }
 
 impl ControlServer {
-    pub fn start<F>(address: UnixSocketAddress, handler: F) -> Result<Self, ControlSocketError>
+    pub fn start<F>(
+        address: UnixSocketAddress,
+        history: ControlEventHistory,
+        handler: F,
+    ) -> Result<Self, ControlSocketError>
     where
         F: Fn(ControlRequest, PeerCredentials) -> ControlResponse + Send + Sync + 'static,
     {
@@ -88,6 +92,7 @@ impl ControlServer {
         let thread_stop = Arc::clone(&stop);
         let handler = Arc::new(handler);
         let active_clients = Arc::new(AtomicUsize::new(0));
+        let thread_history = history;
         let thread_path = path.clone();
         let thread = thread::Builder::new()
             .name("kitmux-control-accept".to_owned())
@@ -99,6 +104,7 @@ impl ControlServer {
                     thread_stop,
                     handler,
                     active_clients,
+                    thread_history,
                 );
             })?;
         Ok(Self {
@@ -134,6 +140,7 @@ fn accept_loop<F>(
     stop: Arc<AtomicBool>,
     handler: Arc<F>,
     active_clients: Arc<AtomicUsize>,
+    history: ControlEventHistory,
 ) where
     F: Fn(ControlRequest, PeerCredentials) -> ControlResponse + Send + Sync + 'static,
 {
@@ -142,14 +149,16 @@ fn accept_loop<F>(
             Ok((stream, _)) => {
                 if active_clients.fetch_add(1, Ordering::AcqRel) >= CONTROL_MAX_CLIENTS {
                     active_clients.fetch_sub(1, Ordering::AcqRel);
+                    history.record("<rejected>", "", false, unsafe { libc::geteuid() });
                     continue;
                 }
                 let handler = Arc::clone(&handler);
                 let active_clients = Arc::clone(&active_clients);
+                let history = history.clone();
                 let _ = thread::Builder::new()
                     .name("kitmux-control-client".to_owned())
                     .spawn(move || {
-                        serve_client(stream, handler);
+                        serve_client(stream, handler, history);
                         active_clients.fetch_sub(1, Ordering::AcqRel);
                     });
             }
@@ -165,7 +174,7 @@ fn accept_loop<F>(
     }
 }
 
-fn serve_client<F>(mut stream: UnixStream, handler: Arc<F>)
+fn serve_client<F>(mut stream: UnixStream, handler: Arc<F>, history: ControlEventHistory)
 where
     F: Fn(ControlRequest, PeerCredentials) -> ControlResponse + Send + Sync + 'static,
 {
@@ -178,12 +187,19 @@ where
             {
                 Ok(request) => handler(request, peer),
                 Err(error) => {
+                    history.record("<rejected>", "", false, peer.uid);
                     ControlResponse::failure("", error.response_code(), error.to_string())
                 }
             }
         }
-        Ok(_) => ControlResponse::failure("", "unauthorized", "peer is not the current user"),
-        Err(error) => ControlResponse::failure("", "unauthorized", error.to_string()),
+        Ok(peer) => {
+            history.record("<rejected>", "", false, peer.uid);
+            ControlResponse::failure("", "unauthorized", "peer is not the current user")
+        }
+        Err(error) => {
+            history.record("<rejected>", "", false, unsafe { libc::geteuid() });
+            ControlResponse::failure("", "unauthorized", error.to_string())
+        }
     };
     let data = match encode_control_response(&response) {
         Ok(mut data) => {
@@ -410,18 +426,31 @@ fn peer_credentials(fd: RawFd) -> Result<PeerCredentials, ControlSocketError> {
 pub struct ControlEvent {
     pub cursor: u64,
     pub method: String,
+    pub request_id: String,
     pub ok: bool,
     pub peer_uid: u32,
+    pub monotonic_ms: u64,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ControlEventHistory {
     events: Arc<std::sync::Mutex<std::collections::VecDeque<ControlEvent>>>,
     next_cursor: Arc<AtomicUsize>,
+    started_at: Arc<Instant>,
+}
+
+impl Default for ControlEventHistory {
+    fn default() -> Self {
+        Self {
+            events: Arc::default(),
+            next_cursor: Arc::default(),
+            started_at: Arc::new(Instant::now()),
+        }
+    }
 }
 
 impl ControlEventHistory {
-    pub fn record(&self, method: &str, ok: bool, peer_uid: u32) {
+    pub fn record(&self, method: &str, request_id: &str, ok: bool, peer_uid: u32) {
         let cursor = self.next_cursor.fetch_add(1, Ordering::Relaxed) as u64 + 1;
         let mut events = self
             .events
@@ -430,8 +459,10 @@ impl ControlEventHistory {
         events.push_back(ControlEvent {
             cursor,
             method: method.to_owned(),
+            request_id: request_id.to_owned(),
             ok,
             peer_uid,
+            monotonic_ms: self.started_at.elapsed().as_millis() as u64,
         });
         while events.len() > CONTROL_MAX_EVENT_HISTORY {
             events.pop_front();
@@ -451,5 +482,10 @@ impl ControlEventHistory {
             .take(limit.min(500))
             .cloned()
             .collect()
+    }
+
+    #[must_use]
+    pub fn cursor(&self) -> u64 {
+        self.next_cursor.load(Ordering::Relaxed) as u64
     }
 }
