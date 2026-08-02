@@ -33,8 +33,8 @@ observations, not proof that a checkout is still unchanged.
   during a spike is allowed; manually maintained duplicate copies are not.
 - Share schemas, fixtures, command identifiers, and observable behavior before
   attempting to share the Swift product core.
-- Treat GTK 4 as a candidate until the complete Slice 2.3 decision gate
-  passes. Slice 2.1 alone did not select it.
+- GTK 4 is the selected Linux toolkit (Slice 2.3, 2026-07-26; ADR 0002). Do not
+  reopen the toolkit question or start a Qt probe without a new ADR.
 - Before adding a file to the GTK spike, classify it as durable or disposable
   per ADR 0007. Durable code is display-free, has a headless test, and stays C
   behind the FFI boundary. Disposable code lives in `gtk_terminal_host.c`.
