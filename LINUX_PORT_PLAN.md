@@ -162,7 +162,7 @@ git status --short --branch
 Run any additional gates required by the live handoff and changed files. Do not
 tag a failing or dirty baseline.
 
-#### Slice 0.2: Build the parity inventory
+#### Slice 0.2: Build the parity inventory — complete
 
 Create a machine-readable feature inventory. Every row needs:
 
@@ -175,7 +175,7 @@ Create a machine-readable feature inventory. Every row needs:
 Start with the ownership hierarchy, input/output, persistence, settings, close
 safety, CLI, SSH, notifications, and browser surfaces.
 
-#### Slice 0.3: Record decisions and support targets
+#### Slice 0.3: Record decisions and support targets — complete
 
 Create short decision records for:
 

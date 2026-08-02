@@ -1213,6 +1213,31 @@ clean-machine release evidence.
   locally preserved app bundles were excluded from status, and the clean
   reference tag was created.
 
+### 2026-07-23 — Slices 0.2 and 0.3 backfilled
+
+- Backfill entry written 2026-08-02. Slices 0.2 and 0.3 were completed during the
+  original planning pass but never received their own dated ledger entry, so Phase 0's
+  closure rested on artifacts rather than on recorded evidence. This entry records the
+  artifacts; it produces no new behavioral, GUI, package, or clean-machine evidence.
+- Slice 0.2 — parity inventory: `contracts/feature-inventory.json` exists with 64
+  features across 17 areas. Every row carries a stable ID, behavior, macOS
+  source/test references, a classification, a Linux acceptance statement,
+  dependencies, translation notes, and a `linux_status`. Verified by
+  `python3 contracts/validate-inventory.py`, which resolves 97 Linux test references
+  and 234 macOS source and test references at
+  `macos-linux-port-baseline-2026-08-02-v0.21` and reports `inventory OK`.
+  The 2026-07-25 plan audit found the original 16 rows too coarse for Phase 9's parity
+  gate; decomposition to per-behavior rows was completed before Phase 5.
+- Slice 0.3 — decisions and support targets: ADRs 0001 through 0005 exist under
+  `docs/decisions/` and cover the Rust host, the GTK kill spike, repository and
+  engine source, contract versioning, and Python/packaging. `support-matrix.yml`
+  exists and records OS images, architecture, desktop, display backend, GPU class,
+  compiler, Python, toolkit, and package targets. ADRs 0006, 0007, and 0008 were
+  added later by the 2026-07-25 plan audit.
+- Source-tested: inventory and ADR/matrix structure only. GUI-tested,
+  package-tested, and clean-machine-tested: none. No slice behavior was re-run to
+  produce this entry.
+
 ### 2026-07-23 — planning review
 
 - Inspected the original review, the revised plan that replaced it during this
@@ -1267,6 +1292,49 @@ clean-machine release evidence.
   through relative runpaths without a broad `LD_LIBRARY_PATH`. It is not a
   native package or clean-machine install. A global Kitty dependency path
   would shadow GTK's distribution libraries and remains forbidden.
+
+### Carried-forward Phase 4 review findings
+
+\`docs/PHASE4_REVIEW_NOTES.md\` recorded eight findings on 2026-07-28 and none were fixed
+before Phase 5 closed. Status as of 2026-08-02:
+
+- **#1 environment-disableable safety prompts — closed.** \`KITMUX_AUTOPASTE\` and
+  \`KITMUX_AUTOCLOSE\` are now behind the off-by-default \`test-hooks\` cargo feature.
+- **#2 build.rs did not relink on C changes — closed.** \`build.rs\` now emits
+  \`cargo:rerun-if-changed\` for both static archives.
+- **#7 dangling event-source id — assessed unreachable.** The current close path
+  removes the GLib source before deleting the corresponding session from
+  \`Terminal::sessions\`; shutdown only visits remaining registry entries, so no stale
+  ID can reach its loop under the current registry design.
+- **#3 two exported bridge functions have no caller — open.**
+  \`kitmux_widget_surface_scale\` and \`kitmux_session_draw_preserving_gl_state\` in
+  \`src/gtk_terminal_bridge.c\`. The review verified this is not a scaling bug. Delete
+  them or record why they are kept.
+- **#4 \`let _ = committed;\` — open.** \`rust/app/src/main.rs\` in the key-pressed handler.
+  Either the commit state should affect whether the release is withheld, or this is a
+  leftover.
+- **#5 shutdown runs and logs twice — open, mitigated.** \`connect_close_request\` and
+  \`connect_unrealize\` both call \`shutdown\`. The Phase 5 gates assert
+  \`sessions=N reaped=true\` with N greater than zero, and the second call emits
+  \`sessions=0\`, so it cannot satisfy them. The masking risk the review described is
+  gated against, not fixed in code.
+- **#6 libkitty's error text is discarded on startup failure — open.**
+  \`initialize\` fills a 1024-byte buffer and returns a stage name without reading it.
+  \`render.init-failure-visible\` is also one of the inventory rows with no macOS test,
+  so no gate on either platform pins this.
+- **#8 wheel speed is an unnamed constant — open.** \`-dy * cell_points * 5.0\`; kitty's
+  own default is three. It belongs in settings.
+
+Six inventory rows carry no \`macos_tests\`, five of them terminal-alpha:
+\`render.gl-state-isolation\`, \`render.scale-correctness\`,
+\`render.init-failure-visible\`, \`render.webkit-coexistence\`, and
+\`keyboard.press-release-repeat\`. Phase 9's parity gate resolves rows against macOS
+behavior; these have no macOS oracle.
+
+Slice 0.1 remains unmarked: its 2026-07-23 evidence names the baseline gates by family
+but does not enumerate the seven required \`make\` commands and
+\`git status --short --branch\`, so this ledger does not claim that gate was fully
+evidenced.
 
 ### Reproducibility defects (ADR 0008)
 

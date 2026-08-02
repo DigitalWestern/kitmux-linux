@@ -120,7 +120,7 @@
         "CPython embed API"
       ],
       "translation": "Resolve the bundled interpreter through $ORIGIN runpaths; never fall back to host Python.",
-      "linux_status": "proven headless on Ubuntu/Fedora ARM64 (Slice 1.3)"
+      "linux_status": "proven headless on Ubuntu/Fedora ARM64 (Slice 1.3); Slice 4.1 proves the same path in the release-shaped product app on Ubuntu 26.04 ARM64 X11"
     },
     {
       "id": "engine.session-create-close",
@@ -143,7 +143,7 @@
         "kitmux-linux/tests/linux_session_stress.c",
         "kitmux-linux/scripts/test-phase5-navigation.sh"
       ],
-      "linux_status": "Slice 1.2 proves the 16-session flood, 24 forced-close cycles, zombie absence, and exact FD restoration; Slice 5.2 proves permanent product sessions for created tabs and nested panes plus complete close/reap on X11 and native Wayland"
+      "linux_status": "Slice 1.2 proves the 16-session flood, 24 forced-close cycles, zombie absence, and exact FD restoration; Slice 5.2 proves permanent product sessions for created tabs and nested panes plus complete close/reap on X11 and native Wayland; Slice 4.1 proves the same path in the release-shaped product app on Ubuntu 26.04 ARM64 X11"
     },
     {
       "id": "engine.child-exit-status",
@@ -270,7 +270,7 @@
         "kitmux-linux/scripts/test-phase4.sh",
         "kitmux-linux/scripts/test-phase4-wayland.sh"
       ],
-      "linux_status": "Linux session coverage proves exact OSC title, cwd, notification, and user-variable delivery at the libkitty boundary; Slices 4.1 and 4.2 prove product title/cwd handling on X11 and native Wayland. The GTK bell callback is wired but standalone bell policy remains Phase 5, resume user-variable consumption Phase 6.3, and desktop notification posting Phase 7"
+      "linux_status": "Linux session coverage proves exact OSC title, cwd, notification, and user-variable delivery at the libkitty boundary; Slices 4.1 and 4.2 prove product title/cwd handling on X11 and native Wayland. The GTK bell callback is wired but standalone bell policy remains Phase 5, resume user-variable consumption Phase 6.3, and desktop notification posting Phase 7; Slice 4.1 proves the same path in the release-shaped product app on Ubuntu 26.04 ARM64 X11"
     },
     {
       "id": "render.live-frame",
@@ -361,7 +361,7 @@
         "render.live-frame"
       ],
       "translation": "Do not make screenshot pixel equality the only render gate.",
-      "linux_status": "proven over X11 in Slice 2.1; the visible missing-runtime diagnostic is asserted by test-desktop.sh"
+      "linux_status": "proven over X11 in Slice 2.1; the visible missing-runtime diagnostic is asserted by test-desktop.sh; Slice 4.1 proves the same path in the release-shaped product app on Ubuntu 26.04 ARM64 X11"
     },
     {
       "id": "render.webkit-coexistence",
