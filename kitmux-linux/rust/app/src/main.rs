@@ -19,7 +19,7 @@ use kitmux_model::{
     accumulate_scroll_lines, command_palette_matches, detected_url, load_settings_at_launch,
     load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
     encode_control_response, resolve_control_socket, save_settings, save_state,
-    terminal_cell_scaled,
+    terminal_cell_scaled, CONTROL_DISPATCH_TIMEOUT,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
@@ -670,7 +670,7 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
             response: sender,
         });
         drop(queue);
-        match receiver.recv_timeout(Duration::from_secs(2)) {
+        match receiver.recv_timeout(CONTROL_DISPATCH_TIMEOUT) {
             Ok(response) => response,
             Err(_) => {
                 handler_history.record(&request.method, &request.id, false, peer.uid);

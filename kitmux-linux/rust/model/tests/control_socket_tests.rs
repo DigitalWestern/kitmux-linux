@@ -215,7 +215,6 @@ fn world_writable_grandparent_is_rejected() {
 }
 
 #[test]
-#[ignore = "Task 8 adds the busy response when the client cap is exhausted"]
 fn client_cap_returns_busy_instead_of_eof() {
     let running = start(root());
     let mut held = Vec::new();
@@ -231,7 +230,6 @@ fn client_cap_returns_busy_instead_of_eof() {
 }
 
 #[test]
-#[ignore = "Task 8 adds total connection deadlines and timeout errors"]
 fn dribbling_client_times_out_and_server_still_serves() {
     let running = start(root());
     let mut stream = UnixStream::connect(running.address.path()).unwrap();

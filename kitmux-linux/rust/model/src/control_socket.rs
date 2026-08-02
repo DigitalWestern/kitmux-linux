@@ -16,7 +16,12 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 pub const CONTROL_MAX_CLIENTS: usize = 32;
+// The total budgets are intentionally nested: client read > server connection
+// > app dispatch. CONTROL_IO_TIMEOUT bounds one syscall inside those budgets.
 pub const CONTROL_IO_TIMEOUT: Duration = Duration::from_secs(2);
+pub const CONTROL_SERVER_DEADLINE: Duration = Duration::from_secs(3);
+pub const CONTROL_DISPATCH_TIMEOUT: Duration = Duration::from_secs(2);
+pub const CONTROL_CLIENT_DEADLINE: Duration = Duration::from_secs(5);
 pub const CONTROL_MAX_EVENT_HISTORY: usize = 512;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -177,15 +182,29 @@ fn accept_loop<F>(
                 if active_clients.fetch_add(1, Ordering::AcqRel) >= CONTROL_MAX_CLIENTS {
                     active_clients.fetch_sub(1, Ordering::AcqRel);
                     history.record("<rejected>", "", false, unsafe { libc::geteuid() });
+                    let mut stream = stream;
+                    let _ = configure_no_sigpipe(stream.as_raw_fd());
+                    drain_busy_request(&mut stream);
+                    let _ = stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT));
+                    let response = ControlResponse::failure(
+                        "",
+                        "busy",
+                        "control server has reached its client limit",
+                    );
+                    if let Ok(mut data) = encode_control_response(&response) {
+                        data.push(b'\n');
+                        let _ = write_frame(&mut stream, &data);
+                    }
                     continue;
                 }
                 let handler = Arc::clone(&handler);
                 let active_clients = Arc::clone(&active_clients);
                 let history = history.clone();
+                let deadline = Instant::now() + CONTROL_SERVER_DEADLINE;
                 let _ = thread::Builder::new()
                     .name("kitmux-control-client".to_owned())
                     .spawn(move || {
-                        serve_client(stream, handler, history);
+                        serve_client(stream, handler, history, deadline);
                         active_clients.fetch_sub(1, Ordering::AcqRel);
                     });
             }
@@ -201,8 +220,12 @@ fn accept_loop<F>(
     }
 }
 
-fn serve_client<F>(mut stream: UnixStream, handler: Arc<F>, history: ControlEventHistory)
-where
+fn serve_client<F>(
+    mut stream: UnixStream,
+    handler: Arc<F>,
+    history: ControlEventHistory,
+    deadline: Instant,
+) where
     F: Fn(ControlRequest, PeerCredentials) -> ControlResponse + Send + Sync + 'static,
 {
     let _ = configure_no_sigpipe(stream.as_raw_fd());
@@ -210,7 +233,12 @@ where
     let _ = stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT));
     let response = match peer_credentials(stream.as_raw_fd()) {
         Ok(peer) if peer.uid == unsafe { libc::geteuid() } => {
-            match read_frame(&mut stream, crate::CONTROL_MAX_REQUEST_BYTES, true) {
+            match read_frame(
+                &mut stream,
+                crate::CONTROL_MAX_REQUEST_BYTES,
+                true,
+                Some(deadline),
+            ) {
                 Ok(frame) => match decode_control_request(&frame) {
                     Ok(request) => handler(request, peer),
                     Err(error) => {
@@ -268,8 +296,13 @@ pub fn send_control_request(
     let mut data = encode_control_request(request).map_err(ControlClientError::Codec)?;
     data.push(b'\n');
     write_frame(&mut stream, &data)?;
-    let frame = read_frame(&mut stream, crate::CONTROL_MAX_RESPONSE_BYTES, false)
-        .map_err(ControlClientError::Codec)?;
+    let frame = read_frame(
+        &mut stream,
+        crate::CONTROL_MAX_RESPONSE_BYTES,
+        false,
+        Some(Instant::now() + CONTROL_CLIENT_DEADLINE),
+    )
+    .map_err(ControlClientError::Codec)?;
     if frame.is_empty() {
         return Err(ControlClientError::EmptyResponse);
     }
@@ -305,10 +338,20 @@ fn read_frame(
     stream: &mut UnixStream,
     maximum_bytes: usize,
     request: bool,
+    deadline: Option<Instant>,
 ) -> Result<Vec<u8>, crate::ControlCodecError> {
     let mut data = Vec::new();
     let mut buffer = [0_u8; 4096];
     loop {
+        if let Some(deadline) = deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(crate::ControlCodecError::Timeout);
+            }
+            stream
+                .set_read_timeout(Some(remaining.min(CONTROL_IO_TIMEOUT)))
+                .map_err(|_| crate::ControlCodecError::Timeout)?;
+        }
         let count = stream
             .read(&mut buffer)
             .map_err(|error| match error.kind() {
@@ -422,6 +465,25 @@ fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn drain_busy_request(stream: &mut UnixStream) {
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+    let mut discarded = 0;
+    let mut buffer = [0_u8; 4096];
+    while discarded <= crate::CONTROL_MAX_REQUEST_BYTES {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => {
+                discarded += count;
+                if buffer[..count].contains(&b'\n') {
+                    break;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::TimedOut => break,
+            Err(_) => break,
+        }
+    }
 }
 
 fn remove_stale_socket(path: &Path, uid: u32) -> Result<(), ControlSocketError> {

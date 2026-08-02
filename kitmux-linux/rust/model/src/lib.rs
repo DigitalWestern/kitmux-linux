@@ -32,9 +32,9 @@ pub use control::{
     encode_control_response,
 };
 pub use control_socket::{
-    CONTROL_IO_TIMEOUT, CONTROL_MAX_CLIENTS, CONTROL_MAX_EVENT_HISTORY, ControlClientError,
-    ControlEvent, ControlEventHistory, ControlServer, ControlSocketError, PeerCredentials,
-    send_control_request,
+    CONTROL_CLIENT_DEADLINE, CONTROL_DISPATCH_TIMEOUT, CONTROL_IO_TIMEOUT, CONTROL_MAX_CLIENTS,
+    CONTROL_MAX_EVENT_HISTORY, CONTROL_SERVER_DEADLINE, ControlClientError, ControlEvent,
+    ControlEventHistory, ControlServer, ControlSocketError, PeerCredentials, send_control_request,
 };
 pub use ids::{GroupId, PaneId, SplitId, SurfaceId, TabId, WorkspaceId};
 pub use import::{
