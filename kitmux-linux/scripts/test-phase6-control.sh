@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 if [[ "$(uname -s)" != "Linux" || -z "${DISPLAY:-}" ]]; then
   echo "Run this gate on Linux with DISPLAY set to an existing X11 display." >&2
@@ -21,12 +21,17 @@ data="$temporary_root/data"
 cache="$temporary_root/cache"
 socket_path="$temporary_root/kitmux.sock"
 app_pid=""
+second_pid=""
 log="$temporary_root/app.log"
 
 cleanup() {
   if [[ -n "$app_pid" ]] && kill -0 "$app_pid" 2>/dev/null; then
     kill "$app_pid" 2>/dev/null || true
     wait "$app_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$second_pid" ]] && kill -0 "$second_pid" 2>/dev/null; then
+    kill "$second_pid" 2>/dev/null || true
+    wait "$second_pid" 2>/dev/null || true
   fi
   rm -rf -- "$temporary_root" 2>/dev/null || true
 }
@@ -41,18 +46,24 @@ dump_failure() {
 }
 trap dump_failure ERR
 
-wait_for_log() {
-  local pattern="$1"
+wait_for_log_file() {
+  local target_log="$1"
+  local target_pid="$2"
+  local pattern="$3"
   for _ in $(seq 1 250); do
-    grep -qE "$pattern" "$log" 2>/dev/null && return 0
-    if [[ -n "$app_pid" ]] && ! kill -0 "$app_pid" 2>/dev/null; then
+    grep -qE "$pattern" "$target_log" 2>/dev/null && return 0
+    if [[ -n "$target_pid" ]] && ! kill -0 "$target_pid" 2>/dev/null; then
       break
     fi
     sleep 0.1
   done
-  cat "$log" >&2
+  cat "$target_log" >&2
   echo "Kitmux did not report $pattern" >&2
   exit 1
+}
+
+wait_for_log() {
+  wait_for_log_file "$log" "$app_pid" "$1"
 }
 
 build_runtime() {
@@ -93,18 +104,20 @@ launch_app
 [[ "$(stat -c "%F" "$socket_path")" == "socket" ]]
 grep -qE '^kitmux event=control_server_ready .* mode=600$' "$log"
 
-cli --json ping | grep -q '"message": "pong"'
-cli --json identify | grep -q "\"uid\": $(id -u)"
-cli --json tree | grep -q '"workspaces"'
-cli workspace new | grep -q '"changed": true'
-cli --json tree | grep -q '"createdWorkspaceCount": 2'
-cli events --limit 20 | grep -q '"method": "workspace.create"'
-cli --json events --limit 20 | grep -q "\"peer_uid\": $(id -u)"
+cli --json ping | grep '"message": "pong"' >/dev/null
+cli --json identify | grep "\"uid\": $(id -u)" >/dev/null
+cli --json tree | grep '"workspaces"' >/dev/null
+cli workspace new | grep '"changed": true' >/dev/null
+cli --json tree | grep '"createdWorkspaceCount": 2' >/dev/null
+cli events --limit 20 | grep '"method": "workspace.create"' >/dev/null
+cli --json events --limit 20 | grep "\"peer_uid\": $(id -u)" >/dev/null
 
+# The Rust socket tests own the client-cap and total-deadline assertions;
+# this GUI gate keeps only one idle-client responsiveness check.
 python3 -c 'import socket, sys, time; client = socket.socket(socket.AF_UNIX); client.connect(sys.argv[1]); time.sleep(3)' "$socket_path" &
 slow_pid=$!
 sleep 0.2
-cli ping | grep -q '"message": "pong"'
+cli ping | grep '"message": "pong"' >/dev/null
 wait "$slow_pid" || true
 
 python3 - "$socket_path" <<'PY'
@@ -116,10 +129,16 @@ def send(payload):
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.settimeout(3)
     client.connect(sys.argv[1])
-    client.sendall(payload)
+    try:
+        for offset in range(0, len(payload), 4096):
+            client.sendall(payload[offset:offset + 4096])
+    except BrokenPipeError:
+        pass
     result = b""
     while not result.endswith(b"\n"):
-        result += client.recv(4096)
+        chunk = client.recv(4096)
+        assert chunk, "server closed without an error response"
+        result += chunk
     return json.loads(result)
 
 malformed = send(b"{\n")
@@ -130,16 +149,108 @@ assert oversized["ok"] is False
 assert oversized["error"]["code"] == "request_too_large"
 PY
 
+pane_split="$(cli pane split right)"
+echo "$pane_split" | grep -q '"changed": true'
+pane_ids="$(cli --json tree | python3 -c '
+import json, sys
+tree = json.load(sys.stdin).get("result", {})
+ids = []
+for workspace in tree["workspaces"]:
+    for group in workspace["tabGroups"]:
+        for tab in group["terminalTabs"]:
+            ids.extend((tab.get("paneDetails") or {}).keys())
+assert len(ids) >= 2, ids
+print(" ".join(ids[:2]))
+')"
+read -r pane_a pane_b <<<"$pane_ids"
+cli pane focus "$pane_a" | grep '"changed": true' >/dev/null
+cli pane send "$pane_b" "KITMUX_PANE_B_MARKER" | grep '"byteCount"' >/dev/null
+sleep 0.5
+cli pane focus "$pane_a" | grep '"changed": true' >/dev/null
+navigation_events_before="$(grep -c '^kitmux event=navigation_changed ' "$log" || true)"
+cli --json pane read-screen "$pane_b" >"$temporary_root/pane-b-screen.json"
+if ! grep -q 'KITMUX_PANE_B_' "$temporary_root/pane-b-screen.json"; then
+  echo "pane B screen response:" >&2
+  cat "$temporary_root/pane-b-screen.json" >&2
+  exit 1
+fi
+cli --json pane read-screen "$pane_a" >"$temporary_root/pane-a-screen.json"
+if grep -q 'KITMUX_PANE_B_' "$temporary_root/pane-a-screen.json"; then
+  echo "pane A unexpectedly received pane B text" >&2
+  exit 1
+fi
+navigation_events_after="$(grep -c '^kitmux event=navigation_changed ' "$log" || true)"
+[[ "$navigation_events_after" -eq "$navigation_events_before" ]]
+cli --json pane read-screen current >"$temporary_root/current-screen.json"
+if grep -q 'KITMUX_PANE_B_' "$temporary_root/current-screen.json"; then
+  echo "read-only pane targeting changed the focused pane" >&2
+  exit 1
+fi
+
+second_log="$temporary_root/second.log"
+env -i \
+  DISPLAY="$DISPLAY" HOME="$HOME" LANG=C.UTF-8 PATH=/usr/bin:/bin \
+  GSK_RENDERER=gl GTK_IM_MODULE=gtk-im-context-simple \
+  KITMUX_SOCKET_PATH="$socket_path" \
+  XDG_CONFIG_HOME="$config" XDG_STATE_HOME="$state" \
+  XDG_DATA_HOME="$data" XDG_CACHE_HOME="$cache" \
+  "$runtime/bin/kitmux" >"$second_log" 2>&1 &
+second_pid=$!
+wait_for_log_file "$second_log" "$second_pid" '^kitmux event=control_server_declined reason=live_server$'
+wait_for_log_file "$second_log" "$second_pid" '^kitmux event=navigation_ready$'
+cli ping | grep '"message": "pong"' >/dev/null
 kill "$app_pid"
 wait "$app_pid" || true
 app_pid=""
-# ponytail: SIGTERM cannot run Rust destructors; restart must safely replace
-# this stale socket, while graceful GTK shutdown remains covered by Phase 5.
+if grep -q '^kitmux event=control_server_ready ' "$second_log"; then
+  echo "second instance unexpectedly acquired the control socket" >&2
+  exit 1
+fi
+kill "$second_pid"
+wait "$second_pid" || true
+second_pid=""
 [[ -S "$socket_path" ]]
 
-[[ -S "$socket_path" ]]
+# ponytail: SIGTERM cannot run Rust destructors; restart must safely replace
+# this stale socket, while graceful GTK shutdown remains covered by Phase 5.
 launch_app
 cli ping | grep -q '"message": "pong"'
+
+default_runtime="$temporary_root/xdg-runtime"
+mkdir -m 700 "$default_runtime"
+default_log="$temporary_root/default.log"
+env -i \
+  DISPLAY="$DISPLAY" HOME="$HOME" LANG=C.UTF-8 PATH=/usr/bin:/bin \
+  GSK_RENDERER=gl GTK_IM_MODULE=gtk-im-context-simple \
+  XDG_RUNTIME_DIR="$default_runtime" \
+  XDG_CONFIG_HOME="$config" XDG_STATE_HOME="$state" \
+  XDG_DATA_HOME="$data" XDG_CACHE_HOME="$cache" \
+  "$runtime/bin/kitmux" >"$default_log" 2>&1 &
+default_pid=$!
+wait_for_log_file "$default_log" "$default_pid" '^kitmux event=control_server_ready '
+wait_for_log_file "$default_log" "$default_pid" '^kitmux event=navigation_ready$'
+default_socket="$default_runtime/kitmux/kitmux.sock"
+[[ -S "$default_socket" ]]
+KITMUX_SOCKET_PATH="$default_socket" "$runtime/bin/kitmuxctl" ping | grep '"message": "pong"' >/dev/null
+kill "$default_pid"
+wait "$default_pid" || true
+
+user_bin="$temporary_root/user-bin"
+XDG_BIN_HOME="$user_bin" HOME="$HOME" \
+  "$script_dir/install-user-cli.sh" "$runtime/bin/kitmuxctl" >"$temporary_root/install-user-cli.log"
+PATH="$user_bin:/usr/bin:/bin" KITMUX_SOCKET_PATH="$socket_path" \
+  kitmuxctl ping | grep '"message": "pong"' >/dev/null
+rm -f "$runtime/bin/kitmuxctl"
+if XDG_BIN_HOME="$user_bin" HOME="$HOME" \
+  "$script_dir/install-user-cli.sh" "$user_bin/kitmuxctl" \
+  >"$temporary_root/install-user-cli-missing.log" 2>&1; then
+  install_missing_status=0
+else
+  install_missing_status=$?
+fi
+[[ "$install_missing_status" -eq 2 ]]
+grep -q 'source must be an executable' "$temporary_root/install-user-cli-missing.log"
+
 kill "$app_pid"
 wait "$app_pid" || true
 app_pid=""
@@ -147,19 +258,21 @@ app_pid=""
 
 rm -f "$socket_path"
 ln -s "$temporary_root" "$socket_path"
-set +e
 env -i \
   DISPLAY="$DISPLAY" HOME="$HOME" LANG=C.UTF-8 PATH=/usr/bin:/bin \
   GSK_RENDERER=gl GTK_IM_MODULE=gtk-im-context-simple \
   KITMUX_SOCKET_PATH="$socket_path" \
   XDG_CONFIG_HOME="$config" XDG_STATE_HOME="$state" \
   XDG_DATA_HOME="$data" XDG_CACHE_HOME="$cache" \
-  "$runtime/bin/kitmux" >"$temporary_root/symlink.log" 2>&1
-symlink_status=$?
-set -e
-[[ "$symlink_status" -eq 0 ]]
+  "$runtime/bin/kitmux" >"$temporary_root/symlink.log" 2>&1 &
+symlink_pid=$!
+wait_for_log_file "$temporary_root/symlink.log" "$symlink_pid" '^kitmux event=control_server_failed '
+wait_for_log_file "$temporary_root/symlink.log" "$symlink_pid" '^kitmux event=navigation_ready$'
+kill "$symlink_pid"
+wait "$symlink_pid" || true
 grep -q 'control_server_failed' "$temporary_root/symlink.log"
 [[ -L "$socket_path" ]]
+! grep -q 'was not found' "$log"
 rm -f "$socket_path"
 
 echo "Slice 6.1 secure local control and CLI gate: OK"
