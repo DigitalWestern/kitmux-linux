@@ -815,6 +815,22 @@ fn socket_path_parent_must_be_owned_private_and_not_a_symlink() {
         linked_socket.prepare_parent(uid),
         Err(RuntimePathError::UnsafeRuntimeDirectory)
     ));
+
+    let grandparent = temp.path().join("world-writable");
+    let parent = grandparent.join("kitmux");
+    fs::create_dir_all(&parent).unwrap();
+    fs::set_permissions(&grandparent, fs::Permissions::from_mode(0o777)).unwrap();
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+    let nested_socket = UnixSocketAddress::new(parent.join("kitmux.sock")).unwrap();
+    assert!(matches!(
+        nested_socket.prepare_parent(uid),
+        Err(RuntimePathError::UnsafePermissions(0o777))
+    ));
+}
+
+#[test]
+fn control_timeouts_have_a_distinct_protocol_error() {
+    assert_eq!(ControlCodecError::Timeout.response_code(), "timeout");
 }
 
 #[test]

@@ -159,6 +159,7 @@ pub enum ControlCodecError {
     InvalidEnvelope,
     InvalidResponse,
     IncompleteFrame,
+    Timeout,
 }
 
 impl ControlCodecError {
@@ -173,6 +174,7 @@ impl ControlCodecError {
             Self::MalformedRequest | Self::MalformedResponse | Self::IncompleteFrame => {
                 "malformed_request"
             }
+            Self::Timeout => "timeout",
         }
     }
 }
@@ -191,6 +193,7 @@ impl fmt::Display for ControlCodecError {
             Self::InvalidEnvelope => f.write_str("request id or method is invalid"),
             Self::InvalidResponse => f.write_str("response success/error fields are inconsistent"),
             Self::IncompleteFrame => f.write_str("connection ended before newline frame"),
+            Self::Timeout => f.write_str("control I/O timed out"),
         }
     }
 }

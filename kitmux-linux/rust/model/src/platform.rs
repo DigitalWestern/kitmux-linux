@@ -111,12 +111,14 @@ impl UnixSocketAddress {
         &self.path
     }
 
+    /// The socket parent and exactly one existing ancestor are checked;
+    /// `/tmp` is the intentional shared-directory exception.
     pub fn prepare_parent(&self, expected_uid: u32) -> Result<(), RuntimePathError> {
         let parent = self.path.parent().ok_or(RuntimePathError::MissingParent)?;
         if let Some(runtime_root) = parent.parent()
             && runtime_root != Path::new("/tmp")
-            && let Ok(metadata) = fs::symlink_metadata(runtime_root)
         {
+            let metadata = fs::symlink_metadata(runtime_root).map_err(RuntimePathError::Io)?;
             validate_private_directory(&metadata, expected_uid)?;
         }
         match fs::symlink_metadata(parent) {

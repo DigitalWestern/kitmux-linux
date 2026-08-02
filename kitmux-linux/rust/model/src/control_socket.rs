@@ -4,10 +4,10 @@ use crate::{
 };
 use serde::Serialize;
 use std::fmt;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, RawFd};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Arc;
@@ -81,6 +81,7 @@ impl ControlServer {
         address
             .prepare_parent(uid)
             .map_err(|error: RuntimePathError| ControlSocketError::Path(error.to_string()))?;
+        let _path_lock = SocketPathLock::acquire(&path)?;
         remove_stale_socket(&path, uid)?;
         let listener = UnixListener::bind(&path)?;
         let identity = socket_identity(&path)?;
@@ -118,6 +119,32 @@ impl ControlServer {
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+struct SocketPathLock(File);
+
+impl SocketPathLock {
+    fn acquire(path: &Path) -> Result<Self, ControlSocketError> {
+        let lock_path = path.with_extension("lock");
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .mode(0o600)
+            .open(lock_path)?;
+        let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        if result != 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        Ok(Self(file))
+    }
+}
+
+impl Drop for SocketPathLock {
+    fn drop(&mut self) {
+        let _ = unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN) };
     }
 }
 
@@ -178,14 +205,24 @@ fn serve_client<F>(mut stream: UnixStream, handler: Arc<F>, history: ControlEven
 where
     F: Fn(ControlRequest, PeerCredentials) -> ControlResponse + Send + Sync + 'static,
 {
+    let _ = configure_no_sigpipe(stream.as_raw_fd());
     let _ = stream.set_read_timeout(Some(CONTROL_IO_TIMEOUT));
     let _ = stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT));
     let response = match peer_credentials(stream.as_raw_fd()) {
         Ok(peer) if peer.uid == unsafe { libc::geteuid() } => {
-            match read_frame(&mut stream, crate::CONTROL_MAX_REQUEST_BYTES, true)
-                .and_then(|frame| decode_control_request(&frame))
-            {
-                Ok(request) => handler(request, peer),
+            match read_frame(&mut stream, crate::CONTROL_MAX_REQUEST_BYTES, true) {
+                Ok(frame) => match decode_control_request(&frame) {
+                    Ok(request) => handler(request, peer),
+                    Err(error) => {
+                        let request_id = request_id_from_frame(&frame);
+                        history.record("<rejected>", &request_id, false, peer.uid);
+                        ControlResponse::failure(
+                            request_id,
+                            error.response_code(),
+                            error.to_string(),
+                        )
+                    }
+                },
                 Err(error) => {
                     history.record("<rejected>", "", false, peer.uid);
                     ControlResponse::failure("", error.response_code(), error.to_string())
@@ -201,13 +238,15 @@ where
             ControlResponse::failure("", "unauthorized", error.to_string())
         }
     };
+    let response_id = response.id.clone();
     let data = match encode_control_response(&response) {
         Ok(mut data) => {
             data.push(b'\n');
             data
         }
         Err(error) => {
-            let fallback = ControlResponse::failure("", error.response_code(), error.to_string());
+            let fallback =
+                ControlResponse::failure(response_id, error.response_code(), error.to_string());
             let Ok(mut data) = encode_control_response(&fallback) else {
                 return;
             };
@@ -223,6 +262,7 @@ pub fn send_control_request(
     request: &ControlRequest,
 ) -> Result<ControlResponse, ControlClientError> {
     let mut stream = UnixStream::connect(address.path())?;
+    configure_no_sigpipe(stream.as_raw_fd())?;
     stream.set_read_timeout(Some(CONTROL_IO_TIMEOUT))?;
     stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT))?;
     let mut data = encode_control_request(request).map_err(ControlClientError::Codec)?;
@@ -271,7 +311,12 @@ fn read_frame(
     loop {
         let count = stream
             .read(&mut buffer)
-            .map_err(|_| crate::ControlCodecError::IncompleteFrame)?;
+            .map_err(|error| match error.kind() {
+                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => {
+                    crate::ControlCodecError::Timeout
+                }
+                _ => crate::ControlCodecError::IncompleteFrame,
+            })?;
         if count == 0 {
             return if data.is_empty() {
                 Ok(data)
@@ -316,6 +361,35 @@ fn read_frame(
             });
         }
     }
+}
+
+fn request_id_from_frame(frame: &[u8]) -> String {
+    serde_json::from_slice::<serde_json::Value>(frame)
+        .ok()
+        .and_then(|value| value.get("id")?.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+fn configure_no_sigpipe(fd: RawFd) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let enabled: libc::c_int = 1;
+        let result = unsafe {
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_NOSIGPIPE,
+                (&enabled as *const libc::c_int).cast(),
+                std::mem::size_of_val(&enabled) as libc::socklen_t,
+            )
+        };
+        if result != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = fd;
+    Ok(())
 }
 
 fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
