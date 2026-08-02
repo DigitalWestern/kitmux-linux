@@ -2,7 +2,7 @@
 
 **Last inspected:** 2026-08-02
 
-**Implementation state:** Phases 0 through 4 are closed. GTK 4
+**Implementation state:** Phases 0 through 5 are closed. GTK 4
 is the selected Linux UI toolkit. Separate Ubuntu ARM64 headless and
 XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
 Linux stress tests, a real GTK 4 terminal host over X11 and native Wayland
@@ -1316,16 +1316,20 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Begin [Slice 5.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-53-product-controls-and-persistence)
-using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through
-4 are closed; GTK 4 is selected, and the release-shaped one-terminal product
-shell has interaction and crash-safe persistence.
+Begin [Slice 6.1 in the implementation plan](LINUX_PORT_PLAN.md#slice-61-secure-local-control-and-cli)
+using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through 5 are
+closed; GTK 4 is selected, and the release-shaped terminal multiplexer alpha has
+hierarchy navigation, nested splits, one permanent session per live surface, native
+command/settings controls, full safe hierarchy persistence, and close-chain foreground
+review. The macOS/libkitty v0.21 reference is locked and its Ubuntu headless gate passes.
 
-Phase 3 is closed through Slice 3.3. Do not expand its preview into a live
-state import, shell restore, SSH launcher, or persistence writer before those
-product paths reach their assigned later phases.
+Phase 3 is closed through Slice 3.3. Do not expand its preview into a live state import,
+shell restore, SSH launcher, or persistence writer before those product paths reach their
+assigned later phases.
 
-Implement only Slice 5.3: command palette/settings UI, full safe hierarchy
-persistence, close-chain foreground review, and keyboard-only/initial AT-SPI
-navigation. Do not begin live macOS import/restore, browser product
-functionality, packaging, or repository migration.
+Implement only Slice 6.1: private XDG runtime directory and `0600` socket, owner/type/
+symlink checks and Linux peer credentials, bounded frames/clients/reads/writes/timeouts/
+event history, explicit multiple-instance behavior, and a package-managed CLI with a
+diagnosable user-local fallback. Do not begin live macOS import/restore, browser product
+functionality, packaging, or repository migration. Physical-Mesa GPU proof remains a
+separate Phase 6 beta obligation.
