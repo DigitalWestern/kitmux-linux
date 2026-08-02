@@ -7,7 +7,7 @@
 
 **Reference commit:** `3088295003c0842d7c3198102d0d05378da4dc62`
 
-**Last reviewed:** 2026-08-02 (Phase 5 and v0.21 rebaseline complete; Slice 6.1 audit remediation in progress)
+**Last reviewed:** 2026-08-02 (Phase 5, v0.21 rebaseline, and Slice 6.1 audit complete; Slice 6.2 not started)
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
@@ -737,24 +737,28 @@ toolkit-decision blocker.
 
 #### Slice 6.1: Secure local control and CLI
 
-Audit remediation is in progress. The recorded Ubuntu ARM64 X11 release-runtime
-gate proves the private socket, owner/type/symlink checks, Linux peer
-credentials, bounded frames, stale replacement, event history, and basic CLI
-dispatch. It did not run the bounded-client cap, total deadlines,
-multiple-instance behavior, default XDG resolution, user-local CLI fallback, or
-pane-targeting cases; Slice 6.1 is not closed until those claims have direct
-evidence.
+The Slice 6.1 audit is closed. The Ubuntu ARM64 headless
+`kitmux-linux/scripts/test-model.sh` run passed the contract, model,
+interaction, persistence, and 9-test `control_socket_tests.rs` suites,
+including the bounded-client cap and dribbling-client total deadline. The
+Ubuntu ARM64 X11 `DISPLAY=:1
+kitmux-linux/scripts/test-phase6-control.sh` release-runtime gate passed the
+private socket, owner/type/symlink checks, Linux peer credentials, bounded
+frames, stale replacement, event history, basic and pane CLI dispatch,
+multiple-instance ownership, default XDG resolution, user-local CLI
+installation/diagnosis, and idle-client responsiveness.
 
 - Private XDG runtime directory and `0600` socket.
 - Owner/type/symlink checks and Linux peer credentials.
 - Bounded frames and event history; client caps, I/O deadlines, and timeout
-  behavior remain unproven.
+  behavior are proven by the headless Rust socket tests.
 - Multiple instances are allowed: a second instance opens normally, logs
   `control_server_declined reason=live_server`, and runs without a control
-  server while the first instance owns the socket. Other socket-installation
-  failures leave the terminal running with the reason shown in the status line;
-  the multiple-instance acceptance gate remains not run.
-- Package-managed CLI is present; the user-local fallback remains unproven.
+  server while the first instance owns the socket; the X11 acceptance gate
+  passed this case. Other socket-installation failures leave the terminal
+  running with the reason shown in the status line.
+- Package-managed CLI is present; the X11 acceptance gate passed the
+  user-local fallback and its missing-source diagnostic.
 
 #### Slice 6.2: SSH and agent workflows
 
@@ -985,10 +989,9 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Close the Slice 6.1 audit, then begin Slice 6.2 SSH and agent
-   workflows**: the secure local control and CLI baseline exists, but its
-   missing cap, timeout, pane, multiple-instance, and fallback evidence must
-   be closed first.
+1. **Slice 6.1 is closed; Slice 6.2 SSH and agent workflows is next**: the
+   secure local control and CLI evidence is complete. Slice 6.2 was not started
+   in this audit.
 2. **Prove one physical Mesa GPU during Phase 6** before beta; do not treat
    llvmpipe correctness as driver evidence.
 3. **Keep Phases 3 through 5 closed.** Cross-host compatibility, the read-only

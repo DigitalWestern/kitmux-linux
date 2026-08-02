@@ -1,8 +1,8 @@
 # Kitmux Linux next steps
 
 Phase 5 and the mandatory clean macOS/libkitty v0.21 rebaseline are closed.
-Slice 6.1 secure local control and CLI is under audit remediation; begin
-**Slice 6.2 SSH and agent workflows** only after the audit closes. Slices 5.1
+Slice 6.1 secure local control and CLI is closed. **Slice 6.2 SSH and agent
+workflows** is next but was not started in this audit. Slices 5.1
 through 5.3 pass
 display-free, cross-host, focused X11, and native-Wayland
 hierarchy, split, permanent-session, persistence, close-review, control,
@@ -21,8 +21,8 @@ provides a read-only state import preview. Do not expand the closed preview
 into live import or restore work.
 
 The clean tag `macos-linux-port-baseline-2026-08-02-v0.21` is locked and its
-Ubuntu headless gate passes. Finish the Slice 6.1 audit before implementing
-Slice 6.2. Do not begin live macOS
+Ubuntu headless gate passes. The Slice 6.1 audit is closed; do not begin Slice
+6.2 in this task. Do not begin live macOS
 import/restore, browser product functionality, packaging, or the monorepo
 migration. Physical-Mesa GPU proof remains a Phase 6 beta obligation, not a
 substitute for Slice 6.2's SSH/agent gate.
@@ -345,17 +345,18 @@ Exact evidence and non-claims are in `PORT_STATUS.md`.
   headless re-lock passed on 2026-08-02; this is closed Phase 0.6 maintenance,
   not unfinished Slice 5 work.
 
-## Slice 6.1 checkpoint — audit remediation in progress (2026-08-02)
+## Slice 6.1 checkpoint — audit closed (2026-08-02)
 
 - The private local control socket and `kitmuxctl` now cover bounded framing,
   peer credentials, stale replacement, event history, hierarchy/pane dispatch,
   and release-runtime installation.
-- The recorded Ubuntu ARM64 X11 control gate passes malformed/oversized,
-  symlink, owner/mode/type, stale-restart, and basic CLI checks. Its single
-  idle-client check is not evidence for the client cap or total deadlines;
-  multiple-instance, default-XDG, user-local-CLI, and pane-targeting cases are
-  also not yet proven. SSH, resume, and physical-GPU evidence remain later
-  Phase 6 work.
+- The Ubuntu ARM64 headless model gate passes 26 contract, 9 control-socket,
+  8 interaction, 17 model, and 4 persistence tests, including the client cap
+  and dribbling-client total deadline. The Ubuntu ARM64 X11 control gate passes
+  malformed/oversized, symlink, owner/mode/type, stale-restart,
+  multiple-instance, default-XDG, user-local-CLI, pane-targeting, and basic
+  CLI checks. SSH, resume, and physical-GPU evidence remain later Phase 6
+  work.
 
 ## Resume prompt
 

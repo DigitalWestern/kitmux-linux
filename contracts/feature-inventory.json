@@ -1429,9 +1429,14 @@
       ],
       "translation": "Use SO_PEERCRED; handle missing or invalid XDG_RUNTIME_DIR explicitly.",
       "linux_tests": [
+        "kitmux-linux/rust/model/tests/control_socket_tests.rs::round_trip_and_socket_identity_are_real_filesystem_properties",
+        "kitmux-linux/rust/model/tests/control_socket_tests.rs::stale_socket_is_replaced_and_live_socket_is_refused",
+        "kitmux-linux/rust/model/tests/control_socket_tests.rs::symlink_socket_path_is_rejected_and_preserved",
+        "kitmux-linux/rust/model/tests/control_socket_tests.rs::client_cap_returns_busy_instead_of_eof",
+        "kitmux-linux/rust/model/tests/control_socket_tests.rs::dribbling_client_times_out_and_server_still_serves",
         "kitmux-linux/scripts/test-phase6-control.sh::Slice 6.1 secure local control and CLI gate"
       ],
-      "linux_status": "XDG and fallback address resolution, Linux sun_path bounds, and private runtime parent are proven in Slice 3.2; the recorded Slice 6.1 gate proves 0600 owner/type checks, stale replacement, symlink rejection, SO_PEERCRED, and bounded framing. Client-cap, total-deadline, and timeout evidence is not run"
+      "linux_status": "XDG and fallback address resolution, Linux sun_path bounds, and private runtime parent are proven in Slice 3.2; the headless control_socket_tests prove 0600 owner/type checks, stale replacement, symlink rejection, real-socket identity, the client cap, and the total deadline; the X11 Slice 6.1 gate proves SO_PEERCRED, bounded framing, default XDG resolution, and multiple-instance socket ownership"
     },
     {
       "id": "control.cli-mapping",
@@ -1457,7 +1462,7 @@
         "kitmux-linux/rust/model/tests/contracts_tests.rs::cli_parser_maps_bounded_commands_without_shell_strings",
         "kitmux-linux/scripts/test-phase6-control.sh::Slice 6.1 secure local control and CLI gate"
       ],
-      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; the recorded Slice 6.1 gate proves bounded CLI parsing, local dispatch, and release-runtime installation. The user-local fallback is not run"
+      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; the Slice 6.1 gate proves bounded CLI parsing, local dispatch, release-runtime installation, the user-local fallback and its missing-source diagnostic, pane targeting, and read-only targeting"
     },
     {
       "id": "ssh.argv-never-shell",

@@ -15,13 +15,13 @@ command/settings controls, full safe hierarchy persistence, close-chain
 foreground review, and initial accessible roles/focus order. Native packaging
 does not exist yet.
 
-**Active track:** Slice 6.1 secure local control and CLI audit remediation.
-The mandatory macOS/libkitty v0.21 rebaseline is complete. Slice 6.2 SSH and
-agent workflows remains blocked until this audit closes.
+**Active track:** Slice 6.1 secure local control and CLI is closed. The
+mandatory macOS/libkitty v0.21 rebaseline is complete. Slice 6.2 SSH and
+agent workflows has not started.
 
-**Next gate:** Finish the Slice 6.1 audit plan, then begin Slice 6.2 SSH and
-agent workflows. Physical-Mesa GPU rendering and interaction remain a Phase 6
-beta obligation; native packaging remains Phase 8 work.
+**Next gate:** Slice 6.2 SSH and agent workflows. It was not started by this
+audit. Physical-Mesa GPU rendering and interaction remain a Phase 6 beta
+obligation; native packaging remains Phase 8 work.
 Phase 4's shell/editor,
 X11/Wayland, 30-minute interaction-soak, and clean no-SDK gates all pass.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK ran
@@ -43,29 +43,31 @@ repository root.
 
 Adjacent macOS checkout: `../macos/kitmux/`
 
-### 2026-08-02 — Slice 6.1 secure local control and CLI baseline; audit in progress
+### 2026-08-02 — Slice 6.1 secure local control and CLI audit closed
 
 - Added the Linux control server and CLI over a bounded newline-delimited
   protocol: private XDG socket resolution, `0600` mode, owner/type/symlink
   checks, Linux `SO_PEERCRED`, bounded frames, and a bounded event history with
   cursor filtering.
 - Added release-runtime `kitmuxctl` installation and
-  `scripts/install-user-cli.sh`; the user-local fallback was not exercised by
-  the pre-audit gate.
-- `cargo test --locked --manifest-path kitmux-linux/rust/model/Cargo.toml`
-  passed the model, contract, interaction, and persistence suite. The CLI
-  parser test is `cli_parser_maps_bounded_commands_without_shell_strings`.
+  `scripts/install-user-cli.sh`; the final desktop gate exercised the
+  user-local fallback and its missing-source diagnostic.
+- `kitmux-linux/scripts/test-model.sh` passed on macOS and in the Ubuntu ARM64
+  headless VM. The current Linux run passed 26 contract, 9 control-socket, 8
+  interaction, 17 model, and 4 persistence tests; the CLI parser test is
+  `cli_parser_maps_bounded_commands_without_shell_strings`.
 - `KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON
   kitmux-linux/scripts/build-release-runtime.sh` passed in the Ubuntu ARM64
   desktop VM, including dependency closure, SPDX SBOM, release metadata, the
   16-session flood, 24 forced-close cycles, and FD restoration.
-- The recorded pre-audit `DISPLAY=:1
-  kitmux-linux/scripts/test-phase6-control.sh` gate proved socket
-  mode/ownership/type, ping/identify/tree, hierarchy dispatch, event peer
-  identity, one idle-client responsiveness check, malformed/oversized errors,
-  stale replacement, and symlink refusal. It did not run the client cap,
-  deadline, multiple-instance, default-XDG, user-local-CLI, or pane cases;
-  those are not evidence yet.
+- The final `DISPLAY=:1
+  kitmux-linux/scripts/test-phase6-control.sh` gate passed socket
+  mode/ownership/type, ping/identify/tree, hierarchy and pane dispatch,
+  event peer identity, idle-client responsiveness, malformed/oversized errors,
+  multiple-instance ownership, stale replacement, default XDG resolution,
+  user-local CLI installation and missing-source diagnosis, and symlink
+  refusal. The headless Rust socket tests separately prove the client cap and
+  total deadline behavior.
 - Known limitation: if the runtime socket file is removed while the server is
   still running, restart Kitmux or set `KITMUX_SOCKET_PATH`; no auto-rebind
   watcher is implemented.
@@ -77,7 +79,7 @@ Adjacent macOS checkout: `../macos/kitmux/`
 - Source-tested: yes on macOS and Ubuntu ARM64; GUI/release-runtime-tested:
   Ubuntu 26.04 ARM64 X11 with Mesa llvmpipe. Native-package-tested,
   clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and
-  physical-GPU-tested: none. Slice 6.2 is next; SSH, resume, packaging, and
+  physical-GPU-tested: not run. Slice 6.2, SSH, resume, packaging, and
   physical-Mesa proof remain open.
 
 Clean reference revision:
