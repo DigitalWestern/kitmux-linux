@@ -92,7 +92,6 @@ impl ControlServer {
         let identity = socket_identity(&path)?;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
         validate_bound_socket(&path, uid, identity)?;
-        listener.set_nonblocking(true)?;
 
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
@@ -156,6 +155,7 @@ impl Drop for SocketPathLock {
 impl Drop for ControlServer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        let _ = UnixStream::connect(&self.path);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -179,6 +179,9 @@ fn accept_loop<F>(
     while !stop.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _)) => {
+                if stop.load(Ordering::Acquire) {
+                    break;
+                }
                 if active_clients.fetch_add(1, Ordering::AcqRel) >= CONTROL_MAX_CLIENTS {
                     active_clients.fetch_sub(1, Ordering::AcqRel);
                     history.record("<rejected>", "", false, unsafe { libc::geteuid() });
@@ -207,9 +210,6 @@ fn accept_loop<F>(
                         serve_client(stream, handler, history, deadline);
                         active_clients.fetch_sub(1, Ordering::AcqRel);
                     });
-            }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(10));
             }
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(_) => break,

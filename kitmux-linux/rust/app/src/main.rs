@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::rc::{Rc, Weak};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,6 +46,9 @@ const SPLIT_GAP: i32 = 4;
 const MINIMUM_PANE: PixelSize = PixelSize::new(80, 50);
 static UNSAFE_PASTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static FOREGROUND_CLOSE_COUNT: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    static CONTROL_WAKE: RefCell<Option<Box<dyn Fn()>>> = RefCell::new(None);
+}
 const IMPLEMENTED_CONTROL_METHODS: &[ControlMethod] = &[
     ControlMethod::Ping,
     ControlMethod::Tree,
@@ -525,8 +528,6 @@ struct Terminal {
     divider_drag: Option<(SplitId, f64, f64)>,
     control_server: Option<ControlServer>,
     control_notice: Option<String>,
-    control_dispatch_source: Option<glib::SourceId>,
-    control_queue: Option<ControlQueue>,
     control_history: ControlEventHistory,
 }
 
@@ -535,8 +536,6 @@ struct PendingControlCall {
     peer_uid: u32,
     response: SyncSender<ControlResponse>,
 }
-
-type ControlQueue = Arc<Mutex<VecDeque<PendingControlCall>>>;
 
 struct PendingTerminalRuntime {
     closed: bool,
@@ -626,8 +625,6 @@ impl Default for Terminal {
             divider_drag: None,
             control_server: None,
             control_notice: None,
-            control_dispatch_source: None,
-            control_queue: None,
             control_history: ControlEventHistory::default(),
         }
     }
@@ -671,9 +668,13 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), Contro
     let address = resolve_control_socket(&environment, unsafe { libc::geteuid() })
         .map_err(|error| ControlSocketError::Path(error.to_string()))?;
     let queue = Arc::new(Mutex::new(VecDeque::new()));
+    let wake_context = glib::MainContext::default();
+    let wake_pending = Arc::new(AtomicBool::new(false));
     let history = terminal.borrow().control_history.clone();
     let handler_queue = Arc::clone(&queue);
     let handler_history = history.clone();
+    let handler_wake_context = wake_context.clone();
+    let handler_wake_pending = Arc::clone(&wake_pending);
     let server = ControlServer::start(address.clone(), history.clone(), move |request, peer| {
         let (sender, receiver) = mpsc::sync_channel(1);
         let request_id = request.id.clone();
@@ -691,6 +692,15 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), Contro
             response: sender,
         });
         drop(queue);
+        if !handler_wake_pending.swap(true, Ordering::AcqRel) {
+            handler_wake_context.invoke(|| {
+                CONTROL_WAKE.with(|wake| {
+                    if let Some(dispatch) = wake.borrow().as_ref() {
+                        dispatch();
+                    }
+                });
+            });
+        }
         match receiver.recv_timeout(CONTROL_DISPATCH_TIMEOUT) {
             Ok(response) => response,
             Err(_) => {
@@ -701,29 +711,29 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), Contro
     })?;
     let weak = Rc::downgrade(terminal);
     let dispatch_queue = Arc::clone(&queue);
-    let dispatch_source = glib::timeout_add_local(Duration::from_millis(10), move || {
-        let Some(terminal) = weak.upgrade() else {
-            return glib::ControlFlow::Break;
-        };
-        let calls = {
-            let mut queue = dispatch_queue
+    let dispatch_history = history.clone();
+    let dispatch_pending = Arc::clone(&wake_pending);
+    CONTROL_WAKE.with(|wake| {
+        *wake.borrow_mut() = Some(Box::new(move || {
+            dispatch_pending.store(false, Ordering::Release);
+            let Some(terminal) = weak.upgrade() else {
+                return;
+            };
+            let calls = dispatch_queue
                 .lock()
-                .expect("control dispatch queue lock poisoned");
-            let count = queue.len().min(16);
-            queue.drain(..count).collect::<Vec<_>>()
-        };
-        for call in calls {
-            let method = call.request.method.clone();
-            let response = dispatch_control_request(&terminal, call.request, &history);
-            history.record(&method, &response.id, response.ok, call.peer_uid);
-            let _ = call.response.send(response);
-        }
-        glib::ControlFlow::Continue
+                .expect("control dispatch queue lock poisoned")
+                .drain(..)
+                .collect::<Vec<_>>();
+            for call in calls {
+                let method = call.request.method.clone();
+                let response = dispatch_control_request(&terminal, call.request, &dispatch_history);
+                dispatch_history.record(&method, &response.id, response.ok, call.peer_uid);
+                let _ = call.response.send(response);
+            }
+        }));
     });
     let mut terminal = terminal.borrow_mut();
-    terminal.control_queue = Some(queue);
     terminal.control_server = Some(server);
-    terminal.control_dispatch_source = Some(dispatch_source);
     diagnostic(
         "control_server_ready",
         &[
@@ -2898,10 +2908,9 @@ impl Terminal {
     }
 
     fn shutdown(&mut self, area: &GLArea) {
-        if let Some(source) = self.control_dispatch_source.take() {
-            source.remove();
-        }
-        self.control_queue = None;
+        CONTROL_WAKE.with(|wake| {
+            wake.borrow_mut().take();
+        });
         self.control_server.take();
         if let Some(source) = self.settings_source.take() {
             source.remove();
