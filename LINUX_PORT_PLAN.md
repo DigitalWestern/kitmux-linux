@@ -5,9 +5,9 @@
 
 **macOS reference:** `../macos/kitmux/`
 
-**Reference commit:** `e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4`
+**Reference commit:** `3088295003c0842d7c3198102d0d05378da4dc62`
 
-**Last reviewed:** 2026-08-01 (Phase 5 complete; clean rebaseline then Slice 6.1)
+**Last reviewed:** 2026-08-02 (Phase 5 and v0.21 rebaseline complete; Slice 6.1 next)
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
@@ -230,9 +230,10 @@ prerequisite for public binary distribution rather than a parallel track.
 
 #### Slice 0.6: Define the re-baselining ritual — complete
 
-The macOS reference is frozen at `macos-linux-port-baseline-2026-07-23` while
-macOS is a live daily driver. Every day Linux develops against that tag, the
-parity target drifts, and nothing currently measures the drift.
+The first macOS reference was frozen at
+`macos-linux-port-baseline-2026-07-23`; the current reference is
+`macos-linux-port-baseline-2026-08-02-v0.21`. macOS remains a live daily
+driver, so the parity target keeps drifting and must remain measurable.
 
 Produce a repeatable procedure that:
 
@@ -971,10 +972,10 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Rebaseline the macOS reference from clean worktrees**: the Phase 5
-   boundary report found the additive v0.21 render-resource API and requires a
-   clean tested macOS tag plus guarded `--relock` before Phase 6 work.
-2. **Begin Slice 6.1 secure local control and CLI** after that rebaseline.
+1. **Begin Slice 6.1 secure local control and CLI**: the clean v0.21 tag and
+   guarded Ubuntu headless rebaseline passed on 2026-08-02.
+2. **Prove one physical Mesa GPU during Phase 6** before beta; do not treat
+   llvmpipe correctness as driver evidence.
 3. **Keep Phases 3 through 5 closed.** Cross-host compatibility, the read-only
    import preview, and the one-terminal alpha gates are proven; live import,
    browser, and packaging work stay in their assigned phases.
@@ -990,8 +991,8 @@ items that unblock everything else stay open.
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Phase 5 is complete. Rebaseline the new
-macOS/libkitty v0.21 reference from clean worktrees, then begin Slice 6.1. Do
-not start browser product behavior or packaging.
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Phase 5 and the macOS/libkitty v0.21
+rebaseline are complete; begin Slice 6.1. Do not start browser product
+behavior or packaging.
 Do not turn the closed Slice 3.3 preview into a live import or restore path
 incidentally.

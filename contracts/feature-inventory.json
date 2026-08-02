@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "reference_tag": "macos-linux-port-baseline-2026-07-23",
-  "updated": "2026-08-01",
+  "reference_tag": "macos-linux-port-baseline-2026-08-02-v0.21",
+  "updated": "2026-08-02",
   "notes": {
     "granularity": "Schema 2 decomposed the original 16 subsystem rows into per-behavior rows. At subsystem granularity a Phase 9 parity claim was unfalsifiable: an entire area could be marked shipped while half of it was missing. Every row here states one observable behavior and names the macOS test that pins it.",
-    "macos_tests": "An entry is `path` or `path::anchor`. An anchor names a Swift, Python, or C function definition, or — for the monolithic C gates, which are one main() with no per-case functions — the `// vN.M feature` comment that labels the block asserting that behavior. `contracts/validate-inventory.py` resolves every anchor against the macOS checkout; a bare `path` means the whole file is the case (test_engine.c) or that no finer anchor exists in it. All anchors here were resolved by hand against tag macos-linux-port-baseline-2026-07-23 on 2026-07-28.",
+    "macos_tests": "An entry is `path` or `path::anchor`. An anchor names a Swift, Python, or C function definition, or — for the monolithic C gates, which are one main() with no per-case functions — the `// vN.M feature` comment that labels the block asserting that behavior. `contracts/validate-inventory.py` resolves every anchor against the macOS checkout; a bare `path` means the whole file is the case (test_engine.c) or that no finer anchor exists in it. All anchors resolve at tag macos-linux-port-baseline-2026-08-02-v0.21.",
     "linux_status": "'unproven' is the default and is not a defect. Statuses are claims of evidence and must match PORT_STATUS.md; a status here without a PORT_STATUS entry is a bug.",
     "areas": "The 17 area IDs are the schema 1 rows, retained so earlier references resolve.",
     "macos_test_gaps": "The 2026-07-28 anchor pass emptied four rows whose file-level claim did not hold: the named file exists but asserts nothing about that behavior at the tag. render.gl-state-isolation: no glGet call exists anywhere in the baseline, because the macOS host is the only GL client and has no foreign state to preserve. render.scale-correctness: backingScaleFactor appears only in TerminalView sources, never in a test or smoke. render.init-failure-visible: no smoke asserts the diagnostic surface. keyboard.press-release-repeat: AppKit delivers no key-up to the terminal, so the release and repeat paths are Linux-only behavior with no macOS counterpart. For these four, Phase 9 parity must be argued against macOS sources and the Linux gate, not against a macOS test. Partial anchors, recorded so they are not read as full coverage: keyboard.focus-ownership pins pane focus via runControlSmoke but nothing asserts the terminal owns Tab; hierarchy.hidden-vs-visible pins fair pumping but nothing asserts a hidden pane skips layout and draw."
@@ -258,7 +258,7 @@
         "libkitty/tests/test_session.c::v0.11 user vars",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/BellPolicyTests.swift::testViewedPaneUsesAudioAndVisualButNeverHostOrTabAlerts",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/BellPolicyTests.swift::testHiddenPaneUsesHostNotificationOnlyWhenEnabled",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runBellSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+ChromeSmokes.swift::runBellSmoke"
       ],
       "linux_acceptance": "Each OSC surface fires its callback with the expected payload, and bell policy maps to the configured audible/visual response.",
       "dependencies": [
@@ -482,7 +482,7 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalView+TextInput.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runIMESmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+InputSmokes.swift::runIMESmoke"
       ],
       "linux_acceptance": "Compose sequences, dead keys, and an engine conversion produce a visible preedit at the cursor cell and commit the expected UTF-8.",
       "dependencies": [
@@ -504,7 +504,7 @@
         "macos/KitmuxApp/Sources/Kitmux/TerminalView.swift"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runControlSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+ControlSmokes.swift::runControlSmoke"
       ],
       "linux_acceptance": "Focus transfer to an ordinary toolkit control is observable; the terminal child receives nothing while unfocused and resumes on refocus.",
       "dependencies": [
@@ -579,7 +579,7 @@
       ],
       "macos_tests": [
         "libkitty/tests/test_session.c::v0.4 scrollback",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runScrollbackSaveStage"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+PersistenceSmokes.swift::runScrollbackSaveStage"
       ],
       "linux_acceptance": "Two sessions retain independent scroll position across focus changes; clear-scrollback affects only the target session.",
       "dependencies": [
@@ -626,7 +626,7 @@
       ],
       "macos_tests": [
         "libkitty/tests/test_session.c::v0.10 search",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runSearchSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+InputSmokes.swift::runSearchSmoke"
       ],
       "linux_acceptance": "Two sessions hold independent search state; markers appear and clear on cancel.",
       "dependencies": [
@@ -676,7 +676,7 @@
       ],
       "macos_tests": [
         "libkitty/tests/test_session.c::v0.7 mouse reporting",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runMouseSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+InputSmokes.swift::runMouseSmoke"
       ],
       "linux_acceptance": "Press, release, drag, and hover produce reporting bytes in reporting mode and local selection otherwise; Shift preserves local selection and scrolling in both.",
       "dependencies": [
@@ -700,7 +700,7 @@
       ],
       "macos_tests": [
         "libkitty/tests/test_session.c::v0.7 mouse reporting",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runMouseSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+InputSmokes.swift::runMouseSmoke"
       ],
       "linux_acceptance": "Discrete wheel and smooth touchpad deltas both scroll correctly and do not interrupt PTY pumping.",
       "dependencies": [
@@ -1265,7 +1265,7 @@
       ],
       "macos_tests": [
         "libkitty/tests/test_session.c::test_foreground_process_signal",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runProcessCloseSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+ChromeSmokes.swift::runProcessCloseSmoke"
       ],
       "linux_acceptance": "Foreground, stopped-foreground, and background-only job cases classify identically to the macOS matrix.",
       "dependencies": [
@@ -1333,8 +1333,8 @@
         "libkitty/src/session.c"
       ],
       "macos_tests": [
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runGUIStressSmoke",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runProcessCloseSmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+StressSmokes.swift::runGUIStressSmoke",
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+ChromeSmokes.swift::runProcessCloseSmoke"
       ],
       "linux_acceptance": "24 forced-close cycles leave no live children, no zombies, and an exact file-descriptor baseline.",
       "dependencies": [
@@ -1356,7 +1356,7 @@
       ],
       "macos_tests": [
         "libkitty/tests/test_session.c::v0.3 paste",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runDailySmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+InputSmokes.swift::runDailySmoke"
       ],
       "linux_acceptance": "A copy/paste round trip completes under both display backends while a session floods output.",
       "dependencies": [
@@ -1382,7 +1382,7 @@
         "libkitty/tests/test_session.c::v0.9 notifications",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/NotificationBadgeTests.swift::testZeroAndNegativeCountsClearTheBadge",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/NotificationBadgeTests.swift::testCountsAboveNineAreCapped",
-        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+GUISmokes.swift::runNotifySmoke"
+        "macos/KitmuxApp/Sources/Kitmux/AppDelegate+ChromeSmokes.swift::runNotifySmoke"
       ],
       "linux_acceptance": "OSC notifications post through GIO or the portal, and unread state clears on focus per the badge fixture matrix.",
       "dependencies": [

@@ -1,6 +1,6 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-08-01
+**Last inspected:** 2026-08-02
 
 **Implementation state:** Phases 0 through 4 are closed. GTK 4
 is the selected Linux UI toolkit. Separate Ubuntu ARM64 headless and
@@ -17,12 +17,12 @@ does not exist yet.
 
 **Active track:** Phase 5 — terminal multiplexer alpha — is closed. Slices 5.1,
 5.2, and 5.3 and the Phase 5 exit matrix are complete. Phase 6.1 secure local
-control and CLI is next after the mandatory macOS-reference rebaseline is made
-from a clean Linux worktree.
+control and CLI is next. The mandatory macOS/libkitty v0.21 rebaseline is
+complete.
 
-**Next gate:** Create and test a clean macOS reference tag containing the
-reviewed v0.21 additive renderer API, then use the guarded clean-worktree
-`report-reference-drift.py --relock TAG` path. After that, begin Slice 6.1 only.
+**Next gate:** Begin Slice 6.1 secure local control and CLI only. Physical-Mesa
+GPU rendering and interaction remain a Phase 6 beta obligation; native
+packaging remains Phase 8 work.
 Phase 4's shell/editor,
 X11/Wayland, 30-minute interaction-soak, and clean no-SDK gates all pass.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK ran
@@ -45,11 +45,11 @@ repository root.
 Adjacent macOS checkout: `../macos/kitmux/`
 
 Clean reference revision:
-`e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4`
-(`style: normalize extracted source endings`)
+`3088295003c0842d7c3198102d0d05378da4dc62`
+(`docs: clarify GL context transfer lifecycle`)
 
 Reference tag:
-`macos-linux-port-baseline-2026-07-23`
+`macos-linux-port-baseline-2026-08-02-v0.21`
 
 Pinned Kitty revision inspected:
 `c1d507dbe8cd12830d8b97b0d350d9dc2e4d383f`
@@ -76,6 +76,37 @@ listed only in the checkout's local Git exclude file.
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-08-02 — macOS/libkitty v0.21 reference rebaseline complete
+
+- The phase-boundary report found mandatory public-header and patch drift for
+  additive `kitty_session_release_render_resources` plus its multi-context
+  renderer lifecycle. A follow-up replaced the font-rescale shortcut with a
+  dedicated GPU-data reload so same-size context transfers do not discard
+  terminal image placements.
+- macOS command: `make -C libkitty test` passed engine lifecycle, session API,
+  render smoke, and `test_render_multi_context`, including A → B → A context
+  transfer, geometry changes, a font-atlas rebuild, surviving-context render,
+  and clean GL state. The clean macOS `HEAD` was tagged
+  `macos-linux-port-baseline-2026-08-02-v0.21` at
+  `3088295003c0842d7c3198102d0d05378da4dc62`.
+- Linux source/cross-host command: `kitmux-linux/scripts/test-phase3.sh`
+  passed 52 Rust tests, 6 contracts/20 cases/7 byte-identical fixture files,
+  97 Linux inventory references, 234 macOS references, and all 9 macOS
+  portable-contract consumer tests.
+- Guarded command:
+  `kitmux-linux/scripts/report-reference-drift.py --relock
+  macos-linux-port-baseline-2026-08-02-v0.21` changed only
+  `source-lock.json`, verified 7 locked reference files and the Linux overlay,
+  then passed all 6 Ubuntu ARM64 C/C++/ELF/engine/session/stress tests and the
+  same 52 Rust tests. Commit `90aa479` contains only that lock update.
+- Source-tested: yes on macOS and Ubuntu ARM64, including cross-host fixtures.
+  GUI-tested and release-layout-tested: not rerun for this source-only
+  rebaseline; the recorded Phase 5 X11/native-Wayland and fresh-runtime gates
+  remain the current product evidence. Native-package-tested,
+  clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and
+  physical-GPU-tested: none. Slice 6.1 is next; no Phase 6 product work was
+  started.
 
 ### 2026-08-01 — Slice 5.3 and Phase 5 exit matrix complete
 

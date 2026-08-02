@@ -29,16 +29,6 @@ REQUIRED_FIELDS = (
 )
 
 
-# A reference that exists only past the baseline tag has to say why. Phase 3.3's
-# cross-host consumer test is the one intentional case: it was added on macOS
-# after the freeze, and the reference-drift report already records that commit.
-POST_BASELINE_ALLOWED = {
-    "macos/KitmuxApp/Tests/KitmuxCoreTests/PortableContractFixtureTests.swift":
-        "Phase 3.3 cross-host consumer test, added by the recorded post-baseline "
-        "commit; see the drift report in PORT_STATUS.md.",
-}
-
-
 def tagged_reader(macos: pathlib.Path, tag: str):
     """Return read(path) -> text at `tag`, or None when the path is absent."""
     def git(*args: str) -> subprocess.CompletedProcess:
@@ -149,23 +139,11 @@ def main() -> int:
         tag = document["reference_tag"]
         read = tagged_reader(macos, tag)
         resolved = 0
-        post_baseline: set[str] = set()
-        unverified: set[str] = set()
         for feature in features:
             refs = feature.get("macos_sources", []) + feature.get("macos_tests", [])
             for ref in refs:
                 path, _, test_name = ref.partition("::")
                 text = read(path)
-                if text is None and path in POST_BASELINE_ALLOWED:
-                    # Declared as newer than the baseline on purpose. Check it
-                    # against the working tree when this checkout has it, and
-                    # say so out loud when it cannot be checked at all.
-                    if (macos / path).exists():
-                        text = (macos / path).read_text()
-                        post_baseline.add(path)
-                    else:
-                        unverified.add(path)
-                        continue
                 if text is None:
                     failures.append(f"{feature['id']}: missing {path} at {tag}")
                     continue
@@ -175,12 +153,6 @@ def main() -> int:
                     continue
                 resolved += 1
         print(f"resolved {resolved} macOS source and test references at {tag}")
-        for path in sorted(post_baseline):
-            print(f"  post-baseline, checked against the working tree: {path}")
-            print(f"    {POST_BASELINE_ALLOWED[path]}")
-        for path in sorted(unverified):
-            print(f"  post-baseline and absent here, UNVERIFIED: {path}")
-
     alpha = sum(1 for f in features if f["classification"] == "terminal-alpha")
     print(f"{len(features)} features across {len(areas)} areas ({alpha} terminal-alpha)")
 

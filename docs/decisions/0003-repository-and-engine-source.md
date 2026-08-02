@@ -5,7 +5,7 @@ Status: accepted for the current spike; long-term monorepo migration proposed
 `operating-system/linux` is an independent Git repository. The tagged macOS
 checkout is the current authoritative libkitty and behavior source. Linux
 builds materialize only the locked files from
-`macos-linux-port-baseline-2026-07-23` and verify every recorded hash in
+`macos-linux-port-baseline-2026-08-02-v0.21` and verify every recorded hash in
 `source-lock.json`.
 
 Linux-specific build and GL-loader work lives here during the spikes. The

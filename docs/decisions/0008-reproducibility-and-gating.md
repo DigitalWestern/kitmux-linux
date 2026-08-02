@@ -25,11 +25,11 @@ tracked in `PORT_STATUS.md`; R3 closed on 2026-07-28.
 ### R1 — The repository cannot be built standalone
 
 `scripts/materialize-reference.sh` requires the private macOS repository at
-`../macos/kitmux`, at tag `macos-linux-port-baseline-2026-07-23`, and extracts
-`libkitty/` and `patches/` from it. `kitmux-linux/patches/` is an empty
-directory in this tree. A clone of this repository alone fails at the first
-step, and the engine glue and Kitty patches — the load-bearing inputs — are not
-present in it.
+`../macos/kitmux`, at tag
+`macos-linux-port-baseline-2026-08-02-v0.21`, and extracts `libkitty/` and
+`patches/` from it. `kitmux-linux/patches/` is an empty directory in this tree.
+A clone of this repository alone fails at the first step, and the engine glue
+and Kitty patches — the load-bearing inputs — are not present in it.
 
 Due: at the monorepo migration, which ADR 0006 promotes from "recommended
 eventually" to a prerequisite for Phase 8. See

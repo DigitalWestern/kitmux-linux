@@ -1,8 +1,8 @@
 # Kitmux Linux next steps
 
-Phase 5 is closed. Continue with the **mandatory clean macOS-reference
-rebaseline**, then begin **Slice 6.1 secure local control and CLI**. Slices 5.1
-through 5.3 pass display-free, cross-host, focused X11, and native-Wayland
+Phase 5 and the mandatory clean macOS/libkitty v0.21 rebaseline are closed.
+Begin **Slice 6.1 secure local control and CLI**. Slices 5.1 through 5.3 pass
+display-free, cross-host, focused X11, and native-Wayland
 hierarchy, split, permanent-session, persistence, close-review, control,
 accessibility, and rapid-navigation gates.
 
@@ -18,12 +18,11 @@ Linux adapters, exports temporary compatibility values consumed by macOS, and
 provides a read-only state import preview. Do not expand the closed preview
 into live import or restore work.
 
-Do not begin Slice 6.1 in this dirty checkout. First create and test a clean
-macOS tag containing the reviewed v0.21 additive renderer API, then run the
-guarded `report-reference-drift.py --relock TAG` path from a clean Linux
-worktree. After that, implement only Slice 6.1. Do not begin live macOS
+The clean tag `macos-linux-port-baseline-2026-08-02-v0.21` is locked and its
+Ubuntu headless gate passes. Implement only Slice 6.1. Do not begin live macOS
 import/restore, browser product functionality, packaging, or the monorepo
-migration.
+migration. Physical-Mesa GPU proof remains a Phase 6 beta obligation, not a
+substitute for Slice 6.1's secure-control gate.
 
 ## Preconditions
 
@@ -338,9 +337,10 @@ Exact evidence and non-claims are in `PORT_STATUS.md`.
   894-file release gates pass the complete product scenario, X11/native-
   Wayland rapid navigation, nested split/accessibility, hidden-output, and the
   full Phase 4 X11/native-Wayland regressions.
-- Phase-boundary drift is mandatory: clean macOS `HEAD` adds the v0.21
-  multi-context render-resource release API. Re-locking must wait for a clean
-  Linux worktree. This is the next precondition, not unfinished Slice 5 work.
+- Phase-boundary drift was mandatory: clean macOS `HEAD` added the v0.21
+  multi-context render-resource release API. The clean tag and guarded Ubuntu
+  headless re-lock passed on 2026-08-02; this is closed Phase 0.6 maintenance,
+  not unfinished Slice 5 work.
 
 ## Resume prompt
 
@@ -349,8 +349,8 @@ Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, Phases 5 and 6 in
 LINUX_PORT_PLAN.md, and ADRs 0007 and 0008. Phases 0 through 5 are closed; GTK 4
 is selected, and the full terminal multiplexer alpha passes source,
 cross-host, X11, and native-Wayland gates. Preserve unrelated worktree changes.
-Before Slice 6.1, create/test a clean macOS v0.21 reference tag and use the
-clean-worktree guarded `report-reference-drift.py --relock TAG` path. Do not
-begin live macOS import/restore, browser product work, packaging, or repository
-migration.
+The clean macOS/libkitty v0.21 reference is locked and its headless gate
+passes. Implement only Slice 6.1 secure local control and CLI. Do not begin
+live macOS import/restore, browser product work, packaging, or repository
+migration; keep physical-GPU proof explicit as the separate Phase 6 beta gate.
 ```
