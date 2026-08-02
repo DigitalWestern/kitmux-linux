@@ -9,16 +9,17 @@ use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
 use kitmux_model::{
     AppModel, AppSnapshot, CONTROL_DISPATCH_TIMEOUT, CloseOutcome, CommandId, ControlEventHistory,
-    ControlMethod, ControlRequest, ControlResponse, ControlServer, Direction, GroupId, GroupModel,
-    LoadDisposition, NavigationTarget, PaneContainer, PaneContentKind, PaneDetail, PaneId,
-    PaneRuntime, PaneSurface, PaneSurfaceDetail, PasteConfirmationReason, PixelRect, PixelSize,
-    PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES, SNAPSHOT_VERSION,
-    SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis, SplitId, SplitLayout,
-    SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime, TerminalTabSnapshot,
-    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths, accumulate_scroll_lines,
-    command_palette_matches, detected_url, encode_control_response, load_settings_at_launch,
-    load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
-    resolve_control_socket, save_settings, save_state, terminal_cell_scaled,
+    ControlMethod, ControlRequest, ControlResponse, ControlServer, ControlSocketError, Direction,
+    GroupId, GroupModel, LoadDisposition, NavigationTarget, PaneContainer, PaneContentKind,
+    PaneDetail, PaneId, PaneRuntime, PaneSurface, PaneSurfaceDetail, PasteConfirmationReason,
+    PixelRect, PixelSize, PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES,
+    SNAPSHOT_VERSION, SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis,
+    SplitId, SplitLayout, SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime,
+    TerminalTabSnapshot, WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
+    accumulate_scroll_lines, command_palette_matches, detected_url, encode_control_response,
+    load_settings_at_launch, load_state_at_launch, namespaced_number_target,
+    paste_confirmation_reason, reload_settings, resolve_control_socket, save_settings, save_state,
+    terminal_cell_scaled,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
@@ -523,6 +524,7 @@ struct Terminal {
     created_groups: usize,
     divider_drag: Option<(SplitId, f64, f64)>,
     control_server: Option<ControlServer>,
+    control_notice: Option<String>,
     control_dispatch_source: Option<glib::SourceId>,
     control_queue: Option<ControlQueue>,
     control_history: ControlEventHistory,
@@ -623,6 +625,7 @@ impl Default for Terminal {
             created_groups: 1,
             divider_drag: None,
             control_server: None,
+            control_notice: None,
             control_dispatch_source: None,
             control_queue: None,
             control_history: ControlEventHistory::default(),
@@ -663,10 +666,10 @@ fn foreground_scope(command: CommandId) -> ForegroundScope {
     }
 }
 
-fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String> {
+fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), ControlSocketError> {
     let environment: HashMap<String, String> = env::vars().collect();
     let address = resolve_control_socket(&environment, unsafe { libc::geteuid() })
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| ControlSocketError::Path(error.to_string()))?;
     let queue = Arc::new(Mutex::new(VecDeque::new()));
     let history = terminal.borrow().control_history.clone();
     let handler_queue = Arc::clone(&queue);
@@ -695,8 +698,7 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
                 ControlResponse::failure(request_id, "timeout", "control request timed out")
             }
         }
-    })
-    .map_err(|error| error.to_string())?;
+    })?;
     let weak = Rc::downgrade(terminal);
     let dispatch_queue = Arc::clone(&queue);
     let dispatch_source = glib::timeout_add_local(Duration::from_millis(10), move || {
@@ -1857,10 +1859,15 @@ impl Terminal {
             }
         }
         let fd = unsafe { ffi::kitty_session_fd(session) };
-        status.set_text(&format!(
-            "Live shell · cell {}×{} px",
-            self.cell_width, self.cell_height
-        ));
+        let status_text = format!(
+            "Live shell · cell {}×{} px{}",
+            self.cell_width,
+            self.cell_height,
+            self.control_notice
+                .as_deref()
+                .map_or(String::new(), |notice| format!(" · {notice}"))
+        );
+        status.set_text(&status_text);
         area.grab_focus();
         diagnostic(
             "terminal_ready",
@@ -4215,9 +4222,22 @@ fn build_window(app: &Application) {
         settings: settings.downgrade(),
     });
     if let Err(error) = install_control_server(&terminal) {
-        diagnostic("control_server_failed", &[("error", error)]);
-        app.quit();
-        return;
+        match error {
+            ControlSocketError::LiveServer => {
+                diagnostic(
+                    "control_server_declined",
+                    &[("reason", "live_server".to_owned())],
+                );
+                terminal.borrow_mut().control_notice =
+                    Some("local control handled by another instance".to_owned());
+            }
+            error => {
+                let message = error.to_string();
+                diagnostic("control_server_failed", &[("error", message.clone())]);
+                terminal.borrow_mut().control_notice =
+                    Some(format!("local control unavailable: {message}"));
+            }
+        }
     }
 
     let terminal_palette = terminal.clone();

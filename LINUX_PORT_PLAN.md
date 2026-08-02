@@ -749,7 +749,11 @@ evidence.
 - Owner/type/symlink checks and Linux peer credentials.
 - Bounded frames and event history; client caps, I/O deadlines, and timeout
   behavior remain unproven.
-- Multiple-instance behavior remains unproven.
+- Multiple instances are allowed: a second instance opens normally, logs
+  `control_server_declined reason=live_server`, and runs without a control
+  server while the first instance owns the socket. Other socket-installation
+  failures leave the terminal running with the reason shown in the status line;
+  the multiple-instance acceptance gate remains not run.
 - Package-managed CLI is present; the user-local fallback remains unproven.
 
 #### Slice 6.2: SSH and agent workflows
