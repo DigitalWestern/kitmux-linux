@@ -940,19 +940,30 @@ fn control_rename(
     let Some(name) = request.params.get("name") else {
         return control_failure(request, "invalid_params", "rename requires name");
     };
+    if name.trim().is_empty() || name.chars().any(char::is_control) {
+        return control_failure(
+            request,
+            "invalid_params",
+            "name is empty or contains controls",
+        );
+    }
     let id = request
         .params
         .get("id")
         .map(String::as_str)
         .unwrap_or("current");
+    let previous_selection = navigation_selection(terminal);
+    if !control_target_exists(terminal, noun, id) {
+        return control_failure(request, "not_found", format!("{noun} was not found"));
+    }
     let selected = match noun {
         "workspace" => select_workspace(terminal, id),
         "group" => select_group(terminal, id),
         "tab" => select_tab(terminal, id),
         _ => false,
     };
-    if id != "current" && !selected {
-        return control_failure(request, "not_found", format!("{noun} was not found"));
+    if !selected {
+        return control_failure(request, "not_ready", "navigation is not ready");
     }
     let changed = {
         let mut terminal = terminal.borrow_mut();
@@ -973,11 +984,8 @@ fn control_rename(
         apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
     } else {
-        control_failure(
-            request,
-            "invalid_params",
-            "name is empty, unchanged, or contains controls",
-        )
+        restore_navigation(terminal, previous_selection);
+        control_failure(request, "invalid_params", "name is unchanged")
     }
 }
 
@@ -1054,6 +1062,10 @@ fn control_close(
         .get("id")
         .map(String::as_str)
         .unwrap_or("current");
+    let previous_selection = navigation_selection(terminal);
+    if !control_target_exists(terminal, noun, id) {
+        return control_failure(request, "not_found", format!("{noun} was not found"));
+    }
     let selected = match noun {
         "workspace" => select_workspace(terminal, id),
         "group" => select_group(terminal, id),
@@ -1061,8 +1073,8 @@ fn control_close(
         "pane" => select_pane(terminal, id),
         _ => false,
     };
-    if id != "current" && !selected {
-        return control_failure(request, "not_found", format!("{noun} was not found"));
+    if !selected {
+        return control_failure(request, "not_ready", "navigation is not ready");
     }
     let force = request
         .params
@@ -1070,6 +1082,7 @@ fn control_close(
         .is_some_and(|value| value == "true");
     let foreground = terminal.borrow().foreground_surfaces(Some(command));
     if !foreground.is_empty() && !force {
+        restore_navigation(terminal, previous_selection);
         return control_failure(
             request,
             "confirmation_required",
@@ -1137,6 +1150,7 @@ fn control_close(
         apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
     } else {
+        restore_navigation(terminal, previous_selection);
         control_failure(request, "rejected", format!("{noun} close was rejected"))
     }
 }
@@ -1235,17 +1249,9 @@ fn control_read_screen(
         .get("id")
         .map(String::as_str)
         .unwrap_or("current");
-    if !select_pane(terminal, id) {
+    let Some(surface) = resolve_pane_surface(terminal, id) else {
         return control_failure(request, "not_found", "pane was not found");
-    }
-    apply_navigation_effect(terminal, NavigationEffect::Changed);
-    if !active_surface_matches_pane(terminal, id) {
-        return control_failure(
-            request,
-            "not_ready",
-            "target pane is not the reconciled active surface",
-        );
-    }
+    };
     let lines = match request.params.get("lines") {
         Some(value) => match value.parse::<usize>() {
             Ok(lines) => Some(lines),
@@ -1256,10 +1262,13 @@ fn control_read_screen(
         None => None,
     };
     let terminal = terminal.borrow();
-    if terminal.session.is_null() {
+    let Some(session) = terminal.sessions.get(&surface) else {
+        return control_failure(request, "not_ready", "terminal session is not ready");
+    };
+    if session.session.is_null() {
         return control_failure(request, "not_ready", "terminal session is not ready");
     }
-    let Some(text) = owned_c_string(unsafe { ffi::kitty_session_text(terminal.session) }) else {
+    let Some(text) = owned_c_string(unsafe { ffi::kitty_session_text(session.session) }) else {
         return control_failure(
             request,
             "internal_error",
@@ -1419,28 +1428,108 @@ fn select_pane(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
         .is_some_and(|navigation| navigation.focus_pane(id))
 }
 
-fn active_surface_matches_pane(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+fn navigation_selection(terminal: &Rc<RefCell<Terminal>>) -> Option<(usize, usize, usize)> {
+    let terminal = terminal.borrow();
+    let navigation = terminal.navigation.as_ref()?;
+    Some((
+        navigation.active_workspace_index(),
+        navigation.active_workspace().active_group_index(),
+        navigation
+            .active_workspace()
+            .active_group()
+            .active_tab_index(),
+    ))
+}
+
+fn restore_navigation(terminal: &Rc<RefCell<Terminal>>, selection: Option<(usize, usize, usize)>) {
+    let Some((workspace, group, tab)) = selection else {
+        return;
+    };
+    let mut terminal = terminal.borrow_mut();
+    let Some(navigation) = terminal.navigation.as_mut() else {
+        return;
+    };
+    if navigation.select_workspace(workspace) {
+        if navigation.active_workspace_mut().select_group(group) {
+            let _ = navigation
+                .active_workspace_mut()
+                .active_group_mut()
+                .select_tab(tab);
+        }
+    }
+}
+
+fn control_target_exists(terminal: &Rc<RefCell<Terminal>>, noun: &str, id: &str) -> bool {
     let terminal = terminal.borrow();
     let Some(navigation) = terminal.navigation.as_ref() else {
         return false;
     };
-    let target = if id == "current" {
-        navigation
-            .runtime_presentations()
-            .into_iter()
-            .find(|presentation| presentation.accepts_input)
-            .map(|presentation| presentation.location.surface_id)
-    } else {
-        let Ok(pane_id) = PaneId::from_str(id) else {
-            return false;
-        };
-        navigation
-            .runtime_presentations()
-            .into_iter()
-            .find(|presentation| presentation.location.pane_id == pane_id)
-            .map(|presentation| presentation.location.surface_id)
-    };
-    target == Some(terminal.active_surface_id)
+    if id == "current" {
+        return true;
+    }
+    match noun {
+        "workspace" => {
+            id.parse::<usize>()
+                .is_ok_and(|index| index < navigation.workspaces().len())
+                || navigation
+                    .workspaces()
+                    .iter()
+                    .any(|workspace| workspace.id().to_string() == id)
+        }
+        "group" => {
+            id.parse::<usize>()
+                .is_ok_and(|index| index < navigation.active_workspace().groups().len())
+                || navigation
+                    .active_workspace()
+                    .groups()
+                    .iter()
+                    .any(|group| group.id().to_string() == id)
+        }
+        "tab" => {
+            id.parse::<usize>().is_ok_and(|index| {
+                index < navigation.active_workspace().active_group().tabs().len()
+            }) || navigation
+                .active_workspace()
+                .active_group()
+                .tabs()
+                .iter()
+                .any(|tab| tab.id().to_string() == id)
+        }
+        "pane" => PaneId::from_str(id).is_ok_and(|pane_id| {
+            navigation
+                .runtime_presentations()
+                .iter()
+                .any(|presentation| presentation.location.pane_id == pane_id)
+        }),
+        _ => false,
+    }
+}
+
+fn resolve_pane_surface(terminal: &Rc<RefCell<Terminal>>, id: &str) -> Option<SurfaceId> {
+    let terminal = terminal.borrow();
+    if id == "current" {
+        return terminal
+            .sessions
+            .contains_key(&terminal.active_surface_id)
+            .then_some(terminal.active_surface_id);
+    }
+    let pane_id = PaneId::from_str(id).ok()?;
+    let navigation = terminal.navigation.as_ref()?;
+    navigation
+        .runtime_presentations()
+        .into_iter()
+        .find_map(|presentation| {
+            (presentation.location.pane_id == pane_id
+                && terminal
+                    .sessions
+                    .contains_key(&presentation.location.surface_id))
+            .then_some(presentation.location.surface_id)
+        })
+}
+
+fn active_surface_matches_pane(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+    let active_surface = terminal.borrow().active_surface_id;
+    resolve_pane_surface(terminal, id) == Some(active_surface)
 }
 
 fn split_geometry(area: &GLArea) -> (PixelRect, i32, PixelSize) {
