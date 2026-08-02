@@ -458,6 +458,20 @@ fn control_response_codec_rejects_inconsistent_or_oversized_responses() {
         decode_control_response(&vec![b' '; CONTROL_MAX_RESPONSE_BYTES + 1]),
         Err(ControlCodecError::ResponseTooLarge)
     );
+
+    let escaped = ControlResponse::success(
+        "screen",
+        json!({"text": "\u{1b}".repeat(100_000), "truncated": true}),
+    );
+    assert_eq!(
+        encode_control_response(&escaped),
+        Err(ControlCodecError::ResponseTooLarge)
+    );
+    let bounded = ControlResponse::success(
+        "screen",
+        json!({"text": "\u{1b}".repeat(10_000), "truncated": true}),
+    );
+    assert!(encode_control_response(&bounded).is_ok());
 }
 
 #[test]

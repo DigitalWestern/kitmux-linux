@@ -18,7 +18,7 @@ use kitmux_model::{
     UnixSocketAddress, WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
     accumulate_scroll_lines, command_palette_matches, detected_url, load_settings_at_launch,
     load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
-    save_settings, save_state, terminal_cell_scaled,
+    encode_control_response, save_settings, save_state, terminal_cell_scaled,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
@@ -1180,6 +1180,15 @@ fn control_read_screen(
     if !select_pane(terminal, id) {
         return control_failure(request, "not_found", "pane was not found");
     }
+    let lines = match request.params.get("lines") {
+        Some(value) => match value.parse::<usize>() {
+            Ok(lines) => Some(lines),
+            Err(_) => {
+                return control_failure(request, "invalid_params", "lines must be a number");
+            }
+        },
+        None => None,
+    };
     let terminal = terminal.borrow();
     if terminal.session.is_null() {
         return control_failure(request, "not_ready", "terminal session is not ready");
@@ -1192,21 +1201,75 @@ fn control_read_screen(
         );
     };
     let total = text.len();
-    let truncated = total > 256 * 1024;
-    let text = if truncated {
-        text.chars().take(256 * 1024).collect::<String>()
-    } else {
-        text
-    };
+    let selected = lines.map_or_else(|| text.clone(), |count| tail_screen_lines(&text, count));
+    let line_truncated = selected.len() != text.len();
+    let mut low = 0;
+    let mut high = selected.len();
+    let mut bounded = String::new();
+    while low <= high {
+        let midpoint = low + (high - low) / 2;
+        let candidate = utf8_prefix(&selected, midpoint);
+        let response = screen_response(
+            request,
+            &candidate,
+            total,
+            line_truncated || candidate.len() != selected.len(),
+        );
+        if encode_control_response(&response).is_ok() {
+            bounded = candidate;
+            low = midpoint + 1;
+        } else if midpoint == 0 {
+            break;
+        } else {
+            high = midpoint - 1;
+        }
+    }
+    let truncated = line_truncated || bounded.len() != selected.len();
+    control_success(
+        request,
+        json!({
+            "text": bounded,
+            "byteCount": bounded.len(),
+            "totalByteCount": total,
+            "truncated": truncated
+        }),
+    )
+}
+
+fn screen_response(
+    request: &ControlRequest,
+    text: &str,
+    total_byte_count: usize,
+    truncated: bool,
+) -> ControlResponse {
     control_success(
         request,
         json!({
             "text": text,
             "byteCount": text.len(),
-            "totalByteCount": total,
+            "totalByteCount": total_byte_count,
             "truncated": truncated
         }),
     )
+}
+
+fn tail_screen_lines(text: &str, count: usize) -> String {
+    let lines = text.split_inclusive('\n').collect::<Vec<_>>();
+    let start = lines.len().saturating_sub(count);
+    lines[start..].concat()
+}
+
+fn utf8_prefix(text: &str, maximum_bytes: usize) -> String {
+    if maximum_bytes >= text.len() {
+        return text.to_owned();
+    }
+    let end = text
+        .char_indices()
+        .map(|(index, _)| index)
+        .take_while(|index| *index <= maximum_bytes)
+        .last()
+        .unwrap_or(0);
+    text[..end].to_owned()
 }
 
 fn parse_u64(request: &ControlRequest, key: &str) -> Option<u64> {
