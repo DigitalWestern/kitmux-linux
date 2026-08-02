@@ -3,7 +3,8 @@
 //! This crate owns identity, hierarchy, split geometry, navigation, close
 //! cascading, bounded persistence/control contracts, Linux path/file adapters,
 //! and the lifetime of abstract pane runtimes. It deliberately has no GTK,
-//! WebKit, libkitty, shell-execution, or network-runtime dependency.
+//! WebKit, libkitty, shell-execution, or network-runtime dependency. The local
+//! AF_UNIX control transport lives here and uses no DNS, TLS, or network runtime.
 
 mod cli;
 mod commands;
