@@ -77,6 +77,51 @@ listed only in the checkout's local Git exclude file.
 
 ## Evidence log
 
+### 2026-08-02 — Slices 0–5 maintenance audit verification complete
+
+- \`git status --short\` returned empty after the final task commit.
+- \`python3 contracts/validate-fixtures.py\` passed: 6 contracts, 20 cases,
+  7 versioned JSON files; portable fixtures OK.
+- \`python3 contracts/validate-inventory.py\` passed: 97 Linux test references,
+  234 macOS source and test references, 64 features across 17 areas; inventory OK.
+- \`kitmux-linux/scripts/test-model.sh\` passed 52 Rust model/contract/
+  interaction/persistence tests with formatting and Clippy clean.
+- \`kitmux-linux/scripts/test-phase3.sh\` passed 52 Rust tests, 6 contracts/20
+  cases/7 byte-identical fixture files, 97 Linux inventory references, 234 macOS
+  references, and all 9 macOS portable-contract consumer tests. The first
+  sandboxed attempt was blocked by SwiftPM's \`sandbox-exec: sandbox_apply:
+  Operation not permitted\`; the same command passed when rerun with host
+  permissions.
+- \`kitmux-linux/scripts/materialize-reference.sh\` passed: 7 locked reference
+  files and 1 Linux overlay verified.
+- \`kitmux-linux/scripts/report-reference-drift.py\` passed: frozen tag and
+  current macOS HEAD both resolve to
+  \`3088295003c0842d7c3198102d0d05378da4dc62\`; no relevant committed or
+  uncommitted drift.
+- \`limactl shell kitmux-linux -- "$PWD/kitmux-linux/scripts/test-headless.sh"\`
+  passed all 6 C/C++/ELF/engine/session/stress tests. The guest skipped its
+  reference check because the macOS checkout is not mounted in the headless VM;
+  host materialization and drift checks above passed.
+- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4.sh"\` passed: Phase 4 release-layout
+  lifecycle and terminal-interaction gate OK.
+- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase5-product.sh"\` passed: Phase 5 product
+  controls, close review, persistence, and accessibility gate OK.
+- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  KITMUX_RAPID_NAV_GATE=1 "$PWD/kitmux-linux/scripts/test-phase5-navigation.sh"\`
+  passed: Phase 5 rapid navigation and permanent-session churn gate OK.
+- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4-wayland.sh"\` passed: Phase 4
+  release-layout lifecycle and terminal-interaction gate OK, and native-Wayland
+  product interaction gate OK.
+- Source-tested: yes on macOS and Ubuntu ARM64, including cross-host fixtures.
+  GUI-tested: Ubuntu 26.04 ARM64 X11 and native Wayland with Mesa llvmpipe.
+  Release-layout-tested: yes through fresh 894-file runtimes.
+  Native-package-tested, clean-desktop-installed, x86_64-runtime-tested,
+  physical-input-tested, and physical-GPU-tested: none. Slice 6.1 is next; no
+  Phase 6 product work was started.
+
 ### 2026-08-02 — macOS/libkitty v0.21 reference rebaseline complete
 
 - The phase-boundary report found mandatory public-header and patch drift for
