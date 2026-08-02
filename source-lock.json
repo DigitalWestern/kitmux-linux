@@ -28,7 +28,7 @@
   },
   "cargo_lockfiles": {
     "kitmux-linux/rust/model/Cargo.lock": "eaf5e98856fd0af8c9ea698c1c25ecdcd0a5b13014c532af0de3d683038d0bd1",
-    "kitmux-linux/rust/app/Cargo.lock": "56dad119f0f151edcfc3df886b0cca1b6bc1f5dd675d2211107da78bdfc1249d"
+    "kitmux-linux/rust/app/Cargo.lock": "b28bfa0dfc74b4099cf10c7a5d274ff59c826d751df06352762751c323fce55d"
   },
   "container_images": {
     "docker.io/library/ubuntu:26.04": "sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb"

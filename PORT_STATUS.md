@@ -15,14 +15,13 @@ command/settings controls, full safe hierarchy persistence, close-chain
 foreground review, and initial accessible roles/focus order. Native packaging
 does not exist yet.
 
-**Active track:** Phase 5 — terminal multiplexer alpha — is closed. Slices 5.1,
-5.2, and 5.3 and the Phase 5 exit matrix are complete. Phase 6.1 secure local
-control and CLI is next. The mandatory macOS/libkitty v0.21 rebaseline is
-complete.
+**Active track:** Phase 5 — terminal multiplexer alpha — and Slice 6.1 secure
+local control and CLI are closed. The mandatory macOS/libkitty v0.21 rebaseline
+is complete. Slice 6.2 SSH and agent workflows is next.
 
-**Next gate:** Begin Slice 6.1 secure local control and CLI only. Physical-Mesa
-GPU rendering and interaction remain a Phase 6 beta obligation; native
-packaging remains Phase 8 work.
+**Next gate:** Begin Slice 6.2 SSH and agent workflows only. Physical-Mesa GPU
+rendering and interaction remain a Phase 6 beta obligation; native packaging
+remains Phase 8 work.
 Phase 4's shell/editor,
 X11/Wayland, 30-minute interaction-soak, and clean no-SDK gates all pass.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK ran
@@ -43,6 +42,32 @@ repository root.
 ## Verified checkout state
 
 Adjacent macOS checkout: `../macos/kitmux/`
+
+### 2026-08-02 — Slice 6.1 secure local control and CLI complete
+
+- Added the Linux control server and CLI over a bounded newline-delimited
+  protocol: private XDG socket resolution, `0600` mode, owner/type/symlink
+  checks, Linux `SO_PEERCRED`, bounded clients/frames/I/O/timeouts, and a
+  bounded event history with cursor filtering.
+- Added explicit non-unique app behavior, release-runtime `kitmuxctl`
+  installation, and `scripts/install-user-cli.sh` for a diagnosable user-local
+  fallback that creates a symlink into the user's bin directory.
+- `cargo test --locked --manifest-path kitmux-linux/rust/model/Cargo.toml`
+  passed the model, contract, interaction, and persistence suite. The CLI
+  parser test is `cli_parser_maps_bounded_commands_without_shell_strings`.
+- `KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON
+  kitmux-linux/scripts/build-release-runtime.sh` passed in the Ubuntu ARM64
+  desktop VM, including dependency closure, SPDX SBOM, release metadata, the
+  16-session flood, 24 forced-close cycles, and FD restoration.
+- `DISPLAY=:1 kitmux-linux/scripts/test-phase6-control.sh` passed in the Ubuntu
+  ARM64 desktop VM. It proved socket mode/ownership/type, ping/identify/tree,
+  hierarchy dispatch, event peer identity, slow-client responsiveness,
+  malformed/oversized errors, stale replacement, and symlink refusal.
+- Source-tested: yes on macOS and Ubuntu ARM64; GUI/release-runtime-tested:
+  Ubuntu 26.04 ARM64 X11 with Mesa llvmpipe. Native-package-tested,
+  clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and
+  physical-GPU-tested: none. Slice 6.2 is next; SSH, resume, packaging, and
+  physical-Mesa proof remain open.
 
 Clean reference revision:
 `3088295003c0842d7c3198102d0d05378da4dc62`
@@ -1429,8 +1454,9 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Begin [Slice 6.1 in the implementation plan](LINUX_PORT_PLAN.md#slice-61-secure-local-control-and-cli)
-using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through 5 are
+Begin [Slice 6.2 in the implementation plan](LINUX_PORT_PLAN.md#slice-62-ssh-and-agent-workflows)
+using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through 5 and
+Slice 6.1 are
 closed; GTK 4 is selected, and the release-shaped terminal multiplexer alpha has
 hierarchy navigation, nested splits, one permanent session per live surface, native
 command/settings controls, full safe hierarchy persistence, and close-chain foreground
@@ -1440,9 +1466,6 @@ Phase 3 is closed through Slice 3.3. Do not expand its preview into a live state
 shell restore, SSH launcher, or persistence writer before those product paths reach their
 assigned later phases.
 
-Implement only Slice 6.1: private XDG runtime directory and `0600` socket, owner/type/
-symlink checks and Linux peer credentials, bounded frames/clients/reads/writes/timeouts/
-event history, explicit multiple-instance behavior, and a package-managed CLI with a
-diagnosable user-local fallback. Do not begin live macOS import/restore, browser product
-functionality, packaging, or repository migration. Physical-Mesa GPU proof remains a
-separate Phase 6 beta obligation.
+Implement only Slice 6.2: reviewed SSH resolution and agent workflows. Do not begin
+live macOS import/restore, browser product functionality, packaging, or repository
+migration. Physical-Mesa GPU proof remains a separate Phase 6 beta obligation.

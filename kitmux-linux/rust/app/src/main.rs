@@ -8,19 +8,21 @@ use gtk::glib::{self, Propagation};
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
 use kitmux_model::{
-    AppModel, AppSnapshot, CloseOutcome, CommandId, Direction, GroupId, GroupModel,
+    AppModel, AppSnapshot, CloseOutcome, CommandId, ControlEventHistory, ControlMethod,
+    ControlRequest, ControlResponse, ControlServer, Direction, GroupId, GroupModel,
     LoadDisposition, NavigationTarget, PaneContainer, PaneContentKind, PaneDetail, PaneId,
     PaneRuntime, PaneSurface, PaneSurfaceDetail, PasteConfirmationReason, PixelRect, PixelSize,
     PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES, SNAPSHOT_VERSION,
     SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis, SplitId, SplitLayout,
     SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime, TerminalTabSnapshot,
-    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths, accumulate_scroll_lines,
-    command_palette_matches, detected_url, load_settings_at_launch, load_state_at_launch,
-    namespaced_number_target, paste_confirmation_reason, reload_settings, save_settings,
-    save_state, terminal_cell_scaled,
+    UnixSocketAddress, WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
+    accumulate_scroll_lines, command_palette_matches, detected_url, load_settings_at_launch,
+    load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
+    save_settings, save_state, terminal_cell_scaled,
 };
+use serde_json::json;
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::env;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::ops::{Deref, DerefMut};
@@ -28,7 +30,10 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::rc::{Rc, Weak};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const PTY_SOURCE_PRIORITY: c_int = 200;
@@ -471,7 +476,19 @@ struct Terminal {
     created_workspaces: usize,
     created_groups: usize,
     divider_drag: Option<(SplitId, f64, f64)>,
+    control_server: Option<ControlServer>,
+    control_dispatch_source: Option<glib::SourceId>,
+    control_queue: Option<ControlQueue>,
+    control_history: ControlEventHistory,
 }
+
+struct PendingControlCall {
+    request: ControlRequest,
+    peer_uid: u32,
+    response: SyncSender<ControlResponse>,
+}
+
+type ControlQueue = Arc<Mutex<VecDeque<PendingControlCall>>>;
 
 struct PendingTerminalRuntime {
     closed: bool,
@@ -551,6 +568,10 @@ impl Default for Terminal {
             created_workspaces: 1,
             created_groups: 1,
             divider_drag: None,
+            control_server: None,
+            control_dispatch_source: None,
+            control_queue: None,
+            control_history: ControlEventHistory::default(),
         }
     }
 }
@@ -577,6 +598,681 @@ fn changed(value: bool) -> NavigationEffect {
     } else {
         NavigationEffect::Rejected
     }
+}
+
+fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String> {
+    let account = account();
+    let environment: HashMap<String, String> = env::vars().collect();
+    let xdg = XdgPaths::resolve(&environment, &account.home).map_err(|error| error.to_string())?;
+    let address = UnixSocketAddress::resolve(&environment, &xdg, unsafe { libc::geteuid() })
+        .map_err(|error| error.to_string())?;
+    let queue = Arc::new(Mutex::new(VecDeque::new()));
+    let handler_queue = Arc::clone(&queue);
+    let server = ControlServer::start(address.clone(), move |request, peer| {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut queue = handler_queue
+            .lock()
+            .expect("control dispatch queue lock poisoned");
+        if queue.len() >= 128 {
+            return ControlResponse::failure(request.id, "busy", "control dispatch queue is full");
+        }
+        queue.push_back(PendingControlCall {
+            request,
+            peer_uid: peer.uid,
+            response: sender,
+        });
+        drop(queue);
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or_else(|_| {
+                ControlResponse::failure("", "timeout", "control request timed out")
+            })
+    })
+    .map_err(|error| error.to_string())?;
+    let history = terminal.borrow().control_history.clone();
+    let weak = Rc::downgrade(terminal);
+    let dispatch_queue = Arc::clone(&queue);
+    let dispatch_source = glib::timeout_add_local(Duration::from_millis(10), move || {
+        let Some(terminal) = weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let calls = {
+            let mut queue = dispatch_queue
+                .lock()
+                .expect("control dispatch queue lock poisoned");
+            let count = queue.len().min(16);
+            queue.drain(..count).collect::<Vec<_>>()
+        };
+        for call in calls {
+            let method = call.request.method.clone();
+            let response = dispatch_control_request(&terminal, call.request, &history);
+            history.record(&method, response.ok, call.peer_uid);
+            let _ = call.response.send(response);
+        }
+        glib::ControlFlow::Continue
+    });
+    let mut terminal = terminal.borrow_mut();
+    terminal.control_queue = Some(queue);
+    terminal.control_server = Some(server);
+    terminal.control_dispatch_source = Some(dispatch_source);
+    diagnostic(
+        "control_server_ready",
+        &[
+            ("socket", address.path().display().to_string()),
+            ("mode", "600".to_owned()),
+        ],
+    );
+    Ok(())
+}
+
+fn control_success(request: &ControlRequest, result: serde_json::Value) -> ControlResponse {
+    ControlResponse::success(request.id.clone(), result)
+}
+
+fn control_failure(
+    request: &ControlRequest,
+    code: &str,
+    message: impl Into<String>,
+) -> ControlResponse {
+    ControlResponse::failure(request.id.clone(), code, message)
+}
+
+fn dispatch_control_request(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: ControlRequest,
+    history: &ControlEventHistory,
+) -> ControlResponse {
+    let Some(method) = request.method_id() else {
+        return control_failure(
+            &request,
+            "unknown_method",
+            "method is not in the control catalog",
+        );
+    };
+    if !matches!(
+        method,
+        ControlMethod::Ping
+            | ControlMethod::Identify
+            | ControlMethod::Capabilities
+            | ControlMethod::EventList
+    ) && terminal.borrow().navigation.is_none()
+    {
+        return control_failure(&request, "not_ready", "Kitmux is still initializing");
+    }
+    match method {
+        ControlMethod::Ping => control_success(&request, json!({"message": "pong"})),
+        ControlMethod::Identify => control_success(
+            &request,
+            json!({
+                "pid": std::process::id(),
+                "uid": unsafe { libc::geteuid() },
+                "version": "0.1.0"
+            }),
+        ),
+        ControlMethod::Capabilities => control_success(
+            &request,
+            json!({
+                "protocolVersion": 1,
+                "methods": ControlMethod::ALL.iter().map(|method| method.as_str()).collect::<Vec<_>>(),
+                "implemented": [
+                    "ping", "tree", "identify", "capabilities", "event.list",
+                    "workspace.create", "workspace.select", "workspace.rename", "workspace.move", "workspace.close",
+                    "group.create", "group.select", "group.rename", "group.move", "group.close",
+                    "tab.create", "tab.select", "tab.rename", "tab.move", "tab.close",
+                    "pane.split", "pane.focus", "pane.move", "pane.close", "pane.send", "pane.send_key",
+                    "pane.read_screen", "pane.notify"
+                ]
+            }),
+        ),
+        ControlMethod::Tree => {
+            let snapshot = terminal.borrow().snapshot();
+            match serde_json::to_value(snapshot) {
+                Ok(value) => control_success(&request, value),
+                Err(error) => control_failure(&request, "internal_error", error.to_string()),
+            }
+        }
+        ControlMethod::EventList => {
+            let after = parse_u64(&request, "after").unwrap_or(0);
+            let limit = parse_usize(&request, "limit").unwrap_or(100).min(500);
+            let category = request.params.get("category").map(String::as_str);
+            let events = history.list(after, limit, category);
+            let cursor = events.last().map_or(0, |event| event.cursor);
+            control_success(&request, json!({"events": events, "eventCursor": cursor}))
+        }
+        ControlMethod::WorkspaceCreate => {
+            control_navigation(terminal, &request, CommandId::WorkspaceNew)
+        }
+        ControlMethod::GroupCreate => control_navigation(terminal, &request, CommandId::GroupNew),
+        ControlMethod::TabCreate => {
+            control_navigation(terminal, &request, CommandId::TerminalNewTab)
+        }
+        ControlMethod::WorkspaceSelect => control_select(terminal, &request, "workspace"),
+        ControlMethod::GroupSelect => control_select(terminal, &request, "group"),
+        ControlMethod::TabSelect => control_select(terminal, &request, "tab"),
+        ControlMethod::WorkspaceRename => control_rename(terminal, &request, "workspace"),
+        ControlMethod::GroupRename => control_rename(terminal, &request, "group"),
+        ControlMethod::TabRename => control_rename(terminal, &request, "tab"),
+        ControlMethod::WorkspaceMove => control_move(terminal, &request, "workspace"),
+        ControlMethod::GroupMove => control_move(terminal, &request, "group"),
+        ControlMethod::TabMove => control_move(terminal, &request, "tab"),
+        ControlMethod::WorkspaceClose => {
+            control_close(terminal, &request, "workspace", CommandId::WorkspaceClose)
+        }
+        ControlMethod::GroupClose => {
+            control_close(terminal, &request, "group", CommandId::GroupClose)
+        }
+        ControlMethod::TabClose => control_close(terminal, &request, "tab", CommandId::PaneClose),
+        ControlMethod::PaneSplit => {
+            let axis = match request.params.get("axis").map(String::as_str) {
+                Some("right") => CommandId::PaneSplitRight,
+                Some("down") => CommandId::PaneSplitDown,
+                _ => {
+                    return control_failure(
+                        &request,
+                        "invalid_params",
+                        "pane.split axis must be right or down",
+                    );
+                }
+            };
+            if let Some(id) = request.params.get("id")
+                && !select_pane(terminal, id)
+            {
+                return control_failure(&request, "not_found", "pane was not found");
+            }
+            control_navigation(terminal, &request, axis)
+        }
+        ControlMethod::PaneFocus => {
+            let Some(id) = request.params.get("id") else {
+                return control_failure(&request, "invalid_params", "pane.focus requires id");
+            };
+            let changed = select_pane(terminal, id);
+            if changed {
+                refresh_navigation(terminal);
+                control_success(&request, json!({"changed": true}))
+            } else {
+                control_failure(&request, "not_found", "pane was not found")
+            }
+        }
+        ControlMethod::PaneRename => control_failure(
+            &request,
+            "unsupported_method",
+            "pane names are not stored by the Linux model",
+        ),
+        ControlMethod::PaneMove => {
+            let Some(target) = request.params.get("target") else {
+                return control_failure(&request, "invalid_params", "pane.move requires target");
+            };
+            let current = request
+                .params
+                .get("id")
+                .map(String::as_str)
+                .unwrap_or("current");
+            if !select_pane(terminal, current) {
+                return control_failure(&request, "not_found", "pane was not found");
+            }
+            let Ok(target) = PaneId::from_str(target) else {
+                return control_failure(&request, "invalid_params", "target must be a pane ID");
+            };
+            let changed = {
+                let mut terminal = terminal.borrow_mut();
+                let Some(navigation) = terminal.navigation.as_mut() else {
+                    return control_failure(&request, "not_ready", "navigation is not ready");
+                };
+                let current = navigation.active_tab().focused_pane_id();
+                navigation.active_tab_mut().swap_panes(current, target)
+            };
+            if changed {
+                refresh_navigation(terminal);
+                control_success(&request, json!({"changed": true}))
+            } else {
+                control_failure(&request, "not_found", "target pane was not found")
+            }
+        }
+        ControlMethod::PaneClose => control_close(terminal, &request, "pane", CommandId::PaneClose),
+        ControlMethod::PaneSend => control_send(terminal, &request),
+        ControlMethod::PaneSendKey => control_send_key(terminal, &request),
+        ControlMethod::PaneReadScreen => control_read_screen(terminal, &request),
+        ControlMethod::PaneNotify => {
+            let message = request.params.get("message").cloned().unwrap_or_default();
+            if message.is_empty() {
+                control_failure(&request, "invalid_params", "pane.notify requires message")
+            } else {
+                diagnostic("control_notify", &[("bytes", message.len().to_string())]);
+                control_success(&request, json!({"message": "notification accepted"}))
+            }
+        }
+        _ => control_failure(
+            &request,
+            "unsupported_method",
+            "method is reserved for a later Phase 6 slice",
+        ),
+    }
+}
+
+fn control_navigation(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+    command: CommandId,
+) -> ControlResponse {
+    let effect = terminal.borrow_mut().navigation_action(command);
+    let accepted = matches!(
+        effect,
+        NavigationEffect::Changed | NavigationEffect::CloseWindow
+    );
+    if accepted {
+        apply_navigation_effect(terminal, effect);
+        control_success(request, json!({"changed": true}))
+    } else {
+        control_failure(request, "rejected", "navigation command was rejected")
+    }
+}
+
+fn control_select(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+    noun: &str,
+) -> ControlResponse {
+    let Some(id) = request.params.get("id") else {
+        return control_failure(request, "invalid_params", "selection requires id");
+    };
+    let changed = match noun {
+        "workspace" => select_workspace(terminal, id),
+        "group" => select_group(terminal, id),
+        "tab" => select_tab(terminal, id),
+        _ => false,
+    };
+    if changed {
+        reconcile_sessions(terminal);
+        refresh_navigation(terminal);
+        control_success(request, json!({"changed": true}))
+    } else {
+        control_failure(request, "not_found", format!("{noun} was not found"))
+    }
+}
+
+fn control_rename(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+    noun: &str,
+) -> ControlResponse {
+    let Some(name) = request.params.get("name") else {
+        return control_failure(request, "invalid_params", "rename requires name");
+    };
+    let id = request
+        .params
+        .get("id")
+        .map(String::as_str)
+        .unwrap_or("current");
+    let selected = match noun {
+        "workspace" => select_workspace(terminal, id),
+        "group" => select_group(terminal, id),
+        "tab" => select_tab(terminal, id),
+        _ => false,
+    };
+    if id != "current" && !selected {
+        return control_failure(request, "not_found", format!("{noun} was not found"));
+    }
+    let changed = {
+        let mut terminal = terminal.borrow_mut();
+        let Some(navigation) = terminal.navigation.as_mut() else {
+            return control_failure(request, "not_ready", "navigation is not ready");
+        };
+        match noun {
+            "workspace" => navigation.active_workspace_mut().rename(name),
+            "group" => navigation
+                .active_workspace_mut()
+                .active_group_mut()
+                .rename(name),
+            "tab" => navigation.active_tab_mut().rename(Some(name)),
+            _ => false,
+        }
+    };
+    if changed {
+        refresh_navigation(terminal);
+        control_success(request, json!({"changed": true}))
+    } else {
+        control_failure(
+            request,
+            "invalid_params",
+            "name is empty, unchanged, or contains controls",
+        )
+    }
+}
+
+fn control_move(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+    noun: &str,
+) -> ControlResponse {
+    let Some(id) = request.params.get("id") else {
+        return control_failure(request, "invalid_params", "move requires id");
+    };
+    let Some(index) = request
+        .params
+        .get("index")
+        .and_then(|value| value.parse::<usize>().ok())
+    else {
+        return control_failure(request, "invalid_params", "move requires a numeric index");
+    };
+    let changed = {
+        let mut terminal = terminal.borrow_mut();
+        let Some(navigation) = terminal.navigation.as_mut() else {
+            return control_failure(request, "not_ready", "navigation is not ready");
+        };
+        match noun {
+            "workspace" => navigation
+                .workspaces()
+                .iter()
+                .find(|item| item.id().to_string() == *id)
+                .map(|item| item.id())
+                .is_some_and(|id| navigation.move_workspace(id, index)),
+            "group" => {
+                let group = navigation
+                    .active_workspace()
+                    .groups()
+                    .iter()
+                    .find(|item| item.id().to_string() == *id)
+                    .map(|item| item.id());
+                group.is_some_and(|id| navigation.active_workspace_mut().move_group(id, index))
+            }
+            "tab" => {
+                let tab = navigation
+                    .active_workspace()
+                    .active_group()
+                    .tabs()
+                    .iter()
+                    .find(|item| item.id().to_string() == *id)
+                    .map(|item| item.id());
+                tab.is_some_and(|id| {
+                    navigation
+                        .active_workspace_mut()
+                        .active_group_mut()
+                        .move_tab(id, index)
+                })
+            }
+            _ => false,
+        }
+    };
+    if changed {
+        refresh_navigation(terminal);
+        control_success(request, json!({"changed": true}))
+    } else {
+        control_failure(request, "rejected", format!("{noun} move was rejected"))
+    }
+}
+
+fn control_close(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+    noun: &str,
+    command: CommandId,
+) -> ControlResponse {
+    let id = request
+        .params
+        .get("id")
+        .map(String::as_str)
+        .unwrap_or("current");
+    let selected = match noun {
+        "workspace" => select_workspace(terminal, id),
+        "group" => select_group(terminal, id),
+        "tab" => select_tab(terminal, id),
+        "pane" => select_pane(terminal, id),
+        _ => false,
+    };
+    if id != "current" && !selected {
+        return control_failure(request, "not_found", format!("{noun} was not found"));
+    }
+    let force = request
+        .params
+        .get("force")
+        .is_some_and(|value| value == "true");
+    let foreground = terminal.borrow().foreground_surfaces(Some(command));
+    if !foreground.is_empty() && !force {
+        return control_failure(
+            request,
+            "confirmation_required",
+            "a foreground process is running; retry with force=true",
+        );
+    }
+    if force {
+        terminal.borrow_mut().close_confirmed = true;
+    }
+    let changed = match noun {
+        "pane" => {
+            let effect = terminal
+                .borrow_mut()
+                .navigation_action(CommandId::PaneClose);
+            let changed = matches!(
+                effect,
+                NavigationEffect::Changed | NavigationEffect::CloseWindow
+            );
+            if changed {
+                apply_navigation_effect(terminal, effect);
+            }
+            changed
+        }
+        "tab" => {
+            let mut terminal = terminal.borrow_mut();
+            let Some(navigation) = terminal.navigation.as_mut() else {
+                return control_failure(request, "not_ready", "navigation is not ready");
+            };
+            let index = navigation
+                .active_workspace()
+                .active_group()
+                .active_tab_index();
+            navigation
+                .active_workspace_mut()
+                .active_group_mut()
+                .close_tab(index)
+                .is_some()
+        }
+        "group" => {
+            let mut terminal = terminal.borrow_mut();
+            let Some(navigation) = terminal.navigation.as_mut() else {
+                return control_failure(request, "not_ready", "navigation is not ready");
+            };
+            let index = navigation.active_workspace().active_group_index();
+            navigation
+                .active_workspace_mut()
+                .close_group(index)
+                .is_some()
+        }
+        "workspace" => {
+            let mut terminal = terminal.borrow_mut();
+            let Some(navigation) = terminal.navigation.as_mut() else {
+                return control_failure(request, "not_ready", "navigation is not ready");
+            };
+            navigation
+                .close_workspace(navigation.active_workspace_index())
+                .is_some()
+        }
+        _ => false,
+    };
+    terminal.borrow_mut().close_confirmed = false;
+    if changed {
+        reconcile_sessions(terminal);
+        refresh_navigation(terminal);
+        control_success(request, json!({"changed": true}))
+    } else {
+        control_failure(request, "rejected", format!("{noun} close was rejected"))
+    }
+}
+
+fn control_send(terminal: &Rc<RefCell<Terminal>>, request: &ControlRequest) -> ControlResponse {
+    let Some(text) = request.params.get("text") else {
+        return control_failure(request, "invalid_params", "pane.send requires text");
+    };
+    let id = request
+        .params
+        .get("id")
+        .map(String::as_str)
+        .unwrap_or("current");
+    if !select_pane(terminal, id) {
+        return control_failure(request, "not_found", "pane was not found");
+    }
+    terminal.borrow_mut().paste(text);
+    control_success(request, json!({"byteCount": text.len()}))
+}
+
+fn control_send_key(terminal: &Rc<RefCell<Terminal>>, request: &ControlRequest) -> ControlResponse {
+    let Some(key) = request.params.get("key") else {
+        return control_failure(request, "invalid_params", "pane.send_key requires key");
+    };
+    let id = request
+        .params
+        .get("id")
+        .map(String::as_str)
+        .unwrap_or("current");
+    if !select_pane(terminal, id) {
+        return control_failure(request, "not_found", "pane was not found");
+    }
+    let bytes = match key.as_str() {
+        "Enter" => vec![b'\r'],
+        "Tab" => vec![b'\t'],
+        "Escape" => vec![0x1b],
+        "Backspace" => vec![0x7f],
+        value
+            if value.chars().count() == 1
+                && !value.chars().next().expect("one character").is_control() =>
+        {
+            value.as_bytes().to_vec()
+        }
+        _ => {
+            return control_failure(
+                request,
+                "invalid_params",
+                "key is not a supported safe keystroke",
+            );
+        }
+    };
+    let terminal = terminal.borrow();
+    if terminal.session.is_null() {
+        return control_failure(request, "not_ready", "terminal session is not ready");
+    }
+    unsafe { ffi::kitty_session_write(terminal.session, bytes.as_ptr().cast(), bytes.len()) };
+    control_success(request, json!({"byteCount": bytes.len()}))
+}
+
+fn control_read_screen(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+) -> ControlResponse {
+    let id = request
+        .params
+        .get("id")
+        .map(String::as_str)
+        .unwrap_or("current");
+    if !select_pane(terminal, id) {
+        return control_failure(request, "not_found", "pane was not found");
+    }
+    let terminal = terminal.borrow();
+    if terminal.session.is_null() {
+        return control_failure(request, "not_ready", "terminal session is not ready");
+    }
+    let Some(text) = owned_c_string(unsafe { ffi::kitty_session_text(terminal.session) }) else {
+        return control_failure(
+            request,
+            "internal_error",
+            "terminal screen text was unavailable",
+        );
+    };
+    let total = text.len();
+    let truncated = total > 256 * 1024;
+    let text = if truncated {
+        text.chars().take(256 * 1024).collect::<String>()
+    } else {
+        text
+    };
+    control_success(
+        request,
+        json!({
+            "text": text,
+            "byteCount": text.len(),
+            "totalByteCount": total,
+            "truncated": truncated
+        }),
+    )
+}
+
+fn parse_u64(request: &ControlRequest, key: &str) -> Option<u64> {
+    request.params.get(key).and_then(|value| value.parse().ok())
+}
+
+fn parse_usize(request: &ControlRequest, key: &str) -> Option<usize> {
+    request.params.get(key).and_then(|value| value.parse().ok())
+}
+
+fn select_workspace(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+    let mut terminal = terminal.borrow_mut();
+    let Some(navigation) = terminal.navigation.as_mut() else {
+        return false;
+    };
+    if id == "current" {
+        return true;
+    }
+    let index = id.parse::<usize>().ok().or_else(|| {
+        navigation
+            .workspaces()
+            .iter()
+            .position(|item| item.id().to_string() == id)
+    });
+    index.is_some_and(|index| navigation.select_workspace(index))
+}
+
+fn select_group(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+    let mut terminal = terminal.borrow_mut();
+    let Some(navigation) = terminal.navigation.as_mut() else {
+        return false;
+    };
+    if id == "current" {
+        return true;
+    }
+    let index = id.parse::<usize>().ok().or_else(|| {
+        navigation
+            .active_workspace()
+            .groups()
+            .iter()
+            .position(|item| item.id().to_string() == id)
+    });
+    index.is_some_and(|index| navigation.active_workspace_mut().select_group(index))
+}
+
+fn select_tab(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+    let mut terminal = terminal.borrow_mut();
+    let Some(navigation) = terminal.navigation.as_mut() else {
+        return false;
+    };
+    if id == "current" {
+        return true;
+    }
+    let index = id.parse::<usize>().ok().or_else(|| {
+        navigation
+            .active_workspace()
+            .active_group()
+            .tabs()
+            .iter()
+            .position(|item| item.id().to_string() == id)
+    });
+    index.is_some_and(|index| {
+        navigation
+            .active_workspace_mut()
+            .active_group_mut()
+            .select_tab(index)
+    })
+}
+
+fn select_pane(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+    if id == "current" {
+        return true;
+    }
+    let Ok(id) = PaneId::from_str(id) else {
+        return false;
+    };
+    terminal
+        .borrow_mut()
+        .navigation
+        .as_mut()
+        .is_some_and(|navigation| navigation.focus_pane(id))
 }
 
 fn split_geometry(area: &GLArea) -> (PixelRect, i32, PixelSize) {
@@ -1897,6 +2593,11 @@ impl Terminal {
     }
 
     fn shutdown(&mut self, area: &GLArea) {
+        if let Some(source) = self.control_dispatch_source.take() {
+            source.remove();
+        }
+        self.control_queue = None;
+        self.control_server.take();
         if let Some(source) = self.settings_source.take() {
             source.remove();
         }
@@ -3215,6 +3916,11 @@ fn build_window(app: &Application) {
         command_palette: command_palette.downgrade(),
         settings: settings.downgrade(),
     });
+    if let Err(error) = install_control_server(&terminal) {
+        diagnostic("control_server_failed", &[("error", error)]);
+        app.quit();
+        return;
+    }
 
     let terminal_palette = terminal.clone();
     let window_palette = window.clone();
@@ -3816,6 +4522,7 @@ fn build_window(app: &Application) {
 fn main() -> glib::ExitCode {
     let app = Application::builder()
         .application_id("dev.kitmux.Kitmux")
+        .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_activate(build_window);
     app.run()

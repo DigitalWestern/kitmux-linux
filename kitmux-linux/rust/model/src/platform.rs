@@ -113,6 +113,12 @@ impl UnixSocketAddress {
 
     pub fn prepare_parent(&self, expected_uid: u32) -> Result<(), RuntimePathError> {
         let parent = self.path.parent().ok_or(RuntimePathError::MissingParent)?;
+        if let Some(runtime_root) = parent.parent()
+            && runtime_root != Path::new("/tmp")
+            && let Ok(metadata) = fs::symlink_metadata(runtime_root)
+        {
+            validate_private_directory(&metadata, expected_uid)?;
+        }
         match fs::symlink_metadata(parent) {
             Ok(metadata) => validate_private_directory(&metadata, expected_uid),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {

@@ -1,12 +1,12 @@
 use kitmux_model::{
-    AtomicWriteError, CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CommandId,
-    ControlCodecError, ControlMethod, ControlResponse, FileChange, ImportPreviewError,
+    AtomicWriteError, CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CliParseError,
+    CommandId, ControlCodecError, ControlMethod, ControlResponse, FileChange, ImportPreviewError,
     LineFrameDecoder, PollingFileWatcher, RuntimePathError, SemanticAction, SettingsCodecError,
     SnapshotCodecError, SshCodecError, SshProfile, SshResolution, UnixSocketAddress, XdgPaths,
     atomic_write_private, decode_control_request, decode_control_response, decode_settings,
     decode_snapshot, decode_ssh_profiles, encode_control_response, encode_settings,
-    encode_snapshot, encode_ssh_profiles, preview_macos_state_file, read_bounded, sha256_bytes,
-    sha256_file, valid_resume_command,
+    encode_snapshot, encode_ssh_profiles, parse_cli, preview_macos_state_file, read_bounded,
+    sha256_bytes, sha256_file, valid_resume_command,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -349,6 +349,48 @@ fn control_method_catalog_matches_the_bounded_dispatch_surface() {
         .collect();
     assert_eq!(actual, expected.into_iter().collect());
     assert_eq!(actual.len(), 44);
+}
+
+#[test]
+fn cli_parser_maps_bounded_commands_without_shell_strings() {
+    let mut environment = HashMap::new();
+    environment.insert("HOME".to_owned(), "/tmp/kitmux-home".to_owned());
+    environment.insert(
+        "KITMUX_SOCKET_PATH".to_owned(),
+        "/tmp/kitmux.sock".to_owned(),
+    );
+
+    let invocation = parse_cli(
+        [
+            "--json".to_owned(),
+            "pane".to_owned(),
+            "send".to_owned(),
+            "current".to_owned(),
+            "echo hello".to_owned(),
+        ],
+        &environment,
+    )
+    .unwrap();
+    assert!(invocation.json);
+    assert_eq!(invocation.request.method, "pane.send");
+    assert_eq!(invocation.request.params["text"], "echo hello");
+
+    let request = parse_cli(
+        ["request".to_owned(), "workspace.create".to_owned()],
+        &environment,
+    )
+    .unwrap();
+    assert_eq!(
+        request.request.method_id(),
+        Some(ControlMethod::WorkspaceCreate)
+    );
+    assert!(matches!(
+        parse_cli(
+            ["request".to_owned(), "shell -c rm".to_owned()],
+            &environment
+        ),
+        Err(CliParseError::Usage(_))
+    ));
 }
 
 #[test]

@@ -159,6 +159,9 @@ if(KITMUX_BUILD_APP)
   set(KITMUX_APP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/rust/app/Cargo.toml")
   set(KITMUX_APP_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo-app")
   set(KITMUX_APP_BINARY "${KITMUX_APP_TARGET_DIR}/release/kitmux")
+  set(KITMUX_CLI_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/rust/model/Cargo.toml")
+  set(KITMUX_CLI_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo-cli")
+  set(KITMUX_CLI_BINARY "${KITMUX_CLI_TARGET_DIR}/release/kitmuxctl")
   set(KITMUX_APP_CARGO_FEATURES "")
   if(KITMUX_APP_TEST_HOOKS)
     set(KITMUX_APP_CARGO_FEATURES --features test-hooks)
@@ -174,7 +177,17 @@ if(KITMUX_BUILD_APP)
     BYPRODUCTS "${KITMUX_APP_BINARY}"
     DEPENDS kitty kitmux_key_translation kitmux_terminal_bridge
     USES_TERMINAL)
+  add_custom_target(kitmux_cli ALL
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "CARGO_TARGET_DIR=${KITMUX_CLI_TARGET_DIR}"
+      "RUSTFLAGS=--remap-path-prefix=${KITMUX_PATH_MAP_ROOT}=."
+      "${CARGO_EXECUTABLE}" build --locked --release
+        --manifest-path "${KITMUX_CLI_MANIFEST}" --bin kitmuxctl
+    BYPRODUCTS "${KITMUX_CLI_BINARY}"
+    USES_TERMINAL)
+  add_dependencies(kitmux_app kitmux_cli)
   install(PROGRAMS "${KITMUX_APP_BINARY}" DESTINATION bin)
+  install(PROGRAMS "${KITMUX_CLI_BINARY}" DESTINATION bin)
 endif()
 
 enable_testing()

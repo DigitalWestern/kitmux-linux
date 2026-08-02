@@ -15,10 +15,11 @@ Current scope:
    against frozen portable fixtures.
 7. Prove cross-host fixture compatibility and preview macOS state without
    writing it or executing saved commands.
-8. Build and gate a release-shaped one-terminal Rust/GTK product shell.
+8. Build and gate the release-shaped Rust/GTK terminal multiplexer alpha.
+9. Provide secure local control and the release-runtime `kitmuxctl` CLI.
 
-No browser UI or package installer belongs here yet. The multiplexer
-navigation shell is the next implementation slice but does not exist yet. For
+No browser UI or native package installer belongs here yet. SSH and resume
+workflows remain later Phase 6 slices. For
 complete VM lifecycle, gates, release/SBOM commands, loader architecture, and
 limitations, see
 [`../docs/LINUX_DEVELOPMENT.md`](../docs/LINUX_DEVELOPMENT.md).
@@ -174,6 +175,30 @@ These add native-Wayland interaction, crash/failure persistence, explicit
 Bash/Zsh/Fish/Vim/Less/tmux input, the 30-minute PTY/resize/interaction soak,
 and a release launch in a runtime-only Ubuntu container with no SDK. The last
 gate is clean-runtime evidence, not native package or desktop-install proof.
+
+## Secure local control and CLI
+
+The release-shaped app exposes a private Unix socket and the matching
+`kitmuxctl` executable. The socket uses a private XDG runtime path, mode `0600`,
+owner/type/symlink checks, Linux peer credentials, bounded newline-delimited
+frames, slow-client timeouts, and bounded event history.
+
+Run the X11 control gate in the desktop VM:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase6-control.sh"
+```
+
+The release runtime installs `bin/kitmuxctl`. For a user-local development
+fallback, link a known CLI binary into the user's bin directory:
+
+```sh
+kitmux-linux/scripts/install-user-cli.sh /path/to/runtime/bin/kitmuxctl
+```
+
+The script prints the destination and warns when the destination directory is
+not on `PATH`; it does not alter shell configuration.
 
 ## Release-shaped engine runtime
 

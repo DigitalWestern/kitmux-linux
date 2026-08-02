@@ -5,8 +5,10 @@
 //! and the lifetime of abstract pane runtimes. It deliberately has no GTK,
 //! WebKit, libkitty, shell-execution, or network-runtime dependency.
 
+mod cli;
 mod commands;
 mod control;
+mod control_socket;
 mod ids;
 mod import;
 mod interaction;
@@ -19,11 +21,18 @@ mod split;
 mod ssh;
 mod state;
 
+pub use cli::{CliInvocation, CliParseError, cli_help, parse_cli};
 pub use commands::{CommandId, SemanticAction, command_palette_matches};
 pub use control::{
-    CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, ControlCodecError, ControlError,
-    ControlMethod, ControlRequest, ControlResponse, LineFrameDecoder, decode_control_request,
-    decode_control_response, encode_control_request, encode_control_response,
+    CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CONTROL_PROTOCOL_VERSION,
+    ControlCodecError, ControlError, ControlMethod, ControlRequest, ControlResponse,
+    LineFrameDecoder, decode_control_request, decode_control_response, encode_control_request,
+    encode_control_response,
+};
+pub use control_socket::{
+    CONTROL_IO_TIMEOUT, CONTROL_MAX_CLIENTS, CONTROL_MAX_EVENT_HISTORY, ControlClientError,
+    ControlEvent, ControlEventHistory, ControlServer, ControlSocketError, PeerCredentials,
+    send_control_request,
 };
 pub use ids::{GroupId, PaneId, SplitId, SurfaceId, TabId, WorkspaceId};
 pub use import::{

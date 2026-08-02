@@ -487,6 +487,7 @@ dependencies = [
  "gtk4",
  "kitmux-model",
  "libc",
+ "serde_json",
 ]
 
 [[package]]

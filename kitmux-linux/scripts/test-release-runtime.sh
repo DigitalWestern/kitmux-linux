@@ -39,6 +39,9 @@ required=(
   "${runtime}/share/kitmux-engine.spdx.json"
   "${runtime}/share/runtime-components.json"
 )
+if [[ -x "${runtime}/bin/kitmux" ]]; then
+  required+=("${runtime}/bin/kitmuxctl")
+fi
 for path in "${required[@]}"; do
   if [[ ! -e "${path}" ]]; then
     echo "Release runtime is missing ${path}" >&2
