@@ -8,18 +8,17 @@ use gtk::glib::{self, Propagation};
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
 use kitmux_model::{
-    AppModel, AppSnapshot, CloseOutcome, CommandId, ControlEventHistory, ControlMethod,
-    ControlRequest, ControlResponse, ControlServer, Direction, GroupId, GroupModel,
+    AppModel, AppSnapshot, CONTROL_DISPATCH_TIMEOUT, CloseOutcome, CommandId, ControlEventHistory,
+    ControlMethod, ControlRequest, ControlResponse, ControlServer, Direction, GroupId, GroupModel,
     LoadDisposition, NavigationTarget, PaneContainer, PaneContentKind, PaneDetail, PaneId,
     PaneRuntime, PaneSurface, PaneSurfaceDetail, PasteConfirmationReason, PixelRect, PixelSize,
     PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES, SNAPSHOT_VERSION,
     SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis, SplitId, SplitLayout,
     SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime, TerminalTabSnapshot,
-    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
-    accumulate_scroll_lines, command_palette_matches, detected_url, load_settings_at_launch,
+    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths, accumulate_scroll_lines,
+    command_palette_matches, detected_url, encode_control_response, load_settings_at_launch,
     load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
-    encode_control_response, resolve_control_socket, save_settings, save_state,
-    terminal_cell_scaled, CONTROL_DISPATCH_TIMEOUT,
+    resolve_control_socket, save_settings, save_state, terminal_cell_scaled,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
@@ -657,12 +656,14 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
     let handler_history = history.clone();
     let server = ControlServer::start(address.clone(), history.clone(), move |request, peer| {
         let (sender, receiver) = mpsc::sync_channel(1);
+        let request_id = request.id.clone();
+        let request_method = request.method.clone();
         let mut queue = handler_queue
             .lock()
             .expect("control dispatch queue lock poisoned");
         if queue.len() >= 128 {
-            handler_history.record(&request.method, &request.id, false, peer.uid);
-            return ControlResponse::failure(request.id, "busy", "control dispatch queue is full");
+            handler_history.record(&request_method, &request_id, false, peer.uid);
+            return ControlResponse::failure(request_id, "busy", "control dispatch queue is full");
         }
         queue.push_back(PendingControlCall {
             request,
@@ -673,8 +674,8 @@ fn install_control_server(terminal: &Rc<RefCell<Terminal>>) -> Result<(), String
         match receiver.recv_timeout(CONTROL_DISPATCH_TIMEOUT) {
             Ok(response) => response,
             Err(_) => {
-                handler_history.record(&request.method, &request.id, false, peer.uid);
-                ControlResponse::failure(request.id, "timeout", "control request timed out")
+                handler_history.record(&request_method, &request_id, false, peer.uid);
+                ControlResponse::failure(request_id, "timeout", "control request timed out")
             }
         }
     })
@@ -829,7 +830,7 @@ fn dispatch_control_request(
             };
             let changed = select_pane(terminal, id);
             if changed {
-                refresh_navigation(terminal);
+                apply_navigation_effect(terminal, NavigationEffect::Changed);
                 control_success(&request, json!({"changed": true}))
             } else {
                 control_failure(&request, "not_found", "pane was not found")
@@ -864,7 +865,7 @@ fn dispatch_control_request(
                 navigation.active_tab_mut().swap_panes(current, target)
             };
             if changed {
-                refresh_navigation(terminal);
+                apply_navigation_effect(terminal, NavigationEffect::Changed);
                 control_success(&request, json!({"changed": true}))
             } else {
                 control_failure(&request, "not_found", "target pane was not found")
@@ -924,8 +925,7 @@ fn control_select(
         _ => false,
     };
     if changed {
-        reconcile_sessions(terminal);
-        refresh_navigation(terminal);
+        apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
     } else {
         control_failure(request, "not_found", format!("{noun} was not found"))
@@ -970,7 +970,7 @@ fn control_rename(
         }
     };
     if changed {
-        refresh_navigation(terminal);
+        apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
     } else {
         control_failure(
@@ -1036,7 +1036,7 @@ fn control_move(
         }
     };
     if changed {
-        refresh_navigation(terminal);
+        apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
     } else {
         control_failure(request, "rejected", format!("{noun} move was rejected"))
@@ -1079,6 +1079,7 @@ fn control_close(
     if force {
         terminal.borrow_mut().close_confirmed = true;
     }
+    let mut applied_effect = false;
     let changed = match noun {
         "pane" => {
             let effect = terminal
@@ -1090,6 +1091,7 @@ fn control_close(
             );
             if changed {
                 apply_navigation_effect(terminal, effect);
+                applied_effect = true;
             }
             changed
         }
@@ -1131,9 +1133,8 @@ fn control_close(
         _ => false,
     };
     terminal.borrow_mut().close_confirmed = false;
-    if changed {
-        reconcile_sessions(terminal);
-        refresh_navigation(terminal);
+    if changed && !applied_effect {
+        apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
     } else {
         control_failure(request, "rejected", format!("{noun} close was rejected"))
@@ -1152,7 +1153,18 @@ fn control_send(terminal: &Rc<RefCell<Terminal>>, request: &ControlRequest) -> C
     if !select_pane(terminal, id) {
         return control_failure(request, "not_found", "pane was not found");
     }
-    let force = request.params.get("force").is_some_and(|value| value == "true");
+    apply_navigation_effect(terminal, NavigationEffect::Changed);
+    if !active_surface_matches_pane(terminal, id) {
+        return control_failure(
+            request,
+            "not_ready",
+            "target pane is not the reconciled active surface",
+        );
+    }
+    let force = request
+        .params
+        .get("force")
+        .is_some_and(|value| value == "true");
     if !force {
         let threshold = terminal.borrow().paste_confirmation_threshold;
         if let Some(reason) = paste_confirmation_reason(text, threshold) {
@@ -1178,6 +1190,14 @@ fn control_send_key(terminal: &Rc<RefCell<Terminal>>, request: &ControlRequest) 
         .unwrap_or("current");
     if !select_pane(terminal, id) {
         return control_failure(request, "not_found", "pane was not found");
+    }
+    apply_navigation_effect(terminal, NavigationEffect::Changed);
+    if !active_surface_matches_pane(terminal, id) {
+        return control_failure(
+            request,
+            "not_ready",
+            "target pane is not the reconciled active surface",
+        );
     }
     let bytes = match key.as_str() {
         "Enter" => vec![b'\r'],
@@ -1217,6 +1237,14 @@ fn control_read_screen(
         .unwrap_or("current");
     if !select_pane(terminal, id) {
         return control_failure(request, "not_found", "pane was not found");
+    }
+    apply_navigation_effect(terminal, NavigationEffect::Changed);
+    if !active_surface_matches_pane(terminal, id) {
+        return control_failure(
+            request,
+            "not_ready",
+            "target pane is not the reconciled active surface",
+        );
     }
     let lines = match request.params.get("lines") {
         Some(value) => match value.parse::<usize>() {
@@ -1389,6 +1417,30 @@ fn select_pane(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
         .navigation
         .as_mut()
         .is_some_and(|navigation| navigation.focus_pane(id))
+}
+
+fn active_surface_matches_pane(terminal: &Rc<RefCell<Terminal>>, id: &str) -> bool {
+    let terminal = terminal.borrow();
+    let Some(navigation) = terminal.navigation.as_ref() else {
+        return false;
+    };
+    let target = if id == "current" {
+        navigation
+            .runtime_presentations()
+            .into_iter()
+            .find(|presentation| presentation.accepts_input)
+            .map(|presentation| presentation.location.surface_id)
+    } else {
+        let Ok(pane_id) = PaneId::from_str(id) else {
+            return false;
+        };
+        navigation
+            .runtime_presentations()
+            .into_iter()
+            .find(|presentation| presentation.location.pane_id == pane_id)
+            .map(|presentation| presentation.location.surface_id)
+    };
+    target == Some(terminal.active_surface_id)
 }
 
 fn split_geometry(area: &GLArea) -> (PixelRect, i32, PixelSize) {
