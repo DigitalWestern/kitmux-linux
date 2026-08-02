@@ -9,3 +9,9 @@ publish = false
 gtk = { package = "gtk4", version = "=0.11.4", features = ["v4_22"] }
 kitmux-model = { path = "../model" }
 libc = "=0.2.189"
+
+[features]
+# Enables the test-only KITMUX_AUTOPASTE / KITMUX_AUTOCLOSE modal drivers.
+# OFF by default so a release build cannot have its safety prompts bypassed
+# by the environment. The desktop gates enable it via -DKITMUX_APP_TEST_HOOKS=ON.
+test-hooks = []

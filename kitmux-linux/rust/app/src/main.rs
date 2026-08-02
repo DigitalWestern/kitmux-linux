@@ -3006,6 +3006,11 @@ fn paste_reason(reason: PasteConfirmationReason) -> String {
 
 fn autopaste_decision() -> Option<bool> {
     // Test-only driver for the modal path; ordinary launches leave it unset.
+    // Compiled inert unless the `test-hooks` feature is on, so a release build
+    // cannot have its unsafe-paste confirmation removed by the environment.
+    if !cfg!(feature = "test-hooks") {
+        return None;
+    }
     match env::var("KITMUX_AUTOPASTE").as_deref() {
         Ok("confirm") => Some(true),
         Ok("cancel") => Some(false),
@@ -3016,6 +3021,11 @@ fn autopaste_decision() -> Option<bool> {
 
 fn autoclose_decision() -> Option<bool> {
     // Test-only driver for both branches of the foreground-process prompt.
+    // Compiled inert unless the `test-hooks` feature is on, so a release build
+    // cannot have its running-process close confirmation removed by the environment.
+    if !cfg!(feature = "test-hooks") {
+        return None;
+    }
     match env::var("KITMUX_AUTOCLOSE").as_deref() {
         Ok("confirm") => Some(true),
         Ok("cancel") => Some(false),

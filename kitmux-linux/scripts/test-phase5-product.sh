@@ -118,7 +118,8 @@ finish_app() { # log, expected sessions, optional window-close
   app_pid=""
 }
 
-KITMUX_BUILD_APP_RUNTIME=1 "${script_dir}/build-release-runtime.sh" "${runtime}"
+KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON \
+  "${script_dir}/build-release-runtime.sh" "${runtime}"
 mkdir -p "${config}" "${state}" "${data}" "${cache}"
 
 first_log="${temporary_root}/first.log"

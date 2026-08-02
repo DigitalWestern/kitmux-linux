@@ -73,6 +73,7 @@ if [[ "${build_app}" == "1" ]]; then
     -DKITMUX_BUILD_APP=ON
     -DKITMUX_BUILD_GTK_HOST=OFF
     -DKITMUX_PYTHON_LIBRARY_OVERRIDE="${libpython_files[0]}"
+    -DKITMUX_APP_TEST_HOOKS="${KITMUX_APP_TEST_HOOKS:-OFF}"
   )
 fi
 

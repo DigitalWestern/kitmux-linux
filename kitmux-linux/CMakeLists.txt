@@ -3,6 +3,7 @@ project(kitmux_linux_proofs VERSION 0.1.0 LANGUAGES C CXX)
 
 option(KITMUX_BUILD_GTK_HOST "Build the Phase 2 GTK/libkitty host" OFF)
 option(KITMUX_BUILD_APP "Build the Phase 4 Rust/GTK application" OFF)
+option(KITMUX_APP_TEST_HOOKS "Enable the app's test-only modal drivers" OFF)
 set(KITMUX_PYTHON_LIBRARY_OVERRIDE "" CACHE FILEPATH
     "Optional isolated libpython used to keep GUI toolkit link paths clean")
 
@@ -158,6 +159,10 @@ if(KITMUX_BUILD_APP)
   set(KITMUX_APP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/rust/app/Cargo.toml")
   set(KITMUX_APP_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo-app")
   set(KITMUX_APP_BINARY "${KITMUX_APP_TARGET_DIR}/release/kitmux")
+  set(KITMUX_APP_CARGO_FEATURES "")
+  if(KITMUX_APP_TEST_HOOKS)
+    set(KITMUX_APP_CARGO_FEATURES --features test-hooks)
+  endif()
   add_custom_target(kitmux_app ALL
     COMMAND "${CMAKE_COMMAND}" -E env
       "CARGO_TARGET_DIR=${KITMUX_APP_TARGET_DIR}"
@@ -165,6 +170,7 @@ if(KITMUX_BUILD_APP)
       "RUSTFLAGS=--remap-path-prefix=${KITMUX_PATH_MAP_ROOT}=."
       "${CARGO_EXECUTABLE}" build --locked --release
         --manifest-path "${KITMUX_APP_MANIFEST}"
+        ${KITMUX_APP_CARGO_FEATURES}
     BYPRODUCTS "${KITMUX_APP_BINARY}"
     DEPENDS kitty kitmux_key_translation kitmux_terminal_bridge
     USES_TERMINAL)

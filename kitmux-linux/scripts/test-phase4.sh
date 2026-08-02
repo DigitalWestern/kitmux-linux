@@ -113,7 +113,7 @@ wait_for_file() { # path, description
   exit 1
 }
 
-KITMUX_BUILD_APP_RUNTIME=1 \
+KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON \
   "${script_dir}/build-release-runtime.sh" "${runtime}"
 
 app="${runtime}/bin/kitmux"

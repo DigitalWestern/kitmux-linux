@@ -106,7 +106,8 @@ stop_shell() { # log
   child_pid=""
 }
 
-KITMUX_BUILD_APP_RUNTIME=1 "${script_dir}/build-release-runtime.sh" "${runtime}"
+KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON \
+  "${script_dir}/build-release-runtime.sh" "${runtime}"
 mkdir -p "${restore_cwd}"
 
 # First launch: empty XDG roots use defaults and create private state only on

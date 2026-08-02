@@ -58,7 +58,8 @@ type_command() {
   xdotool key --clearmodifiers Return
 }
 
-KITMUX_BUILD_APP_RUNTIME=1 "${script_dir}/build-release-runtime.sh" "${runtime}"
+KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON \
+  "${script_dir}/build-release-runtime.sh" "${runtime}"
 install -d -m 700 "${temporary_root}/home" "${temporary_root}/config" \
   "${temporary_root}/state" "${temporary_root}/data" "${temporary_root}/cache" \
   "${temporary_root}/tmux"
