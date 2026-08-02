@@ -1,8 +1,11 @@
 .cache/
+__pycache__/
 .source/
 kitmux-linux/build/
 kitmux-linux/build-release/
 kitmux-linux/build-gtk/
+kitmux-linux/build-app/
+kitmux-linux/kitmux-app-debug.png
 target/
 kitmux-linux/vendor/
 compile_commands.json

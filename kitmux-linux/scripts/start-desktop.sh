@@ -18,6 +18,10 @@ novnc_log="${runtime_dir}/novnc.log"
 mkdir -p "${runtime_dir}"
 chmod 700 "${runtime_dir}"
 
+# A VM power-off can leave TigerVNC's pid/lock record behind even though the
+# server is gone. Clean only records TigerVNC already identifies as stale.
+tigervncserver -list -cleanstale >/dev/null 2>&1 || true
+
 if ! tigervncserver -list 2>/dev/null \
     | awk -v display="${display_number}" \
       '$1 == display || $1 == ":" display { found = 1 } END { exit !found }'; then
@@ -39,7 +43,7 @@ export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-XFCE}"
 dbus-update-activation-environment --systemd DISPLAY XDG_CURRENT_DESKTOP
 systemctl --user daemon-reload
 systemctl --user reset-failed \
-  xdg-desktop-portal.service xdg-desktop-portal-gtk.service
+  xdg-desktop-portal.service xdg-desktop-portal-gtk.service 2>/dev/null || true
 systemctl --user restart \
   xdg-desktop-portal-gtk.service xdg-desktop-portal.service
 

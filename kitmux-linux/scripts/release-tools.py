@@ -339,6 +339,15 @@ def verify_inputs(args: argparse.Namespace) -> None:
         if actual != expected:
             fail(f"dependency bundle hash mismatch for {name}: {actual} != {expected}")
 
+    cargo_lockfiles = lock.get("cargo_lockfiles", {})
+    for relative, expected in cargo_lockfiles.items():
+        path = linux_root / relative
+        if not path.is_file():
+            fail(f"locked Cargo input is missing: {path}")
+        actual = sha256(path)
+        if actual != expected:
+            fail(f"Cargo lockfile hash mismatch for {relative}: {actual} != {expected}")
+
     manifest = load_manifest(args.manifest)
     kitty_sources = (linux_root / ".source" / "kitty" / "bypy" / "sources.json").read_text()
     checked_sources = 0
@@ -354,7 +363,7 @@ def verify_inputs(args: argparse.Namespace) -> None:
         checked_sources += 1
     print(
         f"locked release inputs: {len(required_bundles)} bundles and "
-        f"{checked_sources} source archives verified"
+        f"{checked_sources} source archives plus {len(cargo_lockfiles)} Cargo lockfiles verified"
     )
 
 

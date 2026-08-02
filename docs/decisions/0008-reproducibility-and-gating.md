@@ -19,8 +19,8 @@ that no gate quietly rots in the meantime.
 
 ## Known reproducibility defects
 
-These are real, verified properties of the tree as of 2026-07-25. Each is
-tracked in `PORT_STATUS.md` under current blockers.
+These were real, verified properties of the tree as of 2026-07-25. Each is
+tracked in `PORT_STATUS.md`; R3 closed on 2026-07-28.
 
 ### R1 — The repository cannot be built standalone
 
@@ -44,7 +44,7 @@ drives them. Only the trigger is missing.
 Due: with the first Git remote. The headless container gate is the one to
 automate first because it is already hermetic and needs no display.
 
-### R3 — The desktop gate is bound to one VM, not to a display
+### R3 — The desktop gate is bound to one VM, not to a display — closed
 
 `scripts/test-desktop.sh` requires `KITMUX_VNC_DISPLAY`, a noVNC endpoint on
 port 6080, XFCE, and this project's specific VNC session. It also mutates
@@ -58,6 +58,12 @@ under Xvfb or headless Weston in a container.
 Due: before Phase 4. Separate "needs a display" from "needs *this* display",
 so the gate takes a `DISPLAY`/`WAYLAND_DISPLAY` it did not create. Do not
 attempt this edit without being able to run the gate afterwards.
+
+Resolution, 2026-07-28: `test-desktop.sh` now accepts a caller-supplied
+`DISPLAY`, skips noVNC when no port is requested, and restores the original X
+repeat state/rate, complete XKB configuration, and active IBus engine. The
+full X11 and nested-Wayland gate passed after the change. Starting the local
+XFCE/VNC session remains a convenience, not a gate requirement.
 
 ### R4 — x86_64 inputs are not locked
 
@@ -87,6 +93,9 @@ That is tracked as R5 in `PORT_STATUS.md` and is due with R1.
   Do not add another script that hard-codes this VM.
 - Any new pinned input gets a hash in `source-lock.json` in the same commit
   that introduces it.
+- `release-tools.py verify-inputs` must enforce every recorded dependency
+  bundle and Cargo lockfile hash before a release-shaped build starts. The
+  clean-target gate separately enforces its digest-pinned container base.
 - Locking x86_64 inputs is not permission to claim x86_64 support. Support
   requires a passing gate.
 

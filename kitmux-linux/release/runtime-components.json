@@ -27,7 +27,7 @@
       "version": "c1d507dbe8cd12830d8b97b0d350d9dc2e4d383f",
       "license": "GPL-3.0-only",
       "downloadLocation": "git+https://github.com/kovidgoyal/kitty.git@c1d507dbe8cd12830d8b97b0d350d9dc2e4d383f",
-      "files": ["lib/libkitty.so", "kitty/**", "libkitty_py/**", "share/licenses/kitty.txt"],
+      "files": ["lib/**/libkitty.so", "kitty/**", "libkitty_py/**", "shell-integration/**", "terminfo/**", "share/licenses/kitty.txt"],
       "notice": "kitty.txt"
     },
     {
@@ -47,7 +47,7 @@
       "license": "PSF-2.0",
       "downloadLocation": "https://www.python.org/ftp/python/3.14.6/Python-3.14.6.tar.xz",
       "sourceSha256": "143b1dddefaec3bd2e21e3b839b34a2b7fb9842272883c576420d605e9f30c63",
-      "files": ["lib/libpython3.*", "lib/python3.*/**", "share/licenses/cpython.txt"],
+      "files": ["lib/**/libpython3.*", "lib/python3.*/**", "share/licenses/cpython.txt"],
       "notice": "cpython.txt"
     },
     {

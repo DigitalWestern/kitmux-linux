@@ -1,46 +1,44 @@
 # Kitmux Linux next steps
 
-Start with Slice 2.2F — **event fairness**. Slices 2.2A through 2.2E are
-closed.
+Phase 5 is closed. Continue with the **mandatory clean macOS-reference
+rebaseline**, then begin **Slice 6.1 secure local control and CLI**. Slices 5.1
+through 5.3 pass display-free, cross-host, focused X11, and native-Wayland
+hierarchy, split, permanent-session, persistence, close-review, control,
+accessibility, and rapid-navigation gates.
 
-Phase 2 was reordered on 2026-07-25. Slice 2.2C is no longer selection and
-clipboard: those, along with mouse, wheel, and search, moved to Phase 4 as
-product work. The remaining Phase 2 work is the last check that could
-disqualify GTK: event fairness. The reasoning is in
-[Why Slice 2.2 was cut short](LINUX_PORT_PLAN.md#why-slice-22-was-cut-short)
-and ADR 0007.
+All Phase 2 kill tests passed, including event fairness, a temporary installed
+GUI layout with relative loader paths, and GTK accessibility focus/text-input
+viability. No GTK decision criterion failed, so the conditional Qt 6 probe was
+not run. Phase 4 now covers selection, clipboard, mouse, wheel, search,
+program input, persistence, sustained interaction, and clean-runtime launch.
 
-Phase 0.4's portable fixture corpus and Phase 3 Slices 3.1 and 3.2 are closed.
-The Rust model now consumes the applicable frozen fixtures and owns the
-bounded Linux contract adapters. This file still assigns one Phase 2 slice;
-do not start the cross-host Slice 3.3 work incidentally from the Phase 2
-handoff.
+Phase 0.4's portable fixture corpus and Phase 3 Slices 3.1 through 3.3 are
+closed. The Rust model consumes every frozen contract family, owns the bounded
+Linux adapters, exports temporary compatibility values consumed by macOS, and
+provides a read-only state import preview. Do not expand the closed preview
+into live import or restore work.
 
-Do not begin product navigation UI, Phase 3.3 compatibility/import, browser
-product functionality, packaging, or the monorepo migration.
+Do not begin Slice 6.1 in this dirty checkout. First create and test a clean
+macOS tag containing the reviewed v0.21 additive renderer API, then run the
+guarded `report-reference-drift.py --relock TAG` path from a clean Linux
+worktree. After that, implement only Slice 6.1. Do not begin live macOS
+import/restore, browser product functionality, packaging, or the monorepo
+migration.
 
 ## Preconditions
 
-1. Read `PORT_STATUS.md`, this file, the Phase 2 section of
+1. Read `PORT_STATUS.md`, this file, the Phase 5 section of
    `LINUX_PORT_PLAN.md`, and ADRs 0006, 0007, and 0008.
-2. Confirm `git status --short` is clean and inspect commits newer than the
-   Slice 2.2E entry in `PORT_STATUS.md`.
-3. Run:
+2. Inspect `git status --short` and commits newer than the Slice 0.6 entry in
+   `PORT_STATUS.md`; preserve any unrelated worktree changes.
+3. Re-run the locked reference materialization check before product work:
 
    ```sh
    kitmux-linux/scripts/materialize-reference.sh
-   limactl start kitmux-linux
-   limactl start kitmux-linux-desktop
-   limactl shell kitmux-linux -- \
-     "$PWD/kitmux-linux/scripts/test-headless.sh"
-   limactl shell kitmux-linux-desktop -- \
-     "$PWD/kitmux-linux/scripts/start-desktop.sh"
-   limactl shell kitmux-linux-desktop -- \
-     "$PWD/kitmux-linux/scripts/test-desktop.sh"
    ```
 
-4. If the baseline fails, repair or record that regression before adding
-   behavior.
+4. If the tagged baseline no longer materializes exactly, stop and record the
+   drift before changing contracts or Linux behavior.
 
 ## Before adding any file: which category is it?
 
@@ -173,72 +171,186 @@ the most expensive mistake available in this phase.
 - Exact values, commands, proof images, and limitations are in
   `PORT_STATUS.md`.
 
-## Remaining Phase 2 sequence
+## Completed final Phase 2 sequence
 
-### 2.2F — Event fairness — next
+### 2.2F — Event fairness — done 2026-07-26
 
-- Heartbeat and frame latency during sustained PTY flood, repeated resize, and
-  several hidden sessions pumping at once.
-- Confirm the GLib main loop does not starve UI events under output pressure,
-  and that `g_unix_fd_add_full`'s current `G_PRIORITY_DEFAULT` is defensible.
+- The first five-session flood disproved `G_PRIORITY_DEFAULT`: heartbeats ran,
+  but GTK delivered no frames or resizes.
+- Moving only PTY sources to `G_PRIORITY_DEFAULT_IDLE` gave every session
+  progress and bounded heartbeat, frame, and pump latency during 60 live
+  resizes over 12 seconds.
+- Exact figures and limits are recorded in `PORT_STATUS.md`.
 
-Gate: bounded, recorded latency figures under load. Absolute numbers on
-llvmpipe are not performance evidence — the claim is fairness, not speed.
+This is X11/llvmpipe scheduler-fairness evidence, not hardware performance.
 
-### 2.3 — Close Phase 2 and decide
+### 2.3 — Close Phase 2 and decide — done 2026-07-26
 
-Do not write a permanent GTK selection ADR until all of these have evidence:
+- Every Phase 2 gate passed in one final desktop run.
+- A temporary installed `bin/` + `lib/` layout loaded `libkitty` and pinned
+  `libpython` through relative runpaths without a broad `LD_LIBRARY_PATH`,
+  rendered a live frame, and reaped the child.
+- The terminal widget exposed GTK's terminal role and label, accepted focus,
+  transferred focus to a `GtkEntry` and back, and retained the proven
+  `GtkIMMulticontext` path.
+- ADR 0002 records GTK 4 as selected. Full AT-SPI content/screen-reader,
+  physical GPU, native package, and clean-install evidence remain later gates.
 
-1. Slices 2.1, 2.2A, 2.2B, and 2.2C through 2.2F are green.
-2. The isolated-libpython boundary works in a release-shaped GUI layout
-   without a broad `LD_LIBRARY_PATH`.
-3. Required accessibility focus and text-input behavior is viable.
+## Next dependency-safe sequence
 
-Then update `contracts/feature-inventory.json`, `support-matrix.yml`, ADR
-0002, and `PORT_STATUS.md` with exact commands and results.
+### 0.6 — Make reference drift measurable — done 2026-07-26
 
-If a criterion fails for a concrete GTK limitation, run one time-boxed,
-equivalent Qt 6 probe. Under ADR 0007 that probe replaces
-`gtk_terminal_host.c` and re-targets the durable translation unit's input
-struct; it does not restart key semantics. If both toolkits fail the same
-renderer boundary, stop and redesign that boundary rather than accumulating
-workarounds.
+- `kitmux-linux/scripts/report-reference-drift.py` compares the lock to macOS
+  `HEAD`, classifies the scoped drift, separates uncommitted changes, and can
+  append the restricted patch.
+- The first report found only the intentional portable-fixture mirror and
+  consumer-test commit. No public header, patch, engine, or behavior drift
+  required a new baseline.
+- `--relock NEW_TAG` guards the one-file lock update and runs the headless gate.
+  Exact commands, evidence, and limits are in `PORT_STATUS.md`.
 
-At least one physical Mesa GPU is required before beta but does not block the
-toolkit decision. It moved to Phase 6.
+### 4.1 — Application shell and lifecycle — done 2026-07-28
+
+The production Rust/GTK application owns one window, terminal surface, engine,
+passwd shell, PTY source, render/resize/title/cwd lifecycle, and ordered child
+shutdown. It builds without the disposable host or WebKitGTK/XTest and runs
+from an isolated release tree whose app-only `lib/app` loader directory cannot
+shadow distro GTK libraries.
+
+Gate result: `test-phase4.sh` launched a fresh 894-file release runtime on X11,
+proved the terminal child executable was the passwd shell, exercised title,
+cwd, 50,000 output lines and repeated resizing, then exited and proved the
+child was gone. Locked warnings-denied Clippy also passed. Exact evidence and
+limitations are in `PORT_STATUS.md`.
+
+### 4.2 — Terminal interaction — done 2026-07-28
+
+Wire the existing durable key translator and pure interaction model into the
+product app. Add shortcut-before-IME routing, asynchronous clipboard copy and
+paste with unsafe-paste confirmation, local selection versus mouse-reporting
+mode with Shift override, wheel/touchpad scroll, scale-aware cell mapping, URL
+opening, search, font controls, and foreground-process close confirmation.
+
+Gate: exact scale/cell assertions, independent libkitty session state,
+clipboard round trips, rejected and confirmed unsafe paste, product behavior
+on X11 and native Wayland, and continued PTY progress under pointer activity.
+
+Both product gates pass from fresh release runtimes. The X11 run owns external
+clipboard and close-dialog evidence; the nested native-Wayland run proves the
+same production input/resize/search/font/mouse controller under
+`GdkWaylandDisplay`. Exact evidence and non-claims are in `PORT_STATUS.md`.
+
+### 4.3 — Minimal crash-safe persistence — done 2026-07-28
+
+Reuse the existing XDG resolver, bounded state/settings codecs, private atomic
+replace, and replacement-aware watcher. Persist only the one-terminal values
+that exist now: safe cwd and font size. Missing files use defaults; malformed
+or newer files are preserved and set aside; write failures keep the last
+readable state; rename/replacement is detected. Restore always creates a fresh
+passwd shell and never executes saved command text.
+
+Gate: missing, corrupt, newer-schema, read-only, and full-disk behavior;
+replacement watching; deterministic private writes; safe cwd fallback; and a
+fresh shell with no restored command.
+
+The display-free source gate and release-shaped X11 persistence gate pass. The
+runtime proved two-launch cwd/font restore into a different fresh shell PID,
+inert resume text, stable IDs, watcher recovery, corrupt/newer set-asides,
+blocked/read-only preservation, and real `ENOSPC` on a private 64 KiB tmpfs.
+Exact evidence and non-claims are in `PORT_STATUS.md`.
+
+### Phase 4 exit matrix — done 2026-07-28
+
+- Bash, Zsh, Fish, Vim, Less, and tmux input/return paths pass.
+- Final X11 and native-Wayland product interaction/resize gates pass.
+- The required 1,801-second soak passed 1,090 interaction cycles and 160 shell
+  heartbeats with a 220 ms maximum heartbeat; shell and flood worker reaping
+  passed.
+- The release runtime launches under Xvfb in a runtime-only Ubuntu 26.04
+  container with no SDK. Its base image is digest-pinned and fetchable when
+  absent.
 
 ## Deferred but explicit
 
-- Selection, clipboard, safe paste, mouse, wheel, and search are Phase 4
-  Slice 4.2, not Phase 2.
-- Phase 0.4's shared valid/invalid fixture corpus is frozen. Phase 3.1 and
-  bounded-contract Slice 3.2 are closed; cross-host compatibility/import
-  Slice 3.3 still requires its own explicit assignment.
-- Phase 0.6 defines the macOS re-baselining ritual. Reference drift is
-  currently unmeasured.
-- `contracts/feature-inventory.json` must reach per-behavior granularity
-  before Phase 5, or Phase 9's parity gate is unfalsifiable.
-- ADR 0008 R1 through R4: standalone buildability, one automated gate, a
-  desktop gate that takes a display instead of creating one, and locked
-  x86_64 inputs.
+- Selection, clipboard, safe paste, mouse, wheel, and search closed in Phase 4
+  Slice 4.2; do not reopen them during hierarchy work without a regression.
+- Phase 0.4's shared valid/invalid fixture corpus is frozen. Phase 3 is closed
+  through cross-host compatibility and the read-only import preview.
+- Phase 0.6's macOS reference-drift report and guarded re-lock are complete.
+  Run the report at every phase boundary and record even a no-drift result.
+- `contracts/feature-inventory.json` now has per-behavior status and 75
+  resolving Linux test references. Keep it current as Phase 5 adds behavior.
+- ADR 0008 R1 and R2 remain: standalone buildability and one automated gate.
+  R3 and R4 closed on 2026-07-28: the desktop gate is display-portable and
+  restores touched session state, and both architecture bundles are locked.
 - x86_64, GNOME, physical GPU, `.deb`/RPM, clean desktop install,
   upgrade/uninstall, and public-distribution work remain later gates.
 - Repository migration is planned in `docs/MONOREPO_MIGRATION.md` and must be
   performed in a separate session.
 
+## Completed Slice 5.1 checkpoint — 2026-08-01
+
+- The existing pure hierarchy now owns bounded workspace/group/tab names and
+  explicit tab/group/workspace close operations that preserve stable IDs,
+  close removed runtimes, and refuse to empty their parent.
+- Navigation settings now resolve stable command IDs through the same shortcut
+  map as Phase 4 terminal actions. Super+1…9 addresses workspaces and Alt+1…9
+  addresses terminal tabs without taking plain Control chords from terminal
+  applications.
+- `test-phase3.sh` passed 50 Rust tests and all 9 macOS portable-contract
+  consumers. The same 50 tests passed offline in Ubuntu ARM64, and a fresh
+  temporary CMake Release build compiled `kitmux_app` against GTK 4.22.4.
+- The responsive GTK sidebar, group row, and tab row now route create, select,
+  rename, reorder, close, and stable-command shortcuts. Fresh release-runtime
+  navigation gates and the full Phase 4 terminal regression pass on X11 and
+  native Wayland. Slice 5.1 is closed.
+
+## Completed Slice 5.2 checkpoint — 2026-08-01
+
+- Every live terminal surface owns a permanent libkitty child and idle-priority
+  GLib PTY source keyed by stable `SurfaceId`; removed surfaces and window
+  teardown close and reap every owned child.
+- One GTK GL area renders the active tab's nested split leaves through a
+  bounded scissored multi-region bridge. Pointer focus, tolerant divider drag,
+  cycle/directional focus, and Super-based keyboard resize route through the
+  existing pure model and ratio bounds.
+- Inactive tabs/workspaces remain owned and drain output without entering the
+  visible layout/draw set. Ordinary input always routes through the selected
+  surface, including key-up after navigation.
+- The 51-test Ubuntu model gate, X11 and native-Wayland nested split gates, and
+  X11 and native-Wayland hidden-output gates pass from fresh 894-file release
+  runtimes. Slice 5.2 is closed.
+
+## Completed Slice 5.3 and Phase 5 checkpoint — 2026-08-01
+
+- The native GTK command palette filters the frozen catalog deterministically
+  and routes supported actions through the shared product path. The native
+  settings dialog edits bounded settings, preserves unknown fields, applies
+  live, and is fully usable by keyboard.
+- State now round-trips the complete terminal hierarchy, nested ratios,
+  schema-supported IDs, names/titles, selections, surface stacks, and safe
+  per-surface cwd into fresh passwd shells. Saved commands stay inert and a
+  corrupt primary recovers the byte-identical last-good hierarchy.
+- Pane, group, workspace, and window closes use one scoped foreground recheck.
+  Native roles/labels and terminal → Commands → Settings → terminal focus
+  transfer pass on X11 and native Wayland.
+- The 52-test Linux source gate and all 9 macOS portable consumers pass. Fresh
+  894-file release gates pass the complete product scenario, X11/native-
+  Wayland rapid navigation, nested split/accessibility, hidden-output, and the
+  full Phase 4 X11/native-Wayland regressions.
+- Phase-boundary drift is mandatory: clean macOS `HEAD` adds the v0.21
+  multi-context render-resource release API. Re-locking must wait for a clean
+  Linux worktree. This is the next precondition, not unfinished Slice 5 work.
+
 ## Resume prompt
 
 ```text
-Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, the Phase 2 section of
-LINUX_PORT_PLAN.md, and ADRs 0006 through 0008. Note that Phase 2 was
-reordered and Slices 2.2C native Wayland, 2.2D WebKitGTK coexistence, and
-2.2E fractional scaling are closed. Phase 3 Slices 3.1 and 3.2 are also
-closed; do not begin Slice 3.3. Confirm the worktree and both VM baselines.
-Implement only Slice 2.2F: measure bounded heartbeat and frame latency during
-sustained PTY output, repeated resize, and several hidden sessions pumping at
-once. Prove the GLib main loop does not starve UI events and decide from
-evidence whether the current G_PRIORITY_DEFAULT PTY source remains defensible.
-Treat llvmpipe figures as fairness bounds, not performance claims. Classify
-any new file per ADR 0007, run the headless and desktop gates, update evidence
-docs, and stop before Slice 2.3.
+Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, Phases 5 and 6 in
+LINUX_PORT_PLAN.md, and ADRs 0007 and 0008. Phases 0 through 5 are closed; GTK 4
+is selected, and the full terminal multiplexer alpha passes source,
+cross-host, X11, and native-Wayland gates. Preserve unrelated worktree changes.
+Before Slice 6.1, create/test a clean macOS v0.21 reference tag and use the
+clean-worktree guarded `report-reference-drift.py --relock TAG` path. Do not
+begin live macOS import/restore, browser product work, packaging, or repository
+migration.
 ```

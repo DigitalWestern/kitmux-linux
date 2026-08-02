@@ -27,6 +27,10 @@
     "kitmux-linux/patches/libkitty/0001-render-scale.patch": "eb5effbbbe9ace7edf3cb21d3045598e9056bdacc16fe5b6069ff7d682c35020"
   },
   "cargo_lockfiles": {
-    "kitmux-linux/rust/model/Cargo.lock": "e49658a57281de1c7d009f17a46d7613b858a3dd76989e1eb842252a12c86deb"
+    "kitmux-linux/rust/model/Cargo.lock": "eaf5e98856fd0af8c9ea698c1c25ecdcd0a5b13014c532af0de3d683038d0bd1",
+    "kitmux-linux/rust/app/Cargo.lock": "56dad119f0f151edcfc3df886b0cca1b6bc1f5dd675d2211107da78bdfc1249d"
+  },
+  "container_images": {
+    "docker.io/library/ubuntu:26.04": "sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb"
   }
 }

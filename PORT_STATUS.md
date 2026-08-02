@@ -1,27 +1,38 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-07-26
+**Last inspected:** 2026-08-01
 
-**Implementation state:** Phase 0.4, Phase 1, GTK Slices 2.1 through 2.2E, and
-Phase 3 Slices 3.1 through 3.2 are closed. Separate Ubuntu ARM64 headless and
+**Implementation state:** Phases 0 through 4 are closed. GTK 4
+is the selected Linux UI toolkit. Separate Ubuntu ARM64 headless and
 XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
-Linux stress tests, a real one-session GTK 4 terminal host over X11 and native
-Wayland client paths, deterministic keyboard, input-method, and fractional
-scaling harnesses, an authoritative portable contract corpus, and a
-display-free Rust product model with bounded contract and Linux path/file
-adapters exist. No Linux product navigation UI or native package exists yet.
+Linux stress tests, a real GTK 4 terminal host over X11 and native Wayland
+client paths, deterministic keyboard, input-method, and fractional scaling
+harnesses, an authoritative portable contract corpus, a display-free Rust
+product model with bounded contracts, and a release-shaped terminal
+multiplexer alpha exist. The alpha has live hierarchy navigation, nested
+terminal splits, one permanent libkitty session per live surface, native
+command/settings controls, full safe hierarchy persistence, close-chain
+foreground review, and initial accessible roles/focus order. Native packaging
+does not exist yet.
 
-**Active tracks:** Phase 2 — rendering and toolkit kill spike; Phase 3 —
-display-free model and compatibility harness.
+**Active track:** Phase 5 — terminal multiplexer alpha — is closed. Slices 5.1,
+5.2, and 5.3 and the Phase 5 exit matrix are complete. Phase 6.1 secure local
+control and CLI is next after the mandatory macOS-reference rebaseline is made
+from a clean Linux worktree.
 
-**Next slices:** Phase 2 Slice 2.2F — **event fairness**; Phase 3 Slice 3.3 —
-**compatibility and safe import**, when separately assigned. Phase 2 was
-reordered on 2026-07-25 so the checks that could disqualify GTK run before the
-expensive ones that almost certainly cannot. Selection, clipboard, safe paste,
-mouse, wheel, and search moved to Phase 4 Slice 4.2 as product work. The remaining
-Phase 2 slice is event fairness. Phase 3.1 and 3.2 consume the
-applicable frozen Phase 0.4 fixtures and stop before cross-host fixture
-exchange or macOS-state import preview work.
+**Next gate:** Create and test a clean macOS reference tag containing the
+reviewed v0.21 additive renderer API, then use the guarded clean-worktree
+`report-reference-drift.py --relock TAG` path. After that, begin Slice 6.1 only.
+Phase 4's shell/editor,
+X11/Wayland, 30-minute interaction-soak, and clean no-SDK gates all pass.
+Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK ran
+before product work. All passed, including the final relocatable-loader and
+accessibility viability gate. Selection, clipboard, safe paste, mouse, wheel,
+search, configurable terminal shortcuts, and crash-safe one-terminal
+persistence are wired into the product shell. Phase 3
+now consumes every frozen Phase 0.4
+contract family and exchanges Linux-produced values with macOS; its import
+preview remains data-only and separate from Phase 4's product persistence.
 The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 Operational VM, gate, runtime, and SBOM commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
@@ -57,14 +68,485 @@ listed only in the checkout's local Git exclude file.
 - The Swift core is most useful first as behavior and fixtures. Some files
   directly depend on Darwin, Combine, CryptoKit, Foundation behavior, or
   macOS paths.
-- GTK 4 is the first toolkit candidate, not a final choice. The disposable
-  host is C to test the direct libkitty/GTK boundary; Rust now owns the
-  display-free product model. Event-loop evidence and the complete Slice 2.3
-  gate still decide the production UI stack.
+- GTK 4 is the selected toolkit. The disposable C spike proved the direct
+  libkitty/GTK boundary; Rust owns the display-free product model. The Phase 4
+  shell should reuse the proven contracts without promoting the spike host to
+  production architecture.
 - The first user-facing target is a terminal-only alpha. Browser panes and
   broad distribution support are later decisions.
 
 ## Evidence log
+
+### 2026-08-01 — Slice 5.3 and Phase 5 exit matrix complete
+
+- Added a native GTK command palette over the frozen 38-ID catalog. Empty
+  search preserves catalog order, exact/prefix/segment/contains matching is
+  deterministic, unsupported commands stay visible but disabled, and Enter or
+  a native button routes supported commands through the same product command
+  path as shortcuts.
+- Added a native settings dialog for restore policy, sidebar visibility and
+  width, foreground-close confirmation, and paste threshold. It uses the
+  existing bounded settings document and private atomic writer, preserves
+  unknown fields, applies live, and supports Escape, Alt+C, and Ctrl+Enter.
+- The state projection now saves and restores every workspace/group/tab,
+  nested split root and ratio, schema-supported stable ID, name/title,
+  selection, terminal surface stack, and safe per-surface cwd. Restore creates
+  fresh passwd shells only, ignores browser surfaces, never executes saved
+  resume text, and recovers the full hierarchy from last-good state after a
+  corrupt primary.
+- Pane, group, workspace, and whole-window close requests share one live
+  foreground review path. Each scope is rechecked immediately before acting;
+  the full-window path reviews every owned session, not only the selected one.
+- Product controls expose native terminal/button roles and labels. The focused
+  X11 and native-Wayland gates prove terminal → Commands → Settings → terminal
+  focus transfer using GTK's accessible role/focus APIs.
+- Source/cross-host command: `kitmux-linux/scripts/test-phase3.sh` passed 52
+  Linux Rust model/contract/interaction/persistence tests, 6 contracts/20
+  cases/7 byte-identical fixture files, and all 9 macOS portable-contract
+  consumer tests. Final inventory validation resolves 97 Linux and 234 macOS
+  references. SwiftPM used a temporary scratch path, leaving the macOS
+  checkout read-only. A parallel-test temp-directory collision found on the
+  first run was fixed with a process-local atomic sequence.
+- Product command: `DISPLAY=:1
+  kitmux-linux/scripts/test-phase5-product.sh` passed from a fresh 894-file
+  release runtime. It proved mouse-free palette/settings use, scoped
+  pane/group/workspace/window foreground review, a two-workspace/five-session
+  nested hierarchy, byte-identical restart state, corrupt-primary last-good
+  recovery, accessible roles/focus, and five-child reaping.
+- X11 rapid-navigation command: `DISPLAY=:1 KITMUX_RAPID_NAV_GATE=1
+  kitmux-linux/scripts/test-phase5-navigation.sh` passed 196 observed state
+  transitions across nine tabs and nine workspaces, 17 permanent sessions,
+  and complete child reaping. The equivalent native-Wayland command passed via
+  `KITMUX_AUTONAVIGATION=1 KITMUX_WAYLAND_GATE=test-phase5-navigation.sh
+  kitmux-linux/scripts/test-phase4-wayland.sh`.
+- Native-Wayland split/accessibility command: `DISPLAY=:1
+  KITMUX_SPLIT_GATE=1 KITMUX_ACCESSIBILITY_GATE=1 KITMUX_AUTONAVIGATION=1
+  KITMUX_WAYLAND_GATE=test-phase5-navigation.sh
+  kitmux-linux/scripts/test-phase4-wayland.sh` passed nested split/session
+  ownership and native role/focus checks.
+- Final regressions: `DISPLAY=:1 kitmux-linux/scripts/test-phase4.sh` and
+  `DISPLAY=:1 kitmux-linux/scripts/test-phase4-wayland.sh` both passed after
+  the completed Phase 5 UI. The Wayland run caught and fixed an 874 px natural
+  minimum-width error by stacking native app controls responsively; the gate
+  now derives terminal input coordinates from the measured viewport.
+- The phase-boundary `report-reference-drift.py --patch` report found clean
+  macOS `HEAD` `29d4b7664c3684b791ec693969e10ed4629fc810` with a new additive
+  `kitty_session_release_render_resources` API and related multi-context work.
+  This is mandatory rebaseline drift. Re-locking was intentionally not run:
+  its guard requires a clean Linux tree, while this checkout contains the
+  active uncommitted port. The locked Slice 5 baseline still materializes and
+  all Phase 5 gates above pass; a clean rebaseline is the Phase 6 precondition.
+- Source-tested: yes. GUI-tested: Ubuntu 26.04 ARM64 X11 and native Wayland with
+  llvmpipe. Release-layout-tested: yes through fresh 894-file runtimes.
+  Cross-host-tested: yes. Native-package-tested, clean-desktop-installed,
+  x86_64-runtime-tested, physical-input-tested, and physical-GPU-tested: none.
+  Slice 5.3 and Phase 5 are closed; no Phase 6 product work was started.
+
+### 2026-08-01 — Slice 5.2 splits and session ownership complete
+
+- Replaced the single-session product shell assumption with a registry keyed
+  by stable `SurfaceId`. Every created workspace, group, tab, or split terminal
+  owns a real libkitty child and GLib PTY source until its model surface closes.
+  Window teardown removes every source, closes every session, and verifies all
+  direct children were reaped.
+- One GTK `GLArea` renders the active tab's nested split layout through a
+  bounded multi-region C bridge. Each visible surface receives its own
+  scissored viewport and resize; inactive tabs/workspaces remain live and pump
+  without entering layout or draw. Ordinary key, IME, mouse, selection, search,
+  paste, and scroll paths dereference only the model-selected surface.
+- Added pointer pane focus, a tolerance-band divider hit target, ratio-clamped
+  divider drag, cycle/directional focus, and Super-based keyboard resize. The
+  display-free model test `tab_resize_helpers_apply_keyboard_steps_and_pointer_ratios`
+  covers both resize entry points and minimum-aware clamping.
+- Ubuntu ARM64 source command: `limactl shell kitmux-linux-desktop -- bash -lc
+  'cd "/Users/ethanabbate/Desktop/System/home-kitmux/operating-system/linux"
+  && kitmux-linux/scripts/test-model.sh'` passed 51 Rust tests with formatting,
+  warnings-denied Clippy, contracts, interaction, model, and persistence checks.
+- X11 split command: `DISPLAY=:1 KITMUX_SPLIT_GATE=1
+  kitmux-linux/scripts/test-phase5-navigation.sh` passed from a fresh 894-file
+  release runtime. It created a three-pane nested tree backed by three children,
+  rendered three regions, dragged a real divider using live-derived GTK
+  coordinates, changed pointer focus, resized by keyboard, exited through the
+  active terminal, and reaped all three children.
+- Native-Wayland split command: `DISPLAY=:1 KITMUX_SPLIT_GATE=1
+  KITMUX_AUTONAVIGATION=1 KITMUX_WAYLAND_GATE=test-phase5-navigation.sh
+  KITMUX_WAYLAND_LABEL="Phase 5 native-Wayland split gate"
+  kitmux-linux/scripts/test-phase4-wayland.sh` passed the same model/session,
+  region-render, keyboard-resize, terminal-exit, and reap checks on
+  `GdkWaylandDisplay`.
+- X11 and native-Wayland hidden-session variants passed with
+  `KITMUX_HIDDEN_SESSION_GATE=1`. A non-selected tab continued draining a
+  bounded output loop through its own PTY source while the selected terminal
+  remained the only input target; both children were reaped.
+- Source-tested: yes. GUI-tested: Ubuntu 26.04 ARM64 X11 and native Wayland with
+  llvmpipe. Release-layout-tested: yes through fresh 894-file runtimes.
+  Native-package-tested and clean-desktop-installed: none. Slice 5.2 is closed;
+  Slice 5.3 product controls and persistence are next.
+
+### 2026-08-01 — Slice 5.1 navigation hierarchy complete
+
+- Added bounded workspace/group/tab naming to the existing Rust hierarchy,
+  explicit tab/group/workspace close operations that cannot empty their
+  parent, and workspace cycling. Reorder and close continue to preserve stable
+  IDs and close removed abstract runtimes exactly once.
+- Extended the existing stable-command-ID shortcut map with navigation
+  actions. Linux number namespaces use Super+1…9 for workspaces and Alt+1…9
+  for terminal tabs; extra modifiers are rejected, and plain terminal Control
+  chords remain unclaimed. Navigation overrides use the same settings path as
+  the seven Phase 4 terminal actions.
+- The frozen reference still materializes exactly:
+  `kitmux-linux/scripts/materialize-reference.sh` verified seven reference
+  files and the one locked Linux overlay.
+- Cross-host source gate: `kitmux-linux/scripts/test-phase3.sh` passed 50 Rust
+  model/contract/interaction/persistence tests, 6 contracts/20 cases/7
+  byte-identical fixture files, 80 resolving Linux inventory references, and
+  all 9 macOS portable-contract consumer tests.
+- Ubuntu ARM64 source gate: `limactl shell kitmux-linux -- env
+  CARGO_NET_OFFLINE=true <mounted-path>/kitmux-linux/scripts/test-model.sh`
+  passed the same 50 Rust tests offline with warnings denied.
+- Product integration compile: a fresh temporary CMake Release build with
+  `KITMUX_BUILD_APP=ON`, the pinned Python root, and isolated libpython built
+  `kitmux_app` successfully against GTK 4.22.4 in the Ubuntu ARM64 desktop VM.
+- Wired the model into a responsive GTK workspace sidebar, group row, and tab
+  row. Native controls create, select, rename, reorder, and close hierarchy
+  nodes; the same stable command IDs drive product navigation shortcuts. The
+  projection keeps weak widget references so window teardown cannot form a
+  GTK ownership cycle.
+- Added `kitmux-linux/scripts/test-phase5-navigation.sh`. Its fresh release
+  runtime passed real X11 key routing for workspace/group/tab creation and
+  selection, then passed the same state sequence on `GdkWaylandDisplay` through
+  the shared nested-Weston harness. The Wayland path exits through the live
+  terminal after navigation, proving the original shell remains usable.
+- Re-ran `kitmux-linux/scripts/test-phase4.sh` and
+  `kitmux-linux/scripts/test-phase4-wayland.sh`. Both full terminal regressions
+  pass after the new layout; the Wayland gate also caught and closed a 1064 px
+  minimum-width regression by stacking group and tab controls responsively.
+- Source-tested: yes. GUI-tested: Ubuntu 26.04 ARM64 X11 and native Wayland with
+  llvmpipe. Release-layout-tested: yes through fresh 894-file runtimes.
+  Native-package-tested and clean-desktop-installed: none. Slice 5.1 is closed;
+  Slice 5.2 session multiplication and nested splits are next.
+
+### 2026-07-28 — Phase 4 exit matrix
+
+- Source-tested: all 48 Rust model/contract/interaction/persistence tests,
+  six Linux headless C/ELF/session tests, locked warnings-denied model/app
+  Clippy, formatting, portable fixture validation, and the nine-test macOS
+  compatibility consumer pass. The inventory resolves 75 Linux and 234 macOS
+  references across 64 features.
+- GUI-tested: the final X11 and nested native-Wayland product gates pass from
+  fresh 894-file release runtimes. Both prove configured shortcut routing,
+  external clipboard copy/paste during PTY output, selection, paste safety,
+  search, mouse/wheel, resize, and child reaping; X11 also proves the
+  foreground-close dialog. A direct X11 focus call removed an intermittent
+  nested-Wayland input-handoff race in the gate.
+- Program-tested: `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4-programs.sh"` passed explicit Bash,
+  Zsh, Fish, Vim, Less, and tmux input/return paths.
+- Soak-tested: `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4-soak.sh"` passed for 1,801 monotonic
+  seconds with 1,090 resize/pointer/wheel/font cycles, 160 bounded shell
+  heartbeats, and a 220 ms maximum heartbeat against the 5-second limit. The
+  shell and continuous flood worker were reaped.
+- Clean-runtime-tested: `kitmux-linux/scripts/test-phase4-clean-target.sh`
+  passed in a runtime-only Ubuntu 26.04 Xvfb container with no compiler,
+  Cargo, CMake, Make, pkg-config, or GTK/GLib/Epoxy development package. Its
+  base is digest-pinned in `source-lock.json`, verified against the
+  Containerfile, and fetched by exact digest when missing.
+- The phase-boundary reference report still shows only the reviewed Phase 3
+  portable-fixture consumer commit plus one relevant uncommitted macOS test;
+  no libkitty/API change requires rebaselining, and the dirty macOS test keeps
+  optional re-locking correctly blocked.
+- Source-tested, GUI-tested, and clean-runtime-tested evidence is complete for
+  Phase 4 on Ubuntu 26.04 ARM64/llvmpipe. Native-package-tested,
+  clean-desktop-installed, x86_64, physical-input, and physical-GPU evidence
+  remains future work. Phase 4 is closed; Slice 5.1 is next.
+
+### 2026-07-28 — Slice 4.3 minimal crash-safe persistence
+
+- Added one display-free persistence policy over the existing XDG resolver,
+  bounded state/settings codecs, private atomic replace, and replacement-aware
+  fingerprint watcher. Missing files use defaults; malformed and newer files
+  are moved byte-for-byte through no-clobber same-directory set-asides; a
+  failed set-aside disables overwrite for that launch. State writes preserve
+  the previous primary as last-good before replacing the primary.
+- Hardened the shared atomic writer so its app directory and any existing
+  destination must belong to the effective user; the app directory is `0700`,
+  files are `0600`, symlink/non-file targets are rejected, and failed writes
+  remove their temporary file without changing the previous destination.
+- The GTK app loads state/settings before session creation, restores only an
+  existing accessible absolute cwd and bounded font size, seeds restored cwd
+  before PTY output can arrive, retains stable
+  one-terminal IDs, watches valid settings replacements, and saves cwd/font
+  before engine shutdown. Saved resume text, argv, and PIDs have no route to
+  session creation: every launch still uses the passwd shell with `-il`.
+- Source gate: all 48 model/contract/interaction/persistence tests passed,
+  including no-clobber set-aside collision and failed-last-good ordering;
+  locked warnings-denied Clippy and formatting passed
+  for the model and product app.
+- Product gate: `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4-persistence.sh"` passed. It built one
+  fresh release runtime and proved missing defaults, private deterministic
+  writes, stable IDs, cwd/font restoration into a different fresh shell PID,
+  immediate-exit cwd retention, inert seeded resume text, pre-directory watcher
+  arming, atomic replacement, removal/recreation, malformed-edit recovery,
+  same-content suppression, unsafe-paste behavior after live settings reload,
+  corrupt/newer byte-preserving no-clobber set-asides, blocked-quarantine
+  overwrite refusal, and read-only preservation.
+- The same gate mounted an isolated 64 KiB private tmpfs, filled it, observed a
+  real state-save failure under `ENOSPC`, and proved the prior snapshot hash was
+  unchanged with no `.kitmux-write-*` remainder. Every launched shell was
+  reaped and the mount was removed.
+- GUI-tested: Ubuntu 26.04 ARM64 X11/llvmpipe. Package-tested and clean-machine
+  desktop-tested: none. The bounded watcher is polling-based by contract for
+  this one-writer alpha; no inotify-specific claim is made.
+- Slice 4.3 is closed. The Phase 4 exit matrix is next.
+
+### 2026-07-28 — Slice 4.2 terminal interaction
+
+- Added the display-free interaction policy for paste safety, exact
+  scale-aware cell mapping, fractional scroll accumulation, Linux shortcut
+  routing, and wrapped URL detection. Six focused interaction tests pass,
+  including exact large-paste boundaries, control characters, half-cell
+  mapping, invalid scale, smooth-scroll residue, plain Control-C ownership,
+  configurable shortcut overrides, ambiguous chords, wrapped URLs, email
+  links, and rejected schemes.
+- Wired the production GTK app to the existing durable key translator and
+  libkitty APIs: shortcuts run before IM filtering; clipboard reads are
+  asynchronous; unsafe paste defaults to cancel; selection and mouse reporting
+  honor Shift override; press/drag/release, wheel/smooth scrolling, search,
+  font controls, Ctrl-click URL opening, and foreground-process close
+  confirmation are live product paths. Linux-only settings override the seven
+  implemented actions through stable command IDs and are reapplied on settings
+  reload without extending the portable settings schema.
+- X11 product gate: `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4.sh"` passed from a freshly rebuilt
+  894-file runtime. It proved plain Control-C reaches the terminal, external
+  clipboard copy/paste, rejected and confirmed large paste, selection text,
+  a configured non-default search shortcut, search/cancel, font controls,
+  mouse press/drag/release, raw wheel delivery, PTY progress during pointer
+  activity, and cancel-then-confirm close with a live foreground reader. The
+  shell child was reaped.
+- Native-Wayland product gate: `limactl shell kitmux-linux-desktop -- env
+  DISPLAY=:1 "$PWD/kitmux-linux/scripts/test-phase4-wayland.sh"` passed under
+  nested Weston without Xwayland and asserted `GdkWaylandDisplay`. The same
+  production controller handled shell input, live resizes, external
+  `wl-copy`/`wl-paste`, unsafe paste, selection, the configured non-default
+  search shortcut plus navigation/cancel, font, mouse, wheel, pointer-time PTY
+  progress, and child-exit/reaping. XTEST cannot issue a Wayland toplevel
+  close, so the X11 run remains the close-dialog gate.
+- The release runtime's generated `session_api` gate separately re-proved
+  bracketed paste, exact scrollback/search/selection behavior and independent
+  session interaction state. Warnings-denied Clippy, formatting, loader
+  isolation, SBOM validation, and secret/path-leak checks are included in the
+  same fresh runtime build.
+- GUI-tested: Ubuntu 26.04 ARM64 X11 and native Wayland clients with Mesa
+  llvmpipe. Package-tested and clean-machine desktop-tested: none. Physical
+  libinput/touchpad, physical GPU, end-to-end default URL-handler launch, and
+  native packaging remain unproven.
+- Slice 4.2 is closed. Slice 4.3 minimal crash-safe persistence is next.
+
+### 2026-07-28 — Slice 4.1 application shell and lifecycle
+
+- Added the production `kitmux` Rust/GTK target without promoting the
+  disposable spike host. It owns one GTK window, `GtkGLArea`, engine and
+  libkitty session; resolves the passwd login shell and account home; pumps
+  its PTY at idle priority; updates render, scale, viewport, title, and cwd;
+  and reports secret-safe lifecycle diagnostics.
+- The product target now builds independently of the spike-only GTK host,
+  WebKitGTK, and XTest. Its release runtime isolates `libkitty` and pinned
+  libpython under `lib/app`, keeping Kitty's private native dependency closure
+  out of distro GTK's loader namespace. Kitty shell integration and terminfo
+  are included for real interactive programs.
+- Product GUI/artifact gate: `limactl shell kitmux-linux-desktop -- env
+  DISPLAY=:1 "$PWD/kitmux-linux/scripts/test-phase4.sh"` built a fresh
+  release-shaped runtime with 894 files and 24 SPDX packages, launched with a
+  clean environment and no `LD_LIBRARY_PATH`, proved the terminal child was
+  the passwd shell, exercised title/cwd updates, 50,000 lines of output and
+  repeated live resizes, then exited and proved the child was gone. Loader
+  audits found no developer path or private-library leakage.
+- Source gate: warnings-denied locked Clippy passed for every product-app
+  target in the desktop VM. `rustfmt` and the app lock hash are part of the
+  checked input set.
+- ADR 0008 R3 also closed in a current full desktop run. With caller-supplied
+  `DISPLAY=:1` and no noVNC requirement, the gate passed X11 and native
+  Wayland render/input/IME/WebKit paths, virtual scaling, relocated loading,
+  accessibility, and five-session fairness. The 12-second fairness run
+  recorded 550 heartbeats, 714 frames, all 60 resizes, 62.322 ms maximum
+  heartbeat, 25.116 ms maximum frame latency, and at least 118,268,073 bytes
+  per session. The gate restores the complete X repeat/rate, XKB, and active
+  IBus state it changes.
+- GUI-tested: Ubuntu 26.04 ARM64 X11/llvmpipe product shell. Package-tested
+  and clean-machine desktop-tested: none. The runtime is an unpackaged
+  release tree; native Wayland product interaction and the full shell/editor
+  matrix remain Phase 4 exit work.
+- Slice 4.1 and R3 are closed. Slice 4.2 terminal interaction is next.
+
+### 2026-07-26 — Slice 0.6 macOS reference-drift ritual
+
+- Added `kitmux-linux/scripts/report-reference-drift.py`. Its default Markdown
+  report compares the tag and commit in `source-lock.json` with current macOS
+  `HEAD`, restricted to `libkitty/`, `patches/`, and the reusable contract and
+  behavior paths listed in `LINUX_PORT_PLAN.md`. It classifies every committed
+  file and lists relevant uncommitted files separately so working-tree edits
+  cannot be mistaken for the `HEAD` comparison.
+- The first report measured nine committed contract-affecting files between
+  `e39381a` and `fb295fb`: the intentional portable-fixture mirror and its
+  macOS consumer tests from Slice 0.4. There was no public libkitty-header,
+  patch, libkitty implementation, or macOS behavior-source drift. One
+  uncommitted cross-host test edit was reported but excluded from the
+  comparison.
+- Rebaselining was not required: the committed drift adds consumers of the
+  already frozen corpus without changing the frozen engine or product
+  behavior target. The existing tag and lock remain unchanged. The current
+  dirty macOS test edit would block rebaselining until committed or removed.
+- `--patch` appends the complete restricted patch. The guarded
+  `--relock NEW_TAG` mode requires clean macOS and Linux worktrees, requires
+  the tag to point at current macOS `HEAD`, recomputes the locked reference
+  hashes, materializes them, runs the Ubuntu headless gate, and refuses a
+  result that changes anything except `source-lock.json`.
+- Removed the duplicated tag and commit literals from
+  `materialize-reference.sh`; materialization now reads the single
+  authoritative values from `source-lock.json`.
+- Static/source verification passed:
+  `python3 -m py_compile
+  kitmux-linux/scripts/report-reference-drift.py`;
+  `kitmux-linux/scripts/report-reference-drift.py --self-test`;
+  the live report; Bash and Zsh syntax checks; and
+  `kitmux-linux/scripts/materialize-reference.sh`, which verified seven locked
+  reference files plus one Linux overlay.
+- Ubuntu ARM64 source gate:
+  `limactl shell kitmux-linux --
+  "$PWD/kitmux-linux/scripts/test-headless.sh"` passed six C/C++/ELF/engine/
+  session/stress tests, the Rust/C header check, 6 contracts/20 cases/7 JSON
+  files, inventory structure, and all 37 model/contract/import tests. The
+  inventory's macOS-reference resolution was skipped inside the VM because
+  the adjacent macOS checkout is not mounted there; the host-side drift report
+  resolved the live repository and exact commits directly.
+- GUI-tested, package-tested, and clean-machine-tested: none; Slice 0.6 changes
+  reference reporting and re-lock workflow, not product behavior or artifacts.
+- Slice 0.6 and Phase 0 are closed. Run the report at every later phase
+  boundary and record the result even when no relevant drift exists.
+
+### 2026-07-26 — Slice 2.3 GTK toolkit decision
+
+- Selected GTK 4 after every Phase 2 gate passed. No written decision
+  criterion failed, so the conditional Qt 6 probe was not warranted.
+- Release-shaped GUI loader gate: `kitmux-linux/scripts/test-desktop.sh`
+  installed a fresh temporary layout containing `bin/kitmux_gtk_host`,
+  `lib/libkitty.so`, and the pinned `lib/libpython3.14.so.1.0`. The host used
+  `$ORIGIN/../lib`, `libkitty` used `$ORIGIN`, `ldd` resolved both bundled
+  libraries inside that layout, distro GTK/WebKit libraries stayed outside
+  it, and no broad `LD_LIBRARY_PATH` was present. The relocated host rendered
+  a live X11 frame and reaped its terminal child.
+- Accessibility viability gate: the selected terminal surface exposed GTK's
+  terminal role and `Terminal` label, reported focusable/focused state,
+  transferred focus terminal-entry-terminal, and retained its
+  `GtkIMMulticontext`. The same complete desktop gate re-proved the actual
+  Compose and IBus preedit/commit paths.
+- GUI-tested: `limactl shell kitmux-linux-desktop --
+  "$PWD/kitmux-linux/scripts/test-desktop.sh"` passed the relocated loader and
+  accessibility probe plus all prior X11, keyboard, IME, native Wayland,
+  WebKitGTK, scaling, and fairness gates. The final fairness run recorded 557
+  heartbeats, 716 frames, all 60 resizes, 48.220 ms maximum heartbeat, 21.632
+  ms maximum frame latency, at least 118,929,825 bytes per session, and 3.541
+  ms maximum single-pump time over 12 seconds.
+- Source-tested: `python3 contracts/validate-fixtures.py` passed 6 contracts,
+  20 cases, and 7 versioned JSON files; `python3
+  contracts/validate-inventory.py ../macos/kitmux` resolved 40 Linux and 216
+  macOS references; `limactl shell kitmux-linux --
+  "$PWD/kitmux-linux/scripts/test-headless.sh"` passed all 6 C/C++/ELF/engine/
+  session/stress tests, Rust/C header layout, fixture/inventory validation,
+  and all 37 current Rust contract/import/platform/model tests.
+- Package-tested and clean-machine desktop-tested: none. The temporary
+  installed tree is loader-layout evidence, not a native package. The result
+  is ARM64/X11/llvmpipe development-VM evidence. Physical GPU and mixed-monitor
+  hardware remain Phase 6; complete AT-SPI screen-reader and terminal-content
+  coverage remains Phase 5.
+- Slice 2.3 and Phase 2 are closed. Slice 0.6 has since closed; Phase 4.1 is
+  next.
+
+### 2026-07-26 — Slice 2.2F GTK event fairness
+
+- Added a bounded disposable GTK harness mode with one visible and four hidden
+  libkitty sessions, each driven by a continuously readable PTY. The visible
+  session records frame-request latency; a 20 ms GLib heartbeat records main-
+  loop gaps; the desktop gate repeatedly resizes the live window 60 times.
+- The first run disproved the existing `G_PRIORITY_DEFAULT` PTY source
+  priority: default-priority heartbeats continued, but GTK rendered zero
+  frames and applied zero resizes during the 12-second flood.
+- Moving only the PTY fd sources to `G_PRIORITY_DEFAULT_IDLE` fixed the root
+  cause. The passing 12-second X11/llvmpipe run recorded 550 heartbeats, 715
+  frames, all 60 resizes, a 46.015 ms maximum heartbeat gap, a 24.779 ms
+  maximum frame latency, and at least 107,653,266 bytes pumped by every
+  session. The slowest individual pump was 2.149 ms.
+- The gate bounds heartbeat gaps to 250 ms, frame latency to 500 ms, and an
+  individual pump to 500 ms; it also requires at least 100 heartbeats, 20
+  frames, 20 resizes, and 1 MB from every session. These are fairness bounds,
+  not llvmpipe or physical-GPU performance claims.
+- GUI-tested: `limactl shell kitmux-linux-desktop --
+  "$PWD/kitmux-linux/scripts/test-desktop.sh"` passed every prior X11,
+  keyboard, Compose/layout, IBus, native Wayland, WebKitGTK, and scaling gate
+  before the new fairness assertions passed. Visible evidence is
+  `kitmux-linux/gtk-fairness-proof.png`.
+- Source-tested: the pre-change baseline `limactl shell kitmux-linux --
+  "$PWD/kitmux-linux/scripts/test-headless.sh"` passed six C/C++/ELF/engine/
+  session/stress tests, the Rust/C header gate, portable-contract validators,
+  and all 33 then-current model/contract tests. The Slice 2.2F edit affects
+  only the disposable GTK host and desktop scripts; its post-change build uses
+  warnings as errors inside the desktop gate.
+- Package-tested and clean-machine desktop-tested: none. The result is ARM64,
+  X11, and Mesa llvmpipe in the dedicated VNC development VM. It proves GTK
+  event scheduling under a deliberately saturated local workload, not GPU,
+  compositor, x86_64, package, or clean-install performance.
+- A VM restart also exposed a stale TigerVNC record and a user-systemd cache
+  that had not loaded the portal units. The stale record was removed, and the
+  existing desktop launcher now performs `systemctl --user daemon-reload`
+  before restarting those units.
+- Slice 2.2F is closed. Every Phase 2 kill test is green; Slice 2.3 has since
+  passed and selected GTK 4.
+
+### 2026-07-26 — Slice 3.3 cross-host compatibility and safe import preview
+
+- Added the remaining display-free Linux consumer for the portable SSH
+  profile/review fixture. It bounds and validates profile documents, rejects
+  newer versions, duplicate IDs/names, invalid aliases, timestamps, and
+  control-bearing commands, preserves unknown fields, parses only recorded
+  `ssh -G` text, and reproduces the macOS review fingerprint and approval
+  result. It has no process, shell, socket, or network path.
+- Added `kitmux-import-preview`, a read-only macOS-state inspection command.
+  It reports accepted structure and portable values, schema repairs,
+  rejected/unsupported values, existing-path checks, `/Users/<name>`
+  to an explicitly supplied existing Linux home translation, and every valid
+  resume command as inert text requiring explicit approval. Newer schemas are
+  reported without rewriting; unsafe/missing paths, invalid URLs, SSH profile
+  references, invalid commands, oversized files, and symlink inputs are
+  rejected. The preview has no write or execution API.
+- Added a temporary Linux-produced compatibility bundle and a macOS consumer
+  assertion for state, settings, split order, all 38 command IDs, control
+  requests, SSH documents, and SSH review data. The bundle is generated in a
+  temporary directory by `kitmux-linux/scripts/test-phase3.sh`; the canonical
+  corpus and its byte-identical macOS mirror remain unchanged.
+- Cross-host source gate: `kitmux-linux/scripts/test-phase3.sh` passed the
+  6-contract/20-case/7-file mirror validator, inventory validation, formatting,
+  warnings-denied Clippy, 22 contract/import/platform tests, 15 pure-model
+  tests, and 9 macOS `PortableContractFixtureTests`, including direct macOS
+  consumption of Linux-produced values.
+- Ubuntu ARM64 source gate:
+  `limactl shell kitmux-linux -- env CARGO_NET_OFFLINE=true
+  "$PWD/kitmux-linux/scripts/test-model.sh"` passed the same Rust formatting,
+  warnings-denied lint, 22 contract/import/platform tests, and 15 model tests
+  with locked dependencies offline.
+- The import safety test hashes the source before and after preview, includes
+  command text that would create a marker if executed, and proves the source
+  hash is unchanged and the marker is absent. A separate newer-version case
+  is also byte-unchanged.
+- GUI-tested: none; Slice 3 is intentionally display-free.
+- Package-tested and clean-machine-tested: none. The macOS result used the
+  existing development checkout and the Ubuntu result used the existing
+  headless development VM. No live state import, state write, shell restore,
+  SSH launch, SSH store, CLI installation, or package behavior is claimed.
+- Slice 3.3 and Phase 3 are closed. Phases 0 and 2 have since closed; Slice 4.1
+  is the next repository slice.
 
 ### 2026-07-26 — Slice 3.1 feature-inventory backfill
 
@@ -715,42 +1197,45 @@ clean-machine release evidence.
   includes press/release/repeat routing, focus transfer to an ordinary GTK
   control on X11, Compose, dead keys, AltGr, a non-US layout, and a real IBus
   preedit/commit flow on both display backends. It does not prove performance
-  or driver behavior. A physical Wayland desktop/libinput path, physical GPU,
-  selection, clipboard/paste, mouse/wheel, search, physical mixed-DPI monitor
-  behavior, accessibility, and PTY/frame fairness remain untested. Fractional
-  and unlike-output scaling passed under nested Sway with virtual outputs; it
+  or driver behavior. The Phase 4 product proves selection, external
+  clipboard/paste, mouse/wheel, and search on both display backends. A physical
+  Wayland desktop/libinput path, physical touchpad, physical GPU, physical
+  mixed-DPI monitor behavior, and complete AT-SPI content/screen-reader
+  behavior remain untested. Fractional and unlike-output scaling passed under nested Sway with virtual outputs; it
   is correctness evidence, not physical hardware or performance evidence.
-  The bounded WebKitGTK coexistence check passed, but browser product behavior
-  remains unimplemented and out of scope for the terminal-first alpha.
+  Event fairness passed with five saturated PTYs, 60 live resizes, and bounded
+  UI latency. The bounded WebKitGTK coexistence check passed, but browser
+  product behavior remains unimplemented and out of scope for the terminal-first alpha.
 - Input-method evidence covers one Latin conversion engine. CJK engines,
   candidate windows, and surrounding-text requests are unproven; IBus already
   warns that the host has no surrounding-text capability.
 - The desktop gate changes session-wide state while it runs: X auto-repeat,
   the keyboard layout, and the active IBus engine. It restores auto-repeat and
-  the US layout on exit and is meant for the project VNC session, not a
-  desktop in use.
+  the complete prior XKB rules/model/layout/variant/options and IBus engine on
+  exit. It is meant for the project VNC session, not a desktop in use.
 - The GUI keyboard runs assert exact bytes per event but bound, rather than
   fix, the number of auto-repeats: X auto-repeat is the only way to produce a
   real GDK repeat event, and its count is timing-dependent. The fixed
   press/repeat/release expectations live in the display-free key matrix.
-- The desktop gate disables X auto-repeat for its keyboard runs and restores
-  it on exit. It is a project VNC session control, not something to run
-  against a desktop in use.
 - The current VM is ARM64. Tier-1 x86_64 proof still requires CI, a remote
   machine, or a separate emulated/native environment.
 - Shared portable fixtures are frozen and byte-identical in the current macOS
-  mirror. Phase 3.1 and 3.2 consume the applicable Linux-side fixtures; Linux
-  fixture production, macOS consumption, and safe import preview belong to
-  compatibility Slice 3.3.
-- The clean release gate currently proves ARM64 userspaces. Tier-1 x86_64,
-  physical-GPU, native package, and clean desktop-install evidence remain
-  future gates.
+  mirror. Phase 3 consumes every contract family, macOS consumes the
+  Linux-produced compatibility bundle, and the safe import preview is
+  read-only. No live import or imported-command execution path exists; the
+  separate Phase 4 product persistence writer stores only current safe cwd and
+  font state.
+- The clean release gates prove ARM64 build userspaces and a runtime-only
+  Ubuntu target with no compiler, Cargo, CMake, Make, pkg-config, or GTK/GLib/
+  Epoxy development package. Tier-1 x86_64, physical-GPU, native package, and
+  clean desktop-install evidence remain future gates.
 - Fresh clean-gate runtimes were approximately 104 MiB. Ignored local build
   directories may contain older layouts and are not release evidence; always
   build to a new path and run the runtime audit.
-- The GTK development host proves the isolated-libpython loader boundary, but
-  no release-shaped GUI artifact proves it yet. A global Kitty dependency
-  path would shadow GTK's distribution libraries and is forbidden.
+- A temporary installed GUI tree proves the isolated-libpython loader boundary
+  through relative runpaths without a broad `LD_LIBRARY_PATH`. It is not a
+  native package or clean-machine install. A global Kitty dependency path
+  would shadow GTK's distribution libraries and remains forbidden.
 
 ### Reproducibility defects (ADR 0008)
 
@@ -768,16 +1253,31 @@ none is due today.
 - **R2 — no automated gate.** Nothing runs on commit. The containerized
   headless gate is already hermetic; only the trigger is missing. Due with the
   first Git remote.
-- **R3 — the desktop gate is bound to one VM, not to a display.**
-  `scripts/test-desktop.sh` requires `KITMUX_VNC_DISPLAY`, noVNC on port 6080,
-  and this project's XFCE session, and it mutates session-global X state.
-  No contributor can run it, and it cannot run under Xvfb or headless Weston.
-  Due before Phase 4. Do not attempt the edit without being able to run the
-  gate afterwards.
-- **R4 — x86_64 inputs are unpinned.** Both Tier-1 environments are x86_64 and
-  `CMakeLists.txt` resolves `linux-64`, but `source-lock.json` records a
-  SHA-256 for `linux-arm64.tar.xz` only. x86_64 is not merely untested; it is
-  not reproducible. Due with R2.
+- **R3 — closed 2026-07-28.** `scripts/test-desktop.sh` accepts a
+  caller-supplied `DISPLAY`; noVNC is optional in that mode. Its full X11 and
+  nested-Wayland gate passed after the change, and cleanup restores the
+  original X repeat state and rate, complete XKB rules/model/layout/variant/
+  options, and active IBus engine.
+- **R4 — x86_64 inputs are unpinned. Closed 2026-07-28, ahead of its due date.**
+  `source-lock.json` now records `linux-64.tar.xz` at
+  `3d0ffc610b99d374245a557387d102abfc6f55e2478f9dfd596a11f1f6ce709d`, so
+  `release-tools.py verify-inputs --platform linux-64` has a value to check
+  instead of failing on a missing checksum. The hash came from
+  `https://download.calibre-ebook.com/ci/kitty/linux-64.tar.xz`, which is the
+  `BUNDLE_URL` in `.github/workflows/ci.py` at locked Kitty commit `c1d507d`
+  resolved for `runtime.GOARCH == amd64` by `bypy/devenv.go`. The arm64 bundle
+  was re-fetched from the same location in the same operation and hashed to the
+  already-locked `eb54002…`, which is what establishes that both recorded
+  values describe the same upstream build; both bundles carry a 2026-07-03
+  `Last-Modified`. This is a recorded hash, not a passing gate: ADR 0008 is
+  explicit that locking x86_64 inputs is not permission to claim x86_64
+  support, and no x86_64 build has been attempted.
+- **R5 — the dependency bundle URL is unversioned.** Both locked bundles come
+  from one rolling path with no version or content address in it. When upstream
+  rebuilds them, both hashes go stale at once and no archived copy exists, so
+  the lock makes that drift detectable but not survivable. Mirroring the two
+  bundles somewhere durable is what actually fixes it. Due with R1, since a
+  standalone-buildable tree needs its inputs to still be fetchable.
 
 All evidence in this ledger was produced by one person, by hand, in two
 Lima VMs on one Apple-silicon macOS machine. That is adequate for the current
@@ -785,24 +1285,16 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Continue [Phase 2 in the implementation plan](LINUX_PORT_PLAN.md#slice-22f-prove-event-fairness)
-using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+Begin [Slice 5.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-53-product-controls-and-persistence)
+using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through
+4 are closed; GTK 4 is selected, and the release-shaped one-terminal product
+shell has interaction and crash-safe persistence.
 
-Phase 2 was reordered on 2026-07-25. Slices 2.2A through 2.2E are closed;
-begin with only Slice 2.2F, **event fairness**. Measure bounded heartbeat and
-frame latency during sustained PTY output, repeated resize, and multiple
-hidden sessions pumping at once. Prove the GLib main loop does not starve UI
-events and record whether `g_unix_fd_add_full` at `G_PRIORITY_DEFAULT` remains
-defensible. Absolute figures under llvmpipe are diagnostic bounds, not
-physical-GPU performance evidence.
+Phase 3 is closed through Slice 3.3. Do not expand its preview into a live
+state import, shell restore, SSH launcher, or persistence writer before those
+product paths reach their assigned later phases.
 
-The independently assigned Phase 3.1 and 3.2 lane is also closed. If Phase 3
-is the next assignment instead, begin only Slice 3.3 against
-`kitmux-linux/rust/model` and the frozen fixtures: prove Linux-produced
-fixtures on macOS and implement the read-only import preview without executing
-resume commands or mutating source state.
-
-Classify every new file as durable or disposable per ADR 0007 before writing
-it. Do not begin selection, clipboard, mouse, or search — those are Phase 4
-Slice 4.2 now. Do not begin product chrome, Phase 3.3 incidentally, browser
-product functionality, packaging, or repository migration.
+Implement only Slice 5.3: command palette/settings UI, full safe hierarchy
+persistence, close-chain foreground review, and keyboard-only/initial AT-SPI
+navigation. Do not begin live macOS import/restore, browser product
+functionality, packaging, or repository migration.

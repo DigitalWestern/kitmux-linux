@@ -1,5 +1,6 @@
 #include "gtk_key_translation.h"
 
+#include <gdk/gdk.h>
 #include <gdk/gdkkeysyms.h>
 #include <string.h>
 
@@ -62,7 +63,7 @@ static bool functional_value(guint keyval, uint32_t *functional) {
   return false;
 }
 
-static uint32_t kitty_mods(GdkModifierType state) {
+static uint32_t kitty_mods(uint32_t state) {
   uint32_t mods = 0;
   if (state & GDK_SHIFT_MASK) mods |= KITMUX_KITTY_MOD_SHIFT;
   if (state & GDK_CONTROL_MASK) mods |= KITMUX_KITTY_MOD_CTRL;
@@ -108,7 +109,7 @@ bool kitmux_translate_gdk_key(const kitmux_gdk_key_input *input,
   return true;
 }
 
-int kitmux_key_tracker_press(kitmux_key_tracker *tracker, guint keycode) {
+int kitmux_key_tracker_press(kitmux_key_tracker *tracker, uint32_t keycode) {
   if (!tracker) return KITMUX_KEY_ACTION_PRESS;
   for (size_t i = 0; i < tracker->count; ++i) {
     if (tracker->codes[i] == keycode) return KITMUX_KEY_ACTION_REPEAT;
@@ -119,7 +120,7 @@ int kitmux_key_tracker_press(kitmux_key_tracker *tracker, guint keycode) {
   return KITMUX_KEY_ACTION_PRESS;
 }
 
-bool kitmux_key_tracker_release(kitmux_key_tracker *tracker, guint keycode) {
+bool kitmux_key_tracker_release(kitmux_key_tracker *tracker, uint32_t keycode) {
   if (!tracker) return false;
   for (size_t i = 0; i < tracker->count; ++i) {
     if (tracker->codes[i] != keycode) continue;

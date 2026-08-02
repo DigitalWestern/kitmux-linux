@@ -207,3 +207,31 @@ commands!(
     (FontDecrease, "font.decrease", SemanticAction::FontDelta(-2)),
     (FontReset, "font.reset", SemanticAction::FontReset),
 );
+
+#[must_use]
+pub fn command_palette_matches(query: &str) -> Vec<CommandId> {
+    let query = query.trim().to_ascii_lowercase().replace(' ', "-");
+    let mut matches = CommandId::ALL
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, command)| {
+            let id = command.as_str();
+            (query.is_empty() || id.contains(&query)).then_some((
+                if id == query {
+                    0
+                } else if id.starts_with(&query) {
+                    1
+                } else if id.split(['.', '-']).any(|part| part.starts_with(&query)) {
+                    2
+                } else {
+                    3
+                },
+                index,
+                command,
+            ))
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|(score, index, _)| (*score, *index));
+    matches.into_iter().map(|(_, _, command)| command).collect()
+}

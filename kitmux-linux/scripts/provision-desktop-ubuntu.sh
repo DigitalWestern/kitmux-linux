@@ -11,6 +11,8 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
   cmake \
   dbus-x11 \
+  file \
+  fish \
   grim \
   ibus \
   ibus-gtk4 \
@@ -20,21 +22,38 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   mesa-utils \
   ninja-build \
   novnc \
+  patchelf \
   pkg-config \
   scrot \
   sway \
   tigervnc-standalone-server \
   tigervnc-tools \
+  tmux \
+  vim \
   websockify \
   weston \
   wayland-utils \
+  wl-clipboard \
   xdg-desktop-portal \
   xdg-desktop-portal-gtk \
   ibus-m17n \
   xfce4 \
   xfce4-terminal \
   xdotool \
-  xwayland
+  xsel \
+  xwayland \
+  zsh
+
+rustup_command="$(command -v rustup || true)"
+if [[ -z "${rustup_command}" ]]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain 1.97.1
+  rustup_command="${CARGO_HOME:-${HOME}/.cargo}/bin/rustup"
+fi
+
+"${rustup_command}" toolchain install 1.97.1 --profile minimal
+"${rustup_command}" default 1.97.1
+"${rustup_command}" component add clippy rustfmt --toolchain 1.97.1
 
 # XFCE asks polkit for permission to create a colord-managed device on every
 # session start. In a headless VNC session nobody answers, and the dialog

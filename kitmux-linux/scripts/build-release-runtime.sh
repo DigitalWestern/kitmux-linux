@@ -23,6 +23,7 @@ dependencies="${kitty_root}/dependencies/${kitty_platform}"
 build_dir="${workspace}/build-release"
 output="${1:-${workspace}/build/kitmux-engine-runtime}"
 component_manifest="${workspace}/release/runtime-components.json"
+build_app="${KITMUX_BUILD_APP_RUNTIME:-0}"
 
 python3 "${script_dir}/release-tools.py" verify-inputs \
   --linux-root "${linux_root}" \
@@ -52,12 +53,31 @@ fi
 python_root="${python_roots[0]}"
 python_dir="$(basename -- "${python_root}")"
 
-cmake -S "${workspace}" -B "${build_dir}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DPython3_ROOT_DIR="${dependencies}" \
-  -DPython3_EXECUTABLE="${dependencies}/bin/python" \
-  -DPython3_FIND_STRATEGY=LOCATION \
+cmake_arguments=(
+  -DCMAKE_BUILD_TYPE=Release
+  -DPython3_ROOT_DIR="${dependencies}"
+  -DPython3_EXECUTABLE="${dependencies}/bin/python"
+  -DPython3_FIND_STRATEGY=LOCATION
   -DPython3_FIND_UNVERSIONED_NAMES=FIRST
+)
+if [[ "${build_app}" == "1" ]]; then
+  mapfile -t libpython_files < <(
+    find "${dependencies}/lib" -maxdepth 1 -type f \
+      -name 'libpython3.*.so.1.0' -print
+  )
+  if [[ "${#libpython_files[@]}" -ne 1 ]]; then
+    echo "Expected one bundled libpython for the application runtime." >&2
+    exit 1
+  fi
+  cmake_arguments+=(
+    -DKITMUX_BUILD_APP=ON
+    -DKITMUX_BUILD_GTK_HOST=OFF
+    -DKITMUX_PYTHON_LIBRARY_OVERRIDE="${libpython_files[0]}"
+  )
+fi
+
+cmake -S "${workspace}" -B "${build_dir}" \
+  "${cmake_arguments[@]}"
 cmake --build "${build_dir}" --parallel
 
 staging="$(mktemp -d "${output}.staging.XXXXXX")"
@@ -77,9 +97,14 @@ install -d \
   "${staging}/share"
 
 install -m 0755 "${build_dir}/linux_session_stress" "${staging}/bin/"
+if [[ "${build_app}" == "1" ]]; then
+  install -m 0755 "${build_dir}/cargo-app/release/kitmux" "${staging}/bin/"
+fi
 install -m 0755 "${build_dir}/libkitty.so" "${staging}/lib/"
 cp -a "${python_root}" "${staging}/lib/"
 cp -a "${kitty_root}/kitty" "${staging}/"
+cp -a "${kitty_root}/shell-integration" "${staging}/"
+cp -a "${kitty_root}/terminfo" "${staging}/"
 cp -a "${reference_root}/libkitty/py/." "${staging}/libkitty_py/"
 install -m 0644 \
   "${reference_root}/libkitty/tests/fixtures/kitty.conf" \
@@ -125,6 +150,12 @@ python3 "${script_dir}/release-tools.py" copy-dependencies \
   --report "${staging}/share/RUNTIME_DEPENDENCIES.json" \
   "${dependency_arguments[@]}"
 
+if [[ "${build_app}" == "1" ]]; then
+  install -d "${staging}/lib/app"
+  mv -- "${staging}/lib/libkitty.so" "${staging}/lib/app/"
+  mv -- "${staging}/lib/"libpython3.*.so.1.0 "${staging}/lib/app/"
+fi
+
 # Some upstream archives store shared objects without an executable bit.
 # Linux can load them, but tooling such as Fedora's ldd warns; normalize every
 # shipped ELF to the conventional runtime mode.
@@ -140,6 +171,12 @@ while IFS= read -r -d '' elf; do
   fi
 done < <(find "${staging}/lib" -maxdepth 1 -type f -print0)
 
+if [[ "${build_app}" == "1" ]]; then
+  while IFS= read -r -d '' elf; do
+    patchelf --set-rpath '$ORIGIN:$ORIGIN/..' "${elf}"
+  done < <(find "${staging}/lib/app" -maxdepth 1 -type f -print0)
+fi
+
 while IFS= read -r -d '' elf; do
   patchelf --set-rpath '$ORIGIN/../..' "${elf}"
 done < <(
@@ -152,6 +189,10 @@ for elf in "${staging}/kitty/"*.so; do
 done
 patchelf --set-rpath '$ORIGIN/../lib' \
   "${staging}/bin/linux_session_stress"
+if [[ "${build_app}" == "1" ]]; then
+  patchelf --set-rpath '$ORIGIN/../lib/app' \
+    "${staging}/bin/linux_session_stress" "${staging}/bin/kitmux"
+fi
 
 python3 "${script_dir}/release-tools.py" generate-sbom \
   --runtime "${staging}" \

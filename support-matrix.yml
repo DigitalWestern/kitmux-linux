@@ -1,5 +1,5 @@
 schema_version: 1
-updated: 2026-07-26
+updated: 2026-08-01
 
 license: GPL-3.0-only  # ADR 0006; Kitty is GPL-3.0 and the host links it
 
@@ -8,8 +8,8 @@ reproducibility:
   # Lima VMs on one Apple-silicon macOS machine.
   standalone_buildable: false      # R1: needs the private macOS repo at a tag
   automated_gate: none             # R2: due with the first Git remote
-  desktop_gate_portable: false     # R3: bound to this VM's noVNC/XFCE session
-  locked_architectures: [aarch64]  # R4: linux-64 bundle has no recorded hash
+  desktop_gate_portable: true      # R3 closed: caller supplies DISPLAY; noVNC is optional
+  locked_architectures: [aarch64, x86_64]  # R4 closed; locking is not support
 
 release_runtime_evidence:
   architecture: aarch64
@@ -21,6 +21,76 @@ release_runtime_evidence:
   fedora_44_clean_passes: 2
   fedora_44_stable_inventory_sha256: a4c958c659abe73ad1f937a4187d0d301408ecca0e1d9b2279d9fed99c01caef
   package_format: unpackaged release tree
+
+phase4_product_evidence:
+  slice_4_1: passed
+  slice_4_2: passed
+  slice_4_3: passed
+  exit_matrix: passed
+  environment: ubuntu-26.04-aarch64-xfce-vnc
+  display_backends: [x11, wayland]
+  renderer: Mesa llvmpipe
+  runtime_layout: [bin/kitmux, lib/app/libkitty.so,
+                   lib/app/libpython3.14.so.1.0, kitty, libkitty_py,
+                   shell-integration, terminfo]
+  regular_files: 894
+  session: passwd login shell
+  verified: [clean-environment-launch, isolated-app-loader, shell-executable,
+             pty-pump, live-resize, render, title-update, cwd-update,
+             ordered-exit, child-reap, secret-safe-diagnostics,
+             configurable-shortcuts, shortcut-before-ime,
+             clipboard-x11-wayland, paste-safety, selection,
+             search, font-controls, mouse-reporting, wheel-input,
+             pointer-time-pty-progress, foreground-close-confirmation-x11]
+  persistence_verified: [xdg-paths, private-atomic-state, missing-defaults,
+                         no-clobber-corrupt-and-newer-set-aside,
+                         previous-primary-last-good, read-only-preservation,
+                         enospc-preservation, replacement-watching-and-recovery,
+                         malformed-edit-ignore, same-content-suppression,
+                         safe-cwd-and-font-restore, inert-resume-text,
+                         immediate-close-cwd-retention, fresh-shell-pid,
+                         stable-one-terminal-ids]
+  program_matrix: [bash, zsh, fish, vim, less, tmux]
+  soak:
+    duration_seconds: 1801
+    interaction_cycles: 1090
+    shell_heartbeats: 160
+    max_heartbeat_ms: 220
+    shell_reaped: true
+    flood_worker_reaped: true
+  clean_no_sdk_runtime: passed in an Ubuntu 26.04 runtime-only Xvfb container
+  clean_no_sdk_base: docker.io/library/ubuntu@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
+  limitation: unpackaged ARM64 nested-display/llvmpipe development-VM evidence; physical input/GPU, URL-handler launch, native packaging, and clean desktop installation remain unproven
+
+phase5_product_evidence:
+  slice_5_1: passed
+  slice_5_2: passed
+  slice_5_3: passed
+  exit_matrix: passed
+  environment: ubuntu-26.04-aarch64-xfce-vnc
+  display_backends: [x11, wayland]
+  verified: [responsive-workspace-sidebar, group-row, terminal-tab-row,
+             create-select-rename-reorder-close-routing,
+             stable-command-navigation-shortcuts,
+             workspace-and-tab-number-namespaces,
+             terminal-usable-after-navigation,
+             nested-three-pane-layout, multi-region-libkitty-render,
+             pointer-divider-drag, pointer-and-keyboard-pane-focus,
+             keyboard-divider-resize, permanent-per-surface-session,
+             active-surface-only-input, hidden-session-pty-pumping,
+             all-owned-children-reaped, clean-window-teardown,
+             command-palette-order-filter-and-routing,
+             keyboard-only-settings-save, unknown-settings-preservation,
+             full-hierarchy-ratio-title-id-selection-and-cwd-persistence,
+             fresh-shell-restore, inert-resume-text,
+             corrupt-primary-full-last-good-recovery,
+             pane-group-workspace-window-foreground-review,
+             native-terminal-button-roles-and-focus-order,
+             rapid-nine-tab-nine-workspace-navigation,
+             phase4-x11-wayland-regression]
+  release_files: 894
+  cross_host_consumers: 9
+  limitation: unpackaged ARM64 nested-display/llvmpipe evidence; x86_64 runtime, physical input/GPU, native packaging, and clean desktop installation remain unproven
 
 gtk_host_evidence:
   environment: ubuntu-26.04-aarch64-xfce-vnc
@@ -72,7 +142,7 @@ gtk_host_evidence:
     surface_scales: [1.0, 1.5, 2.0]
     gl_backing_factors: [1, 2, 2]
     logical_terminal_size: 480x270
-    exact_framebuffers: [480x270, 960x540, 960x540]
+    scale_framebuffers: [480x270, 960x540, 960x540]
     exact_cells: [14x27, 27x54, 27x54]
     live_sequence: 100%-150%-200%-100%; one child PID; original metrics restored
     limitation: virtual nested outputs and software rendering, not physical mixed-DPI or performance

@@ -83,8 +83,15 @@ From `macos/KitmuxApp`:
 swift test --filter PortableContractFixtureTests
 ```
 
+The complete cross-host gate generates Linux values into a temporary
+directory and supplies them to the macOS consumer test:
+
+```sh
+kitmux-linux/scripts/test-phase3.sh
+```
+
 The macOS suite has both producer and consumer assertions. Producer assertions
 compare values built through `KitmuxCore` with the resource files; consumer
-assertions decode the files and apply the production validators. No fixture
-test creates a process, opens a socket, resolves a host, or writes a command
-to a terminal.
+assertions decode the files and the temporary Linux-produced bundle through
+the production validators. No fixture test creates a process, opens a socket,
+resolves a live host, or writes a command to a terminal.

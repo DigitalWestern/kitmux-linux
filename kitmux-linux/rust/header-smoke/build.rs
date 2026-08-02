@@ -13,6 +13,7 @@ fn main() {
         .join("../../../.source/reference/libkitty/include")
         .canonicalize()
         .expect("materialized libkitty include directory");
+    let bridge_include = manifest.join("../../src").canonicalize().unwrap();
     let output = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let object = output.join("header_probe.o");
     let archive = output.join("libheader_probe.a");
@@ -26,6 +27,8 @@ fn main() {
             .arg("-Werror")
             .arg("-I")
             .arg(&include)
+            .arg("-I")
+            .arg(&bridge_include)
             .arg("-c")
             .arg(&source)
             .arg("-o")
@@ -46,5 +49,9 @@ fn main() {
     println!(
         "cargo:rerun-if-changed={}",
         include.join("libkitty.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        bridge_include.join("gtk_key_translation.h").display()
     );
 }

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(kitmux_linux_proofs VERSION 0.1.0 LANGUAGES C CXX)
 
 option(KITMUX_BUILD_GTK_HOST "Build the Phase 2 GTK/libkitty host" OFF)
+option(KITMUX_BUILD_APP "Build the Phase 4 Rust/GTK application" OFF)
 set(KITMUX_PYTHON_LIBRARY_OVERRIDE "" CACHE FILEPATH
     "Optional isolated libpython used to keep GUI toolkit link paths clean")
 
@@ -96,18 +97,40 @@ add_executable(pty_input_recorder tests/pty_input_recorder.c)
 target_compile_options(pty_input_recorder PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
 
-if(KITMUX_BUILD_GTK_HOST)
+if(KITMUX_BUILD_GTK_HOST OR KITMUX_BUILD_APP)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4 epoxy)
-  pkg_check_modules(WEBKITGTK REQUIRED IMPORTED_TARGET webkitgtk-6.0)
 
-  # The GDK -> libkitty key translation carries no display state, so the GTK
-  # host and the headless key matrix share one implementation.
+  # The GDK -> libkitty key translation carries no display state, so the
+  # disposable probe and production app share one implementation.
   add_library(kitmux_key_translation STATIC src/gtk_key_translation.c)
   target_include_directories(kitmux_key_translation PUBLIC src)
   target_link_libraries(kitmux_key_translation PUBLIC kitty PkgConfig::GTK4)
   target_compile_options(kitmux_key_translation PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
+
+  add_library(kitmux_terminal_bridge STATIC src/gtk_terminal_bridge.c)
+  target_include_directories(kitmux_terminal_bridge PUBLIC src)
+  target_link_libraries(kitmux_terminal_bridge PUBLIC kitty PkgConfig::GTK4)
+  target_compile_options(kitmux_terminal_bridge PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
+  if(KITMUX_BUILD_GTK_HOST)
+    install(TARGETS kitty LIBRARY DESTINATION lib)
+    if(KITMUX_PYTHON_LIBRARY_OVERRIDE)
+      install(FILES "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" DESTINATION lib)
+    endif()
+  endif()
+  if(KITMUX_BUILD_APP)
+    install(TARGETS kitty LIBRARY DESTINATION lib/app)
+    if(KITMUX_PYTHON_LIBRARY_OVERRIDE)
+      install(FILES "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" DESTINATION lib/app)
+    endif()
+  endif()
+endif()
+
+if(KITMUX_BUILD_GTK_HOST)
+  pkg_check_modules(WEBKITGTK REQUIRED IMPORTED_TARGET webkitgtk-6.0)
 
   add_executable(kitmux_gtk_host src/gtk_terminal_host.c)
   target_link_libraries(kitmux_gtk_host PRIVATE
@@ -116,12 +139,7 @@ if(KITMUX_BUILD_GTK_HOST)
     -Wall -Wextra -Wpedantic -Werror)
   set_target_properties(kitmux_gtk_host PROPERTIES
     INSTALL_RPATH "$ORIGIN/../lib")
-  install(TARGETS kitmux_gtk_host kitty
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib)
-  if(KITMUX_PYTHON_LIBRARY_OVERRIDE)
-    install(FILES "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" DESTINATION lib)
-  endif()
+  install(TARGETS kitmux_gtk_host RUNTIME DESTINATION bin)
 
   pkg_check_modules(XTST REQUIRED IMPORTED_TARGET x11 xtst)
   add_executable(x11_key_injector tests/x11_key_injector.c)
@@ -133,6 +151,24 @@ if(KITMUX_BUILD_GTK_HOST)
   target_link_libraries(gtk_key_matrix PRIVATE kitmux_key_translation)
   target_compile_options(gtk_key_matrix PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+if(KITMUX_BUILD_APP)
+  find_program(CARGO_EXECUTABLE cargo REQUIRED)
+  set(KITMUX_APP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/rust/app/Cargo.toml")
+  set(KITMUX_APP_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo-app")
+  set(KITMUX_APP_BINARY "${KITMUX_APP_TARGET_DIR}/release/kitmux")
+  add_custom_target(kitmux_app ALL
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "CARGO_TARGET_DIR=${KITMUX_APP_TARGET_DIR}"
+      "KITMUX_NATIVE_LIB_DIR=$<TARGET_FILE_DIR:kitty>"
+      "RUSTFLAGS=--remap-path-prefix=${KITMUX_PATH_MAP_ROOT}=."
+      "${CARGO_EXECUTABLE}" build --locked --release
+        --manifest-path "${KITMUX_APP_MANIFEST}"
+    BYPRODUCTS "${KITMUX_APP_BINARY}"
+    DEPENDS kitty kitmux_key_translation kitmux_terminal_bridge
+    USES_TERMINAL)
+  install(PROGRAMS "${KITMUX_APP_BINARY}" DESTINATION bin)
 endif()
 
 enable_testing()

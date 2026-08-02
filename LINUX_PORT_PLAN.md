@@ -7,12 +7,14 @@
 
 **Reference commit:** `e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4`
 
-**Last reviewed:** 2026-07-25 (plan audit; Phase 2 reordered)
+**Last reviewed:** 2026-08-01 (Phase 5 complete; clean rebaseline then Slice 6.1)
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phase 1 and Slices 2.1 through 2.2E are complete. Slice
-2.2F, the event-fairness proof, is next. See
+**Current progress:** Phases 0 through 4 are complete. GTK 4 is the selected
+Linux UI toolkit. Phase 5's navigation hierarchy, split/session ownership,
+product controls, full safe hierarchy persistence, close review, and initial
+accessibility are complete on X11 and native Wayland. See
 [`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
@@ -126,13 +128,12 @@ Phase 0: clean reference and contracts
 ```
 
 After Phase 0 freezes the contracts, Phases 1 and 3 can proceed independently.
-The production desktop host waits for the Phase 2 toolkit decision.
+The Phase 2 decision selected GTK 4; production desktop work starts in Phase 4
+after the closed Slice 0.6 reference-drift gate.
 
 ### Phase 0: Freeze the reference and contracts
 
-Status: Slices 0.1–0.5 complete. Slice 0.4 was closed on 2026-07-25 and no
-longer blocks Phase 3. Slice 0.5 was closed by ADR 0006 on 2026-07-25. Slice
-0.6 is open.
+Status: complete through Slice 0.6.
 
 Goal: make sure Linux work is anchored to a clean macOS baseline.
 
@@ -227,7 +228,7 @@ Closed by ADR 0006: the Linux host is GPL-3.0-only free software, the
 in-process architecture stands, and public source release becomes a
 prerequisite for public binary distribution rather than a parallel track.
 
-#### Slice 0.6: Define the re-baselining ritual
+#### Slice 0.6: Define the re-baselining ritual — complete
 
 The macOS reference is frozen at `macos-linux-port-baseline-2026-07-23` while
 macOS is a live daily driver. Every day Linux develops against that tag, the
@@ -247,6 +248,17 @@ Produce a repeatable procedure that:
 
 Run it at every phase boundary and record the result in `PORT_STATUS.md`, even
 when the answer is "no relevant drift".
+
+Closed on 2026-07-26 with
+`kitmux-linux/scripts/report-reference-drift.py`. The default Markdown report
+compares the locked tag to macOS `HEAD`, classifies every scoped file, lists
+relevant uncommitted changes separately, and states whether rebaselining is
+mandatory. `--patch` appends the restricted diff. The guarded
+`--relock NEW_TAG` path requires clean macOS and Linux worktrees, requires the
+tag to name current macOS `HEAD`, updates only `source-lock.json`,
+materializes the new lock, and runs the Ubuntu headless gate before allowing
+the one-file lock commit. Exact operating commands and the first drift result
+are in `docs/LINUX_DEVELOPMENT.md` and `PORT_STATUS.md`.
 
 Exit criteria:
 
@@ -306,7 +318,7 @@ Failure here blocks all product UI work.
 
 Goal: prove or reject GTK before product UI depends on it.
 
-Status: Slices 2.1 through 2.2E complete. Slice 2.2F is next. Slices
+Status: complete. Slices 2.1 through 2.3 passed. Slices
 2.2C–2.2F are the reordered kill tests; see
 [Why Slice 2.2 was cut short](#why-slice-22-was-cut-short).
 
@@ -465,6 +477,15 @@ not physical mixed-DPI, GPU-performance, or packaging evidence.
 Gate: bounded, recorded latency figures under load. Absolute numbers on
 llvmpipe are not performance evidence; the assertion is fairness, not speed.
 
+Result: passed 2026-07-26 after the probe disproved the original source
+priority. Five continuously readable sessions at `G_PRIORITY_DEFAULT`
+allowed default-priority heartbeats but starved GTK's frame clock completely:
+zero frames and resizes in 12 seconds. Moving only the PTY sources to
+`G_PRIORITY_DEFAULT_IDLE` produced 550 heartbeats, 715 frames, 60 resizes, a
+46.015 ms maximum heartbeat gap, a 24.779 ms maximum frame latency, and at
+least 107 MB pumped per session in the same 12-second X11/llvmpipe run. This
+is fairness evidence, not hardware performance evidence.
+
 #### Slice 2.3: Make the toolkit decision
 
 - Confirm Slices 2.1, 2.2A, 2.2B, and 2.2C through 2.2F are all green.
@@ -485,6 +506,16 @@ Decision gate:
 
 Do not build production chrome around a failing spike.
 
+Result: GTK 4 selected 2026-07-26. Every Phase 2 runtime gate passed. A
+temporary installed `bin/` + `lib/` GUI layout resolved `libkitty` and the
+pinned `libpython` through relative runpaths without a broad
+`LD_LIBRARY_PATH`, rendered a live frame, and reaped the child. The selected
+terminal widget exposed GTK's terminal role and label, accepted focus,
+transferred focus to a text control and back, and retained the proven
+`GtkIMMulticontext` path. No decision criterion failed, so no Qt 6 probe was
+warranted. This is source/GUI evidence in the ARM64 development VM, not native
+package, clean-install, physical-GPU, or complete AT-SPI evidence.
+
 At least one physical Mesa GPU must pass before beta. It is not a Phase 2
 blocker: llvmpipe is adequate to prove correctness, and a GPU proves driver
 behavior, which is a different question. Record it as a Phase 6 obligation
@@ -494,8 +525,7 @@ rather than stalling the toolkit decision on hardware access.
 
 Goal: reproduce portable product behavior without a display or real terminal.
 
-Status: Slices 3.1 and 3.2 complete. Slice 3.3 is next when explicitly
-assigned.
+Status: complete through Slice 3.3.
 
 #### Slice 3.1: Implement the pure model — complete
 
@@ -536,6 +566,15 @@ and non-claims are recorded in `PORT_STATUS.md`.
   and inert command fields.
 - Import validates paths and platform values without mutating the source.
 
+The 2026-07-26 implementation adds a bounded SSH profile/review consumer, a
+temporary Linux-produced compatibility bundle consumed by the macOS
+production codecs, and `kitmux-import-preview`. The preview reports accepted,
+translated, rejected, and inert command fields; validates existing Linux
+directories and safe `/Users/<name>` home translation; rejects unsafe values;
+and has no source write, process, shell, socket, or network path. Host and
+Ubuntu ARM64 model gates pass 37 tests, and the cross-host gate passes 9
+macOS fixture tests. Exact commands and non-claims are in `PORT_STATUS.md`.
+
 Exit criteria:
 
 - Invalid, oversized, newer-version, and unknown-field inputs behave according
@@ -556,6 +595,12 @@ Goal: combine the engine, toolkit, and model in the smallest useful app.
   shutdown.
 - Structured diagnostics that omit secrets.
 
+Completed 2026-07-28. The release-shaped Rust/GTK app runs one passwd-shell
+session, pumps and renders through the proven engine boundary, tracks
+title/cwd and resize, and reaps the child. The app-only loader directory keeps
+Kitty's bundled native closure isolated from distro GTK. The exact gate and
+non-claims are recorded in `PORT_STATUS.md`.
+
 #### Slice 4.2: Terminal interaction
 
 This slice absorbed the work formerly planned as Slices 2.2C through 2.2E. It
@@ -570,6 +615,8 @@ Inherited from Phase 2 under ADR 0007, not rewritten:
 New in this slice:
 
 - Configurable app-shortcut routing that does not steal terminal Control keys.
+  Slice 4.2 accepts Linux-only overrides for the seven implemented terminal
+  actions; Slice 5.1 extends the same stable-command-ID path to navigation.
 - Selection and text extraction through libkitty, with local selection
   distinguished from terminal mouse-reporting mode and a Shift override.
 - Asynchronous clipboard copy and paste through the toolkit's own clipboard
@@ -589,12 +636,27 @@ independent per-session selection and search state, a clipboard round trip,
 rejected and confirmed unsafe-paste cases, and no lost PTY pumping during
 sustained pointer activity.
 
+Completed 2026-07-28. The production controller now owns the complete
+one-terminal interaction path. Fresh X11 and native-Wayland release-runtime
+gates pass; both supply external clipboard evidence and exercise input,
+resize, search, font, mouse, wheel, and PTY progress during pointer activity.
+X11 also supplies close-dialog evidence. Linux-only settings can override the
+seven implemented actions by stable command ID; the configured search path is
+proven on both backends. Navigation bindings remain assigned to Slice 5.1.
+Exact evidence and limitations are in `PORT_STATUS.md`.
+
 #### Slice 4.3: Minimal crash-safe persistence
 
 - Atomic state/settings writes under XDG locations.
 - Missing, corrupt, newer-schema, read-only, and full-disk behavior.
 - File-watcher recovery after rename/replacement.
 - Fresh shells on restore; never restore a live process or auto-run a command.
+
+Completed 2026-07-28 by reusing the Phase 3 XDG/codecs/atomic-write/watcher
+stack in the product app. The release-shaped persistence gate proves two-launch
+safe restore, inert resume text, stable IDs, replacement recovery,
+corrupt/newer/read-only behavior, and real `ENOSPC` preservation. Exact
+evidence and limitations are in `PORT_STATUS.md`.
 
 Exit criteria:
 
@@ -614,12 +676,30 @@ Goal: add Kitmux's core workspace value without browser dependencies.
 - Sidebar, tab strip, focus, naming, reorder, and close chain.
 - Configurable Linux shortcuts that do not steal terminal Control keys.
 
+Completed 2026-08-01: the existing display-free hierarchy owns bounded
+workspace/group/tab naming, explicit non-empty tab/group/workspace closes, and
+workspace cycling. Stable command IDs route navigation overrides, with
+Super+1…9 and Alt+1…9 as separate workspace/tab namespaces that reject extra
+modifiers. Host, Ubuntu-offline, cross-host fixture, inventory, and GTK app
+Release-compile gates pass. A responsive GTK sidebar, group row, and tab row
+route product create/select/rename/reorder/close behavior, and focused X11 plus
+native-Wayland navigation gates pass from fresh release runtimes.
+
 #### Slice 5.2: Splits and session ownership
 
 - Nested splits and divider resizing.
 - One permanent libkitty session per live terminal surface.
 - Only the active surface receives ordinary input.
 - Hidden terminals pump fairly but do not lay out or draw.
+
+Completed 2026-08-01: the product registry owns one libkitty child and GLib PTY
+source per stable terminal `SurfaceId`. A bounded C bridge renders the active
+tab's nested leaves into scissored GL regions; inactive hierarchy remains
+owned and pumps without entering layout or draw. Ratio-clamped pointer drag,
+pointer/cycle/directional focus, and Super-based keyboard resize pass focused
+X11 and native-Wayland split gates. Hidden-output variants prove continued PTY
+draining after tab selection changes, active-only input routing, and complete
+child reaping from fresh release runtimes.
 
 #### Slice 5.3: Product controls and persistence
 
@@ -628,6 +708,16 @@ Goal: add Kitmux's core workspace value without browser dependencies.
   persistence.
 - Foreground-process review through the entire close chain.
 - Keyboard-only navigation and initial AT-SPI roles/focus order.
+
+Completed 2026-08-01: a native GTK command palette and settings dialog reuse
+the frozen catalog, bounded settings document, and shared command path. The
+product projects and restores the complete terminal hierarchy, nested ratios,
+schema-supported IDs, names/titles, surface selection, and safe per-surface
+cwd into fresh shells without executing saved resume text. Pane, group,
+workspace, and window closes share a scoped live foreground recheck. Focused
+X11 and native-Wayland gates prove keyboard-only controls, native roles/focus,
+full last-good recovery, close ordering, rapid navigation, hidden-session
+pumping, child reaping, and the complete Phase 4 terminal regression.
 
 Exit criteria:
 
@@ -863,7 +953,6 @@ Stop the current lane and record the blocker when:
 
 These should be answered during implementation, not guessed in advance:
 
-- Whether GTK 4 or Qt 6 wins the OpenGL and input-method spike.
 - Whether libkitty becomes a separately versioned shared component.
 - Which Linux distributions are Tier 1 versus source-only.
 - How much of the macOS core should be shared by source versus by fixture.
@@ -872,8 +961,8 @@ These should be answered during implementation, not guessed in advance:
 - When the repository becomes public. ADR 0006 makes it a prerequisite for
   binary distribution, not for today.
 
-Resolved and removed from this list on 2026-07-25: the Linux licence posture
-(ADR 0006) and whether spike code carries forward (ADR 0007).
+Resolved and removed from this list: the Linux licence posture (ADR 0006),
+whether spike code carries forward (ADR 0007), and the GTK 4 toolkit decision.
 
 When an open decision is resolved, record it in a short architecture decision
 record and remove it from this list.
@@ -882,13 +971,15 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Finish the final Phase 2 kill test** — Slice 2.2F event fairness — then
-   run the complete Slice 2.3 toolkit decision gate.
-2. **Continue Phase 3 only when separately assigned.** Slices 3.1 and 3.2 are
-   closed against the frozen fixtures; Slice 3.3 cross-host compatibility and
-   safe import remains the next display-free boundary.
-3. **Decompose the feature inventory** before Phase 5 builds the hierarchy.
-4. **ADR 0008 R1 and R2** — standalone buildability and one automated gate —
+1. **Rebaseline the macOS reference from clean worktrees**: the Phase 5
+   boundary report found the additive v0.21 render-resource API and requires a
+   clean tested macOS tag plus guarded `--relock` before Phase 6 work.
+2. **Begin Slice 6.1 secure local control and CLI** after that rebaseline.
+3. **Keep Phases 3 through 5 closed.** Cross-host compatibility, the read-only
+   import preview, and the one-terminal alpha gates are proven; live import,
+   browser, and packaging work stay in their assigned phases.
+4. **Keep the feature inventory current** as Phase 6 adds product behavior.
+5. **ADR 0008 R1 and R2** — standalone buildability and one automated gate —
    before Phase 8, and before any second contributor.
 
 The recurring failure mode this plan should guard against is not lack of
@@ -899,8 +990,8 @@ items that unblock everything else stay open.
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Slice 2.2F is next under the reordered
-Phase 2: prove bounded event fairness during PTY flood, repeated resize, and
-multiple hidden sessions.
-Do not start browser product behavior, selection, clipboard, mouse, or search
-— those belong to later phases. Slice 3.3 also requires a separate assignment.
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Phase 5 is complete. Rebaseline the new
+macOS/libkitty v0.21 reference from clean worktrees, then begin Slice 6.1. Do
+not start browser product behavior or packaging.
+Do not turn the closed Slice 3.3 preview into a live import or restore path
+incidentally.

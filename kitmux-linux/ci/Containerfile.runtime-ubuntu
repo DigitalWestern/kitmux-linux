@@ -1,0 +1,14 @@
+FROM docker.io/library/ubuntu@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      bash \
+      libepoxy0 \
+      libgl1-mesa-dri \
+      libglx-mesa0 \
+      libgtk-4-1 \
+      xauth \
+      xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /runtime

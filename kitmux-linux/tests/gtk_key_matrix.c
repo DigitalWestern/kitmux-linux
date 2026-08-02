@@ -14,6 +14,8 @@
  */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <gdk/gdk.h>
+#include <gdk/gdkkeysyms.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>

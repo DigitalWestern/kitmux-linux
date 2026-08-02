@@ -10,21 +10,27 @@ mapfile -t python_dirs < <(
   find "${runtime}/lib" -mindepth 1 -maxdepth 1 -type d -name 'python3.*' -print
 )
 mapfile -t libpython_files < <(
-  find "${runtime}/lib" -mindepth 1 -maxdepth 1 -type f \
+  find "${runtime}/lib" -mindepth 1 -maxdepth 2 -type f \
     -name 'libpython3.*.so.1.0' -print
 )
-if [[ "${#python_dirs[@]}" -ne 1 || "${#libpython_files[@]}" -ne 1 ]]; then
+mapfile -t libkitty_files < <(
+  find "${runtime}/lib" -mindepth 1 -maxdepth 2 -type f \
+    -name 'libkitty.so' -print
+)
+if [[ "${#python_dirs[@]}" -ne 1 || "${#libpython_files[@]}" -ne 1 \
+    || "${#libkitty_files[@]}" -ne 1 ]]; then
   echo "Release runtime must contain exactly one Python library and standard library." >&2
   exit 1
 fi
 python_dir="${python_dirs[0]}"
 libpython_file="${libpython_files[0]}"
+libkitty_file="${libkitty_files[0]}"
 
 required=(
   "${runtime}/bin/linux_session_stress"
   "${runtime}/etc/kitty.conf"
   "${runtime}/kitty/fast_data_types.so"
-  "${runtime}/lib/libkitty.so"
+  "${libkitty_file}"
   "${libpython_file}"
   "${python_dir}"
   "${runtime}/libkitty_py/glue.py"
@@ -63,7 +69,7 @@ for elf in "${elf_files[@]}"; do
 done
 
 libpython_path="$(
-  ldd "${runtime}/lib/libkitty.so" \
+  ldd "${libkitty_file}" \
     | awk '/libpython3[.][0-9]+[.]so[.]1[.]0/ {print $3}'
 )"
 case "${libpython_path}" in

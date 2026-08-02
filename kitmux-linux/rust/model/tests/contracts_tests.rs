@@ -1,11 +1,12 @@
 use kitmux_model::{
     AtomicWriteError, CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CommandId,
-    ControlCodecError, ControlMethod, ControlResponse, FileChange, LineFrameDecoder,
-    PollingFileWatcher, RuntimePathError, SemanticAction, SettingsCodecError, SnapshotCodecError,
-    UnixSocketAddress, XdgPaths, atomic_write_private, decode_control_request,
-    decode_control_response, decode_settings, decode_snapshot, encode_control_response,
-    encode_settings, encode_snapshot, read_bounded, sha256_bytes, sha256_file,
-    valid_resume_command,
+    ControlCodecError, ControlMethod, ControlResponse, FileChange, ImportPreviewError,
+    LineFrameDecoder, PollingFileWatcher, RuntimePathError, SemanticAction, SettingsCodecError,
+    SnapshotCodecError, SshCodecError, SshProfile, SshResolution, UnixSocketAddress, XdgPaths,
+    atomic_write_private, decode_control_request, decode_control_response, decode_settings,
+    decode_snapshot, decode_ssh_profiles, encode_control_response, encode_settings,
+    encode_snapshot, encode_ssh_profiles, preview_macos_state_file, read_bounded, sha256_bytes,
+    sha256_file, valid_resume_command,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -51,8 +52,15 @@ fn frozen_state_snapshot_corpus_accepts_repairs_and_rejects() {
         match case["disposition"].as_str().unwrap() {
             "accept" => {
                 let snapshot = decode_snapshot(&bytes).unwrap();
+                assert_eq!(serde_json::to_value(&snapshot).unwrap(), case["input"]);
                 let encoded = encode_snapshot(snapshot).unwrap();
-                decode_snapshot(&encoded).unwrap();
+                let encoded_value =
+                    serde_json::to_value(decode_snapshot(&encoded).unwrap()).unwrap();
+                assert_eq!(encoded_value, case["input"]);
+                assert_eq!(
+                    serde_json::to_vec(&encoded_value).unwrap(),
+                    serde_json::to_vec(&case["input"]).unwrap()
+                );
             }
             "repair" => {
                 let snapshot = decode_snapshot(&bytes).unwrap();
@@ -410,6 +418,225 @@ fn frozen_command_catalog_is_exact_bounded_and_semantically_mapped() {
     assert_eq!(
         CommandId::from_str("pane.focus-left").unwrap().action(),
         SemanticAction::MovePaneFocus(kitmux_model::Direction::Left)
+    );
+}
+
+#[test]
+fn frozen_ssh_corpus_validates_documents_and_builds_data_only_review() {
+    let corpus = fixture("ssh-profile-review.json");
+    for case in corpus["cases"].as_array().unwrap() {
+        if let Some(input) = case.get("input") {
+            let result = decode_ssh_profiles(&serde_json::to_vec(input).unwrap());
+            if case["disposition"] == "accept" {
+                let document = result.unwrap();
+                assert!(
+                    document
+                        .profiles
+                        .iter()
+                        .all(|profile| { profile.remote_command.is_none() })
+                );
+                let encoded = encode_ssh_profiles(document.clone()).unwrap();
+                assert_eq!(decode_ssh_profiles(&encoded).unwrap(), document);
+            } else {
+                assert!(matches!(result, Err(SshCodecError::Invalid(_))));
+            }
+            continue;
+        }
+
+        let profile: SshProfile = serde_json::from_value(case["profile"].clone()).unwrap();
+        let resolution = SshResolution::parse(
+            &profile.host_alias,
+            case["resolutionOutput"].as_str().unwrap(),
+        )
+        .unwrap();
+        let review = resolution.review(&profile);
+        let expected = &case["expectedReview"];
+        assert_eq!(
+            review.destination,
+            expected["destination"].as_str().unwrap()
+        );
+        assert_eq!(review.host_alias, expected["hostAlias"].as_str().unwrap());
+        assert_eq!(
+            review.strict_host_key_checking,
+            expected["strictHostKeyChecking"].as_str().unwrap()
+        );
+        assert_eq!(review.proxy_jump.as_deref(), expected["proxyJump"].as_str());
+        assert_eq!(
+            review.forwards.len(),
+            expected["forwards"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            review.has_externally_listening_forward,
+            expected["hasExternallyListeningForward"].as_bool().unwrap()
+        );
+        assert_eq!(
+            review.requires_approval,
+            expected["requiresApproval"].as_bool().unwrap()
+        );
+        assert_eq!(
+            review.fingerprint,
+            expected["fingerprint"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields() {
+    assert_eq!(
+        decode_ssh_profiles(br#"{"version":2,"profiles":[]}"#),
+        Err(SshCodecError::UnsupportedVersion(2))
+    );
+    assert_eq!(
+        decode_ssh_profiles(&vec![b' '; 1024 * 1024 + 1]),
+        Err(SshCodecError::TooLarge)
+    );
+    let profile = json!({
+        "id": "11111111-2222-3333-4444-555555555555",
+        "name": "Production",
+        "hostAlias": "prod",
+        "createdAt": "2026-07-23T12:00:00Z",
+        "updatedAt": "2026-07-23T12:00:00Z"
+    });
+    let duplicate = json!({"version": 1, "profiles": [profile.clone(), profile]});
+    assert_eq!(
+        decode_ssh_profiles(&serde_json::to_vec(&duplicate).unwrap()),
+        Err(SshCodecError::Invalid("duplicate profile ID"))
+    );
+    let invalid_timestamp = json!({
+        "version": 1,
+        "profiles": [{
+            "id": "11111111-2222-3333-4444-555555555555",
+            "name": "Production",
+            "hostAlias": "prod",
+            "createdAt": "2026-02-30T12:00:00Z",
+            "updatedAt": "2026-02-30T12:00:00Z"
+        }]
+    });
+    assert_eq!(
+        decode_ssh_profiles(&serde_json::to_vec(&invalid_timestamp).unwrap()),
+        Err(SshCodecError::Invalid("invalid timestamps"))
+    );
+
+    let unknown = json!({
+        "version": 1,
+        "futureDocumentField": true,
+        "profiles": [{
+            "id": "11111111-2222-3333-4444-555555555555",
+            "name": "Production",
+            "hostAlias": "prod",
+            "reviewedFingerprint": "INVALID",
+            "createdAt": "2026-07-23T12:00:00Z",
+            "updatedAt": "2026-07-23T12:00:00Z",
+            "futureProfileField": 7
+        }]
+    });
+    let document = decode_ssh_profiles(&serde_json::to_vec(&unknown).unwrap()).unwrap();
+    assert_eq!(document.extra["futureDocumentField"], true);
+    assert_eq!(document.profiles[0].extra["futureProfileField"], 7);
+    assert_eq!(document.profiles[0].reviewed_fingerprint, None);
+    let encoded: Value = serde_json::from_slice(&encode_ssh_profiles(document).unwrap()).unwrap();
+    assert_eq!(encoded["futureDocumentField"], true);
+    assert_eq!(encoded["profiles"][0]["futureProfileField"], 7);
+}
+
+#[test]
+fn macos_state_import_preview_is_read_only_translates_paths_and_keeps_commands_inert() {
+    let temp = TestDirectory::new();
+    let linux_home = temp.path().join("home");
+    let translated_cwd = linux_home.join("project");
+    fs::create_dir_all(&translated_cwd).unwrap();
+    let marker = temp.path().join("command-must-not-run");
+    let state_path = temp.path().join("macos-state.json");
+    let pane = "11111111-1111-1111-1111-111111111111";
+    let source = json!({
+        "version": 0,
+        "activeWorkspaceIndex": 9,
+        "createdWorkspaceCount": 0,
+        "workspaces": [{
+            "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "name": "workspace 1",
+            "activeTabGroupIndex": 7,
+            "createdGroupCount": 0,
+            "tabGroups": [{
+                "name": "main",
+                "activeTerminalTabIndex": 5,
+                "terminalTabs": [{
+                    "focusedPaneID": {"rawValue": pane},
+                    "customTitle": "  ",
+                    "root": {"pane": {"_0": {"rawValue": pane}}},
+                    "paneDetails": {
+                        pane: {
+                            "surfaces": [{
+                                "id": "22222222-2222-2222-2222-222222222222",
+                                "kind": "terminal",
+                                "cwd": "/Users/ethan/project",
+                                "resumeCommand": format!("touch {}", marker.display())
+                            }, {
+                                "id": "33333333-3333-3333-3333-333333333333",
+                                "kind": "browser",
+                                "url": "https://example.com"
+                            }, {
+                                "id": "44444444-4444-4444-4444-444444444444",
+                                "kind": "terminal",
+                                "resumeCommand": "bad\ncommand"
+                            }],
+                            "activeSurfaceIndex": 99
+                        }
+                    }
+                }]
+            }]
+        }]
+    });
+    fs::write(&state_path, serde_json::to_vec_pretty(&source).unwrap()).unwrap();
+    let before = sha256_file(&state_path, 8 * 1024 * 1024).unwrap();
+    let preview = preview_macos_state_file(&state_path, &linux_home).unwrap();
+    let after = sha256_file(&state_path, 8 * 1024 * 1024).unwrap();
+
+    assert_eq!(before, after);
+    assert!(!marker.exists());
+    assert_eq!(preview.source_sha256, before);
+    assert_eq!(preview.inert_commands.len(), 1);
+    assert!(preview.inert_commands[0].requires_explicit_approval);
+    assert!(preview.translated.iter().any(|item| {
+        item.field.ends_with("/cwd")
+            && item.to == Value::String(translated_cwd.to_string_lossy().into_owned())
+    }));
+    assert!(
+        preview
+            .translated
+            .iter()
+            .any(|item| item.field == "/version")
+    );
+    assert!(
+        preview
+            .accepted
+            .iter()
+            .any(|item| item.field.ends_with("/url"))
+    );
+    assert!(preview.rejected.iter().any(|item| {
+        item.field.ends_with("/resumeCommand") && item.detail.contains("contains controls")
+    }));
+}
+
+#[test]
+fn import_preview_rejects_newer_state_without_rewriting_and_bounds_inputs() {
+    let temp = TestDirectory::new();
+    let source = temp.path().join("newer.json");
+    fs::write(&source, br#"{"version":99}"#).unwrap();
+    let before = fs::read(&source).unwrap();
+    let preview = preview_macos_state_file(&source, temp.path()).unwrap();
+    assert_eq!(fs::read(&source).unwrap(), before);
+    assert!(preview.accepted.is_empty());
+    assert_eq!(preview.rejected.len(), 1);
+    assert!(preview.rejected[0].detail.contains("newer than supported"));
+
+    assert_eq!(
+        kitmux_model::preview_macos_state(b"{}", Path::new("relative")),
+        Err(ImportPreviewError::InvalidTargetHome)
+    );
+    assert_eq!(
+        kitmux_model::preview_macos_state(&vec![b' '; 8 * 1024 * 1024 + 1], temp.path()),
+        Err(ImportPreviewError::TooLarge)
     );
 }
 

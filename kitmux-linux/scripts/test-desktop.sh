@@ -6,8 +6,12 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
-display_number="${KITMUX_VNC_DISPLAY:-1}"
-novnc_port="${KITMUX_NOVNC_PORT:-6080}"
+if [[ -n "${DISPLAY:-}" ]]; then
+  novnc_port="${KITMUX_NOVNC_PORT:-}"
+else
+  export DISPLAY=":${KITMUX_VNC_DISPLAY:-1}"
+  novnc_port="${KITMUX_NOVNC_PORT:-6080}"
+fi
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source_root="$(cd -- "${script_dir}/.." && pwd)"
 linux_root="$(cd -- "${source_root}/.." && pwd)"
@@ -25,8 +29,6 @@ scale_100_proof_image="${source_root}/gtk-scale-100-proof.png"
 scale_150_proof_image="${source_root}/gtk-scale-150-proof.png"
 scale_200_proof_image="${source_root}/gtk-scale-200-proof.png"
 fairness_proof_image="${source_root}/gtk-fairness-proof.png"
-export DISPLAY=":${display_number}"
-
 case "$(uname -m)" in
   aarch64|arm64) kitty_platform="linux-arm64" ;;
   x86_64|amd64) kitty_platform="linux-64" ;;
@@ -39,7 +41,9 @@ dependencies="${kitty_root}/dependencies/${kitty_platform}"
 python_runtime="${build_dir}/python-runtime"
 
 xdpyinfo >/dev/null
-curl --fail --silent "http://127.0.0.1:${novnc_port}/vnc.html" >/dev/null
+if [[ -n "${novnc_port}" ]]; then
+  curl --fail --silent "http://127.0.0.1:${novnc_port}/vnc.html" >/dev/null
+fi
 
 if [[ ! -x "${dependencies}/bin/python" ]] \
     || [[ ! -f "${kitty_root}/kitty/fast_data_types.so" ]]; then
@@ -82,7 +86,11 @@ fi
 echo "GTK ${gtk_version}"
 echo "WebKitGTK ${webkit_version}"
 echo "OpenGL renderer: ${renderer}"
-echo "X11 DISPLAY=${DISPLAY} and noVNC are responding"
+if [[ -n "${novnc_port}" ]]; then
+  echo "X11 DISPLAY=${DISPLAY} and noVNC port ${novnc_port} are responding"
+else
+  echo "X11 DISPLAY=${DISPLAY} is responding (noVNC check not requested)"
+fi
 
 if ! readelf -d "${host_binary}" \
     | grep -q 'Shared library: \[libwebkitgtk-6\.0\.so\.4\]'; then
@@ -130,6 +138,20 @@ sway_child_log="${sway_runtime_dir}/child.log"
 fairness_log="$(mktemp /tmp/kitmux-gtk-fairness.XXXXXX.log)"
 gui_layout="$(mktemp -d /tmp/kitmux-gtk-layout.XXXXXX)"
 gui_layout_log="$(mktemp /tmp/kitmux-gtk-layout.XXXXXX.log)"
+initial_xset_repeat="$(xset q | awk '/auto repeat:/ {print $3; exit}')"
+read -r initial_xset_delay initial_xset_rate < <(
+  xset q | awk '/auto repeat delay:/ {print $4, $7; exit}'
+)
+initial_xkb_rules="$(setxkbmap -query | awk -F: '/^rules:/ {sub(/^[[:space:]]+/, "", $2); print $2}')"
+initial_xkb_model="$(setxkbmap -query | awk -F: '/^model:/ {sub(/^[[:space:]]+/, "", $2); print $2}')"
+initial_xkb_layout="$(setxkbmap -query | awk -F: '/^layout:/ {sub(/^[[:space:]]+/, "", $2); print $2}')"
+initial_xkb_variant="$(setxkbmap -query | awk -F: '/^variant:/ {sub(/^[[:space:]]+/, "", $2); print $2}')"
+initial_xkb_options="$(setxkbmap -query | awk -F: '/^options:/ {sub(/^[[:space:]]+/, "", $2); print $2}')"
+initial_ibus_engine="$(ibus engine 2>/dev/null || true)"
+initial_ibus_preload="$(
+  gsettings get org.freedesktop.ibus.general preload-engines 2>/dev/null || true
+)"
+ibus_state_modified=0
 cleanup() {
   if [[ -n "${host_pid:-}" ]] && kill -0 "${host_pid}" 2>/dev/null; then
     kill "${host_pid}" 2>/dev/null || true
@@ -143,8 +165,31 @@ cleanup() {
     kill "${sway_pid}" 2>/dev/null || true
     wait "${sway_pid}" 2>/dev/null || true
   fi
-  xset r on 2>/dev/null || true
-  setxkbmap -layout us 2>/dev/null || true
+  if [[ "${initial_xset_repeat}" == "on" ]]; then
+    xset r on 2>/dev/null || true
+  else
+    xset r off 2>/dev/null || true
+  fi
+  if [[ -n "${initial_xset_delay}" && -n "${initial_xset_rate}" ]]; then
+    xset r rate "${initial_xset_delay}" "${initial_xset_rate}" 2>/dev/null || true
+  fi
+  xkb_restore_args=()
+  [[ -n "${initial_xkb_rules}" ]] && xkb_restore_args+=(-rules "${initial_xkb_rules}")
+  [[ -n "${initial_xkb_model}" ]] && xkb_restore_args+=(-model "${initial_xkb_model}")
+  [[ -n "${initial_xkb_layout}" ]] && xkb_restore_args+=(-layout "${initial_xkb_layout}")
+  [[ -n "${initial_xkb_variant}" ]] && xkb_restore_args+=(-variant "${initial_xkb_variant}")
+  setxkbmap -option 2>/dev/null || true
+  [[ -n "${initial_xkb_options}" ]] && xkb_restore_args+=(-option "${initial_xkb_options}")
+  setxkbmap "${xkb_restore_args[@]}" 2>/dev/null || true
+  if [[ "${ibus_state_modified}" == "1" ]]; then
+    if [[ -n "${initial_ibus_preload}" ]]; then
+      gsettings set org.freedesktop.ibus.general preload-engines \
+        "${initial_ibus_preload}" 2>/dev/null || true
+    fi
+    if [[ -n "${initial_ibus_engine}" ]]; then
+      ibus engine "${initial_ibus_engine}" >/dev/null 2>&1 || true
+    fi
+  fi
   rm -rf -- "${proof_log}" "${error_log}" "${key_dir}" \
     "${wayland_runtime_dir}" "${wayland_host_log}" "${wayland_child_log}" \
     "${webkit_wayland_host_log}" "${webkit_wayland_child_log}" \
@@ -480,6 +525,7 @@ then
   echo "Could not preload the IBus engines this gate needs." >&2
   exit 1
 fi
+ibus_state_modified=1
 if ! ibus-daemon --xim --daemonize --replace >/dev/null 2>&1; then
   echo "Could not start ibus-daemon." >&2
   exit 1

@@ -7,8 +7,19 @@ macos_repo="${KITMUX_MACOS_REPO:-$linux_root/../macos/kitmux}"
 lock_file="$linux_root/source-lock.json"
 destination="$linux_root/.source/reference"
 overlay_dir="$linux_root/kitmux-linux/patches/libkitty"
-expected_commit="e39381a0ed6c3d1667cb4dfa70e5bc48213b1bc4"
-reference_tag="macos-linux-port-baseline-2026-07-23"
+reference_lock="$(
+  python3 - "$lock_file" <<'PY'
+import json
+import pathlib
+import sys
+
+reference = json.loads(pathlib.Path(sys.argv[1]).read_text())["macos_reference"]
+print(reference["commit"])
+print(reference["tag"])
+PY
+)"
+expected_commit="${reference_lock%%$'\n'*}"
+reference_tag="${reference_lock#*$'\n'}"
 
 if [[ ! -d "$macos_repo/.git" ]]; then
   echo "macOS reference repository not found: $macos_repo" >&2

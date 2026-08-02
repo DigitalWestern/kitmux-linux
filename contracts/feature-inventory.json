@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "reference_tag": "macos-linux-port-baseline-2026-07-23",
-  "updated": "2026-07-28",
+  "updated": "2026-08-01",
   "notes": {
     "granularity": "Schema 2 decomposed the original 16 subsystem rows into per-behavior rows. At subsystem granularity a Phase 9 parity claim was unfalsifiable: an entire area could be marked shipped while half of it was missing. Every row here states one observable behavior and names the macOS test that pins it.",
     "macos_tests": "An entry is `path` or `path::anchor`. An anchor names a Swift, Python, or C function definition, or — for the monolithic C gates, which are one main() with no per-case functions — the `// vN.M feature` comment that labels the block asserting that behavior. `contracts/validate-inventory.py` resolves every anchor against the macOS checkout; a bare `path` means the whole file is the case (test_engine.c) or that no finer anchor exists in it. All anchors here were resolved by hand against tag macos-linux-port-baseline-2026-07-23 on 2026-07-28.",
@@ -140,9 +140,10 @@
       ],
       "translation": "Use Linux process-group and PTY semantics; never execute a shell string when an argv exists.",
       "linux_tests": [
-        "kitmux-linux/tests/linux_session_stress.c"
+        "kitmux-linux/tests/linux_session_stress.c",
+        "kitmux-linux/scripts/test-phase5-navigation.sh"
       ],
-      "linux_status": "proven in Slice 1.2: 16-session flood, 24 forced-close cycles, zombie absence, exact FD restoration"
+      "linux_status": "Slice 1.2 proves the 16-session flood, 24 forced-close cycles, zombie absence, and exact FD restoration; Slice 5.2 proves permanent product sessions for created tabs and nested panes plus complete close/reap on X11 and native Wayland"
     },
     {
       "id": "engine.child-exit-status",
@@ -238,7 +239,10 @@
         "terminal.damage-signal"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-headless.sh"
+      ],
+      "linux_status": "Slice 4.2 generated Linux session coverage proves exact ASCII, CJK-wide, combining-mark, and emoji extraction through libkitty"
     },
     {
       "id": "terminal.title-and-bell",
@@ -261,7 +265,12 @@
         "terminal.damage-signal"
       ],
       "translation": "Visual bell is a host concern; freedesktop notifications belong to desktop.notifications.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-headless.sh",
+        "kitmux-linux/scripts/test-phase4.sh",
+        "kitmux-linux/scripts/test-phase4-wayland.sh"
+      ],
+      "linux_status": "Linux session coverage proves exact OSC title, cwd, notification, and user-variable delivery at the libkitty boundary; Slices 4.1 and 4.2 prove product title/cwd handling on X11 and native Wayland. The GTK bell callback is wired but standalone bell policy remains Phase 5, resume user-variable consumption Phase 6.3, and desktop notification posting Phase 7"
     },
     {
       "id": "render.live-frame",
@@ -504,9 +513,10 @@
       "translation": "Held keys are released when focus leaves, and any composition is reset rather than committed into a surface the user left.",
       "linux_tests": [
         "kitmux-linux/tests/gtk_key_matrix.c",
-        "kitmux-linux/scripts/test-desktop.sh"
+        "kitmux-linux/scripts/test-desktop.sh",
+        "kitmux-linux/scripts/test-phase5-product.sh"
       ],
-      "linux_status": "proven over X11 with an adjacent GtkEntry (Slice 2.2A); Slice 2.3 also proved the selected terminal widget exposes GTK's terminal role and label and transfers accessible focus terminal-entry-terminal"
+      "linux_status": "Slice 2 proves terminal/entry focus ownership; Slice 5.3 proves the product terminal and native Commands/Settings buttons expose accessible roles and labels and transfer focus terminal-Commands-Settings-terminal on X11 and native Wayland"
     },
     {
       "id": "keyboard.paste-safety",
@@ -526,7 +536,11 @@
         "desktop.clipboard-read"
       ],
       "translation": "Pure policy; implement in the model, not the widget.",
-      "linux_status": "unproven; moved to Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::paste_safety_matches_the_portable_contract",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves the pure large/control policy, asynchronous safe paste, large-paste cancel/confirm on X11 and native Wayland, and bracketed-paste engine behavior"
     },
     {
       "id": "keyboard.shortcut-routing",
@@ -547,7 +561,12 @@
         "navigation.command-catalog"
       ],
       "translation": "macOS Command-key chords are not portable; Linux defaults must not collide with terminal Control sequences.",
-      "linux_status": "unproven; Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::shortcut_matching_rejects_extra_modifiers",
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::linux_shortcut_settings_override_defaults_without_stealing_plain_control_keys",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves exact modifier matching, ambiguous-chord rejection, complete one-terminal default action reachability, plain Control-C ownership, and a Linux-only settings override used by the product search path on X11 and native Wayland"
     },
     {
       "id": "terminal.scrollback",
@@ -567,7 +586,11 @@
         "engine.session-create-close"
       ],
       "translation": "No platform-specific state.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-headless.sh",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 release gates prove independent engine scrollback, clamping, snap-on-keypress, clear, and product wheel routing"
     },
     {
       "id": "terminal.selection",
@@ -586,7 +609,11 @@
         "terminal.text-extraction"
       ],
       "translation": "None.",
-      "linux_status": "headless libkitty APIs covered; toolkit wiring moved to Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-headless.sh",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves independent exact libkitty selection/text extraction plus production local selection and GTK clipboard copy on X11 and native Wayland"
     },
     {
       "id": "terminal.search",
@@ -606,7 +633,11 @@
         "terminal.scrollback"
       ],
       "translation": "None.",
-      "linux_status": "headless libkitty APIs covered; toolkit wiring moved to Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-headless.sh",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves independent libkitty search state plus production query, navigation, markers, and cancel on X11 and native Wayland"
     },
     {
       "id": "mouse.cell-mapping",
@@ -628,7 +659,11 @@
         "render.scale-correctness"
       ],
       "translation": "Never assume a fixed backing scale. This is pure arithmetic and belongs in the model with a headless test.",
-      "linux_status": "unproven; Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::coordinates_map_exactly_and_clamp_at_scale",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves exact 100%, 150%, and 200% scale-aware mapping with padding, half-cell boundaries, slack clamping, and invalid geometry display-free; product pointer routing passes on X11 and native Wayland"
     },
     {
       "id": "mouse.reporting-vs-selection",
@@ -649,7 +684,11 @@
         "terminal.selection"
       ],
       "translation": "None.",
-      "linux_status": "unproven; Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-headless.sh",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves exact engine reporting and production press/drag/release versus local selection with Shift override on X11 and native Wayland"
     },
     {
       "id": "mouse.wheel-and-touchpad",
@@ -668,7 +707,11 @@
         "mouse.cell-mapping"
       ],
       "translation": "GTK smooth-scroll deltas are not integer wheel clicks.",
-      "linux_status": "unproven; Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::smooth_scroll_keeps_fractional_remainder",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
+      "linux_status": "Slice 4.2 proves exact engine wheel routing, smooth-delta accumulation, GTK wheel delivery on X11 and native Wayland, and continued PTY progress; physical touchpad/libinput remains unproven"
     },
     {
       "id": "links.url-detection",
@@ -691,7 +734,10 @@
         "mouse.cell-mapping"
       ],
       "translation": "Pure string/grid logic; port with the fixtures. Opening the URL is a separate desktop concern.",
-      "linux_status": "unproven; Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::wrapped_url_resolves_from_every_segment"
+      ],
+      "linux_status": "Slice 4.2 proves wrapped HTTP/email URL detection and rejected schemes display-free and wires production Ctrl-click opening; end-to-end desktop handler launch remains for Phase 7 desktop integration"
     },
     {
       "id": "hierarchy.ownership",
@@ -715,9 +761,10 @@
       "linux_tests": [
         "kitmux-linux/rust/model/tests/model_tests.rs::global_duplicate_pane_and_surface_ids_are_rejected",
         "kitmux-linux/rust/model/tests/model_tests.rs::ids_are_stable_distinct_types_with_portable_uuid_encoding",
-        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_reorder_keeps_the_selected_object_active"
+        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_reorder_keeps_the_selected_object_active",
+        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_names_and_explicit_closes_preserve_ids_and_non_empty_parents"
       ],
-      "linux_status": "stable distinct ID types, portable UUID encoding, global duplicate pane/surface rejection, and active-object preservation across hierarchy reorder proven in Slice 3.1; duplicate rejection at every hierarchy level, full ID survival through all accepted operations, and cross-host comparison to macOS remain unproven for Slice 3.3"
+      "linux_status": "Slice 3.1 proves stable distinct IDs, global duplicate pane/surface rejection, and active-object preservation across reorder. Slice 5.1 adds bounded workspace/group/tab naming, explicit close APIs, and responsive GTK create/select/reorder routing on X11 and native Wayland; the Phase 5 cross-platform exit fixture remains"
     },
     {
       "id": "hierarchy.non-empty-invariant",
@@ -738,9 +785,10 @@
       "translation": "None.",
       "linux_tests": [
         "kitmux-linux/rust/model/tests/model_tests.rs::final_workspace_requires_host_close_without_destroying_live_runtime",
-        "kitmux-linux/rust/model/tests/model_tests.rs::closing_one_pane_collapses_tree_closes_all_surfaces_and_selects_neighbor"
+        "kitmux-linux/rust/model/tests/model_tests.rs::closing_one_pane_collapses_tree_closes_all_surfaces_and_selects_neighbor",
+        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_names_and_explicit_closes_preserve_ids_and_non_empty_parents"
       ],
-      "linux_status": "live-model parent collapse and final-workspace host-close behavior proven in Slice 3.1, with empty-snapshot rejection proven in Slice 3.2; the exact collapse-shape cross-host comparison to macOS remains unproven for Slice 3.3"
+      "linux_status": "live-model parent collapse and final-workspace host-close behavior are proven in Slice 3.1, empty-snapshot rejection in Slice 3.2, and Slice 5.1 explicit tab/group/workspace closes now refuse to empty their parent; exact collapse-shape comparison remains for the Phase 5 close-order fixture gate"
     },
     {
       "id": "hierarchy.focus-successor",
@@ -764,7 +812,7 @@
         "kitmux-linux/rust/model/tests/model_tests.rs::close_chain_removes_tab_then_group_then_workspace",
         "kitmux-linux/rust/model/tests/model_tests.rs::frozen_split_fixture_drives_linux_close_behavior"
       ],
-      "linux_status": "single-pane neighbor selection, hierarchy close-chain removal, and frozen Linux split-fixture close behavior proven in Slice 3.1, with stored-index repair proven in Slice 3.2; the full four-node successor sequence and cross-host comparison to macOS remain unproven for Slice 3.3"
+      "linux_status": "single-pane neighbor selection, hierarchy close-chain removal, and frozen Linux split-fixture close behavior proven in Slice 3.1, with stored-index repair proven in Slice 3.2; the full four-node successor sequence and cross-host comparison remain for the Phase 5 rapid-navigation and close-order gate"
     },
     {
       "id": "hierarchy.reorder-and-rename",
@@ -786,9 +834,10 @@
       "translation": "None.",
       "linux_tests": [
         "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_reorder_keeps_the_selected_object_active",
-        "kitmux-linux/rust/model/tests/model_tests.rs::tab_focus_cycle_split_swap_and_surface_selection_are_pure_model_operations"
+        "kitmux-linux/rust/model/tests/model_tests.rs::tab_focus_cycle_split_swap_and_surface_selection_are_pure_model_operations",
+        "kitmux-linux/rust/model/tests/model_tests.rs::hierarchy_names_and_explicit_closes_preserve_ids_and_non_empty_parents"
       ],
-      "linux_status": "hierarchy reorder with active-object preservation and pane-position swap using stable IDs proven in Slice 3.1, with blank-title normalization proven in Slice 3.2; exact split-shape preservation and cross-host comparison to macOS remain unproven for Slice 3.3"
+      "linux_status": "hierarchy reorder with active-object preservation and pane-position swap using stable IDs are proven in Slice 3.1, blank-title normalization in Slice 3.2, and Slice 5.1 proves bounded workspace/group/tab rename plus GTK reorder wiring without changing IDs; persistence projection remains"
     },
     {
       "id": "hierarchy.hidden-vs-visible",
@@ -809,9 +858,10 @@
       "translation": "Session ownership is permanent per surface; visibility is a projection.",
       "linux_tests": [
         "kitmux-linux/rust/model/tests/model_tests.rs::hidden_and_inactive_terminal_surfaces_keep_pumping_without_visibility_or_input",
-        "kitmux-linux/rust/model/tests/model_tests.rs::focusing_hidden_pane_selects_its_full_hierarchy"
+        "kitmux-linux/rust/model/tests/model_tests.rs::focusing_hidden_pane_selects_its_full_hierarchy",
+        "kitmux-linux/scripts/test-phase5-navigation.sh"
       ],
-      "linux_status": "hidden/inactive terminal ownership, pumping policy, input exclusion, and full-hierarchy focus selection proven in Slice 3.1; cross-host comparison to macOS remains unproven for Slice 3.3, while fair pumping and live accumulated-output/no-layout/no-draw evidence remain unproven for Slices 2.2F and 4.2"
+      "linux_status": "Slice 3.1 proves hidden/inactive ownership, input exclusion, and full-hierarchy focus selection; Slice 2.2F proves bounded multi-session fairness; Slice 5.2 X11 and native-Wayland product gates prove a non-selected tab continues draining output through its permanent PTY source while only the selected surface receives ordinary input and only active-tab leaves enter the render-region set"
     },
     {
       "id": "splits.tree-shape",
@@ -860,7 +910,7 @@
       "linux_tests": [
         "kitmux-linux/rust/model/tests/model_tests.rs::split_layout_uses_all_pixels_and_enforces_minimums"
       ],
-      "linux_status": "all-pixel consumption at one odd size and minimum-size enforcement for a two-pane split proven in Slice 3.1; the full frozen nested-size/divider-frame matrix and cross-host comparison to macOS remain unproven for Slice 3.3"
+      "linux_status": "all-pixel consumption at one odd size and minimum-size enforcement for a two-pane split proven in Slice 3.1; the full frozen nested-size/divider-frame matrix and cross-host comparison remain for Phase 5 splits"
     },
     {
       "id": "splits.ratio-constraints",
@@ -881,9 +931,11 @@
       ],
       "translation": "None.",
       "linux_tests": [
-        "kitmux-linux/rust/model/tests/model_tests.rs::ratio_changes_clamp_to_geometry_bounds_and_ignore_non_finite_values"
+        "kitmux-linux/rust/model/tests/model_tests.rs::ratio_changes_clamp_to_geometry_bounds_and_ignore_non_finite_values",
+        "kitmux-linux/rust/model/tests/model_tests.rs::tab_resize_helpers_apply_keyboard_steps_and_pointer_ratios",
+        "kitmux-linux/scripts/test-phase5-navigation.sh"
       ],
-      "linux_status": "set/adjust ratio clamping to calculated geometry bounds and non-finite-value handling proven in Slice 3.1; unknown-split and nested-minimum drag cases plus the exact cross-host macOS fixture matrix remain unproven for Slice 3.3"
+      "linux_status": "Slice 3.1 proves set/adjust clamping and non-finite handling; Slice 5.2 proves minimum-aware model helpers plus real X11 divider drag and keyboard resize against a nested three-pane product tree on X11 and native Wayland; the complete frozen cross-host ratio matrix remains for the Phase 5 exit gate"
     },
     {
       "id": "splits.divider-interaction",
@@ -905,7 +957,11 @@
         "mouse.cell-mapping"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/model_tests.rs::tab_resize_helpers_apply_keyboard_steps_and_pointer_ratios",
+        "kitmux-linux/scripts/test-phase5-navigation.sh"
+      ],
+      "linux_status": "Slice 5.2 proves a tolerance-band GTK hit target, pointer-centered ratio update with geometry clamping, a real X11 divider drag using live-derived terminal coordinates, and native-Wayland keyboard resize over the same nested layout; exact portable hit-test preference fixtures remain for the Phase 5 exit gate"
     },
     {
       "id": "splits.directional-focus",
@@ -926,7 +982,7 @@
       "linux_tests": [
         "kitmux-linux/rust/model/tests/model_tests.rs::directional_focus_prefers_aligned_nearest_neighbor"
       ],
-      "linux_status": "aligned nearest-neighbor selection for right/up movement and no left candidate proven in Slice 3.1; the complete four-direction frozen-layout matrix and cross-host comparison to macOS remain unproven for Slice 3.3"
+      "linux_status": "aligned nearest-neighbor selection for right/up movement and no left candidate proven in Slice 3.1; the complete four-direction frozen-layout matrix and product keyboard navigation remain for Phase 5"
     },
     {
       "id": "navigation.command-catalog",
@@ -947,7 +1003,11 @@
         "contracts.command-ids"
       ],
       "translation": "Command IDs are contract; their key chords are not.",
-      "linux_status": "exact 38-ID order, semantic-action mapping, and macOS consumption of the Linux-produced catalog proven display-free in Slices 3.2 and 3.3; palette ranking remains product work"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::command_palette_filtering_preserves_catalog_order_and_ranks_prefixes",
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "exact 38-ID order, semantic-action mapping, and macOS consumption of the Linux-produced catalog proven display-free in Slices 3.2 and 3.3; Slice 5.3 proves stable empty-query order, prefix ranking, native keyboard filtering, disabled unsupported entries, and supported product routing"
     },
     {
       "id": "navigation.namespaced-chords",
@@ -967,7 +1027,11 @@
         "keyboard.shortcut-routing"
       ],
       "translation": "Linux modifier defaults differ; the namespace separation is the portable part, not the chord.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::navigation_number_chords_use_separate_linux_safe_namespaces",
+        "kitmux-linux/rust/model/tests/interaction_tests.rs::linux_shortcut_settings_override_defaults_without_stealing_plain_control_keys"
+      ],
+      "linux_status": "Slice 5.1 maps Super+1 through Super+9 to workspaces and Alt+1 through Alt+9 to terminal tabs, rejects extra modifiers, accepts stable-command-ID navigation overrides without claiming plain terminal Control chords, and proves GTK product routing on X11 plus native Wayland"
     },
     {
       "id": "persistence.round-trip",
@@ -989,9 +1053,10 @@
       ],
       "translation": "Values only; no platform paths in the portable fixture.",
       "linux_tests": [
-        "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_state_snapshot_corpus_accepts_repairs_and_rejects"
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_state_snapshot_corpus_accepts_repairs_and_rejects",
+        "kitmux-linux/scripts/test-phase5-product.sh"
       ],
-      "linux_status": "canonical v1 state values round-trip without loss on Linux and macOS consumes Linux-produced state values in Slice 3.3"
+      "linux_status": "canonical v1 values and macOS consumption pass in Slice 3.3; Slice 5.3 saves, restores, and byte-compares a two-workspace/five-session hierarchy with nested ratios, schema-supported IDs, names, titles, selections, surface stacks, and safe per-surface cwd"
     },
     {
       "id": "persistence.validation-and-repair",
@@ -1035,7 +1100,7 @@
       "linux_tests": [
         "kitmux-linux/rust/model/tests/contracts_tests.rs::import_preview_rejects_newer_state_without_rewriting_and_bounds_inputs"
       ],
-      "linux_status": "legacy normalization and newer-version rejection proven in the Linux codec in Slice 3.2; Slice 3.3 proves the preview leaves newer-version source bytes untouched, while deterministic legacy ID migration remains product import work"
+      "linux_status": "legacy normalization and newer-version rejection proven in the Linux codec in Slice 3.2; Slice 3.3 proves the preview leaves newer-version source bytes untouched, while deterministic legacy ID migration remains for Phase 6.3 live import"
     },
     {
       "id": "persistence.inert-resume-commands",
@@ -1059,9 +1124,10 @@
       "translation": "This is a security invariant, not a feature. It must hold for the macOS-state import preview too.",
       "linux_tests": [
         "kitmux-linux/rust/model/tests/contracts_tests.rs::resume_command_bound_is_utf8_bytes_and_rejects_controls",
-        "kitmux-linux/rust/model/tests/contracts_tests.rs::macos_state_import_preview_is_read_only_translates_paths_and_keeps_commands_inert"
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::macos_state_import_preview_is_read_only_translates_paths_and_keeps_commands_inert",
+        "kitmux-linux/scripts/test-phase5-product.sh"
       ],
-      "linux_status": "resume text is inert bounded data in the Slice 3.2 codec; Slice 3.3 reports valid commands as requiring explicit approval and proves preview neither executes them nor changes source bytes; execution-time revalidation remains Phase 6 product work"
+      "linux_status": "resume text is inert bounded data in the Slice 3.2 codec; Slice 3.3 proves preview never executes it, and Slice 5.3 proves full product hierarchy restore always creates fresh passwd shells without routing resume text to session creation; explicit reviewed execution remains Phase 6 work"
     },
     {
       "id": "persistence.atomic-writes",
@@ -1081,7 +1147,13 @@
         "persistence.round-trip"
       ],
       "translation": "XDG state paths, write-and-rename plus fsync; reject unsafe symlinks and wrong-owner files.",
-      "linux_status": "private same-directory fsync-and-rename plus replacement watching proven in Slice 3.2; quarantine, read-only, and full-disk policy remain unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/persistence_tests.rs::failed_private_write_preserves_the_last_readable_files",
+        "kitmux-linux/rust/model/tests/persistence_tests.rs::failed_last_good_write_never_commits_the_new_primary",
+        "kitmux-linux/scripts/test-phase4-persistence.sh",
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "Slice 4.3 proves private owner-checked fsync-and-rename, last-good ordering, no-clobber set-asides, blocked/read-only and ENOSPC preservation; Slice 5.3 proves corrupt-primary recovery restores the complete last-good hierarchy byte-identically"
     },
     {
       "id": "persistence.fresh-shells",
@@ -1100,7 +1172,12 @@
         "persistence.inert-resume-commands"
       ],
       "translation": "Validate the recorded cwd against Linux path rules before using it.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/persistence_tests.rs::state_recovers_last_good_and_never_executes_inert_resume_text",
+        "kitmux-linux/scripts/test-phase4-persistence.sh",
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "Slice 4.3 proves safe cwd/font restore into a different fresh passwd-shell PID; Slice 5.3 restores five new permanent shell children at safe per-surface cwd, keeps resume text inert, and falls back to account home for invalid cwd"
     },
     {
       "id": "settings.schema-bounds",
@@ -1121,7 +1198,10 @@
         "XDG config paths"
       ],
       "translation": "Exclude macOS window chrome, launch-at-login, and AppKit shortcut encodings.",
-      "linux_status": "all 17 portable keys, types, ranges, defaults, invalid fallbacks, unknown-key exclusion, and macOS consumption of Linux-produced settings proven in Slices 3.2 and 3.3"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "all 17 portable keys, types, ranges, defaults, invalid fallbacks, unknown-key exclusion, and macOS consumption of Linux-produced settings pass in Slices 3.2 and 3.3; Slice 5.3 proves keyboard-only native editing and live application of the supported product subset"
     },
     {
       "id": "settings.store-durability",
@@ -1143,7 +1223,12 @@
         "settings.schema-bounds"
       ],
       "translation": "Use XDG config paths and atomic replace.",
-      "linux_status": "bounded decode, newer-version refusal, unknown-key round-trip, deterministic encode, and private atomic replace proven in Slice 3.2; launch quarantine policy remains unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/persistence_tests.rs::settings_launch_policy_handles_missing_corrupt_newer_and_unknown_fields",
+        "kitmux-linux/scripts/test-phase4-persistence.sh",
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "Slice 4.3 proves launch-time no-clobber set-asides, overwrite refusal, private atomic writes, and unknown-key preservation; Slice 5.3 proves the native settings dialog saves through that path without dropping an unknown sentinel"
     },
     {
       "id": "settings.external-watching",
@@ -1159,12 +1244,16 @@
         "macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsStoreTests.swift::testBrokenExternalWriteKeepsCurrentAndNeverQuarantines",
         "macos/KitmuxApp/Tests/KitmuxCoreTests/SettingsStoreTests.swift::testWatchingArmsEvenWhenDirectoryDoesNotExistYet"
       ],
-      "linux_acceptance": "inotify-based watching survives rename/replace, arms before the directory exists, and suppresses self-writes.",
+      "linux_acceptance": "Replacement-aware watching survives create, removal, and rename/replace, arms before the directory exists, suppresses same-content writes, and recovers after malformed edits.",
       "dependencies": [
         "settings.store-durability"
       ],
-      "translation": "Linux inotify semantics differ from FSEvents; editors that rename-replace are the normal case.",
-      "linux_status": "portable polling fingerprint detects create, in-place edit, atomic replacement, and removal in Slice 3.2; inotify, self-write suppression, and pre-directory arming remain unproven"
+      "translation": "The observable contract is backend-neutral; bounded polling avoids inotify lifecycle edge cases for the one-writer alpha while still covering editor rename-replace behavior.",
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::polling_watcher_detects_create_in_place_atomic_replace_and_remove",
+        "kitmux-linux/scripts/test-phase4-persistence.sh"
+      ],
+      "linux_status": "Slice 4.3 product polling arms before the config directory exists, survives removal and atomic recreation, ignores malformed edits without quarantine, and uses content equality for same-content suppression"
     },
     {
       "id": "safety.foreground-detection",
@@ -1206,7 +1295,11 @@
         "hierarchy.focus-successor"
       ],
       "translation": "Pure policy; port with the fixtures.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase4.sh",
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "Slice 4.2 proves live foreground cancel then confirm; Slice 5.3 routes pane, group, workspace, and whole-window scopes through one deduplicated product review path that includes only live foreground sessions"
     },
     {
       "id": "safety.recheck-before-acting",
@@ -1225,7 +1318,11 @@
         "safety.close-offer"
       ],
       "translation": "None.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase4.sh",
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "Slice 4.2 proves window-close recheck; Slice 5.3 rechecks the deterministic pane, group, workspace, or whole-window scope immediately before each product close action"
     },
     {
       "id": "safety.descendant-reaping",
@@ -1266,7 +1363,11 @@
         "toolkit clipboard API"
       ],
       "translation": "GDK clipboard is asynchronous; a synchronous port would deadlock the pump.",
-      "linux_status": "unproven; Phase 4 Slice 4.2"
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase4.sh",
+        "kitmux-linux/scripts/test-phase4-wayland.sh"
+      ],
+      "linux_status": "Slice 4.2 proves nonblocking GTK clipboard read/write and external copy/paste round trips during PTY output on X11 and native Wayland"
     },
     {
       "id": "desktop.notifications",

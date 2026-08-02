@@ -269,6 +269,8 @@ pub enum AtomicWriteError {
     MissingParent,
     UnsafeParent,
     UnsafeDestination,
+    UnsafePermissions(u32),
+    WrongOwner { expected: u32, actual: u32 },
     Io(io::Error),
 }
 
@@ -278,6 +280,12 @@ impl fmt::Display for AtomicWriteError {
             Self::MissingParent => f.write_str("destination has no parent"),
             Self::UnsafeParent => f.write_str("destination parent is a symlink or non-directory"),
             Self::UnsafeDestination => f.write_str("destination is a symlink or non-file"),
+            Self::UnsafePermissions(mode) => {
+                write!(f, "destination parent permissions {mode:o} are not private")
+            }
+            Self::WrongOwner { expected, actual } => {
+                write!(f, "owner {actual} does not match current user {expected}")
+            }
             Self::Io(error) => error.fmt(f),
         }
     }
@@ -287,15 +295,32 @@ impl std::error::Error for AtomicWriteError {}
 
 pub fn atomic_write_private(path: &Path, data: &[u8]) -> Result<(), AtomicWriteError> {
     let parent = path.parent().ok_or(AtomicWriteError::MissingParent)?;
+    let parent_existed = fs::symlink_metadata(parent).is_ok();
     fs::create_dir_all(parent).map_err(AtomicWriteError::Io)?;
+    if !parent_existed {
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+            .map_err(AtomicWriteError::Io)?;
+    }
     let parent_metadata = fs::symlink_metadata(parent).map_err(AtomicWriteError::Io)?;
     if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
         return Err(AtomicWriteError::UnsafeParent);
     }
+    let expected_uid = unsafe { libc::geteuid() };
+    if parent_metadata.uid() != expected_uid {
+        return Err(AtomicWriteError::WrongOwner {
+            expected: expected_uid,
+            actual: parent_metadata.uid(),
+        });
+    }
+    if parent_metadata.mode() & 0o077 != 0 {
+        return Err(AtomicWriteError::UnsafePermissions(
+            parent_metadata.mode() & 0o777,
+        ));
+    }
     if let Ok(metadata) = fs::symlink_metadata(path)
         && (metadata.file_type().is_symlink()
             || !metadata.is_file()
-            || metadata.uid() != parent_metadata.uid())
+            || metadata.uid() != expected_uid)
     {
         return Err(AtomicWriteError::UnsafeDestination);
     }

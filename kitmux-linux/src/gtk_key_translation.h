@@ -18,9 +18,9 @@
 #ifndef KITMUX_GTK_KEY_TRANSLATION_H
 #define KITMUX_GTK_KEY_TRANSLATION_H
 
-#include <gdk/gdk.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "libkitty.h"
 
@@ -41,9 +41,9 @@
 #define KITMUX_KEY_TEXT_CAPACITY 32
 
 typedef struct {
-  guint keyval;            // keyval GDK delivered for this event
-  guint unshifted_keyval;  // level-0 keyval of the same hardware key, or 0
-  GdkModifierType state;   // modifier state at event time
+  uint32_t keyval;            // keyval GDK delivered for this event
+  uint32_t unshifted_keyval;  // level-0 keyval of the same hardware key, or 0
+  uint32_t state;             // GDK modifier mask at event time
   int action;              // KITMUX_KEY_ACTION_*
 } kitmux_gdk_key_input;
 
@@ -67,17 +67,17 @@ bool kitmux_translate_gdk_key(const kitmux_gdk_key_input *input,
 #define KITMUX_KEY_TRACKER_CAPACITY 32
 
 typedef struct {
-  guint codes[KITMUX_KEY_TRACKER_CAPACITY];
+  uint32_t codes[KITMUX_KEY_TRACKER_CAPACITY];
   size_t count;
 } kitmux_key_tracker;
 
 // Returns KITMUX_KEY_ACTION_PRESS the first time a hardware key goes down and
 // KITMUX_KEY_ACTION_REPEAT while it stays down. A full tracker degrades to
 // reporting presses rather than dropping the key.
-int kitmux_key_tracker_press(kitmux_key_tracker *tracker, guint keycode);
+int kitmux_key_tracker_press(kitmux_key_tracker *tracker, uint32_t keycode);
 // Returns true when the key was actually being tracked. The host uses that to
 // tell whether a release belongs to a press the terminal ever saw.
-bool kitmux_key_tracker_release(kitmux_key_tracker *tracker, guint keycode);
+bool kitmux_key_tracker_release(kitmux_key_tracker *tracker, uint32_t keycode);
 // Focus loss ends every key the widget can still observe.
 void kitmux_key_tracker_reset(kitmux_key_tracker *tracker);
 size_t kitmux_key_tracker_held(const kitmux_key_tracker *tracker);

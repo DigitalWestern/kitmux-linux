@@ -136,6 +136,35 @@ fn ratio_changes_clamp_to_geometry_bounds_and_ignore_non_finite_values() {
 }
 
 #[test]
+fn tab_resize_helpers_apply_keyboard_steps_and_pointer_ratios() {
+    let a = PaneId::new();
+    let b = PaneId::new();
+    let split = Split::new(
+        SplitAxis::LeftRight,
+        0.5,
+        SplitNode::pane(a),
+        SplitNode::pane(b),
+    );
+    let split_id = split.id;
+    let (pane_a, _) = terminal_pane(a);
+    let (pane_b, _) = terminal_pane(b);
+    let mut tab = TabModel::new(
+        TabId::new(),
+        SplitNode::Split(split),
+        a,
+        vec![pane_a, pane_b],
+    )
+    .unwrap();
+    let rect = PixelRect::new(0, 0, 300, 100);
+    let minimum = PixelSize::new(60, 20);
+
+    assert!(tab.resize_focused(Direction::Right, rect, 6, minimum, 0.1));
+    assert_eq!(tab.root().split(split_id).unwrap().ratio, 0.6);
+    assert!(tab.set_split_ratio(split_id, 2.0, rect, 6, minimum));
+    assert!(tab.root().split(split_id).unwrap().ratio < 1.0);
+}
+
+#[test]
 fn directional_focus_prefers_aligned_nearest_neighbor() {
     let a = PaneId::new();
     let b = PaneId::new();
@@ -190,6 +219,11 @@ fn frozen_split_fixture_drives_linux_close_behavior() {
         .unwrap();
     assert_eq!(accepted.disposition, "accept");
     assert!(accepted.initial.has_unique_ids_and_valid_ratios());
+    let encoded = serde_json::to_vec(&accepted.initial).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<SplitNode>(&encoded).unwrap(),
+        accepted.initial
+    );
     let mut root = Some(accepted.initial.clone());
     for (index, raw_id) in accepted.close_order.iter().enumerate() {
         root = root
@@ -271,6 +305,51 @@ fn hierarchy_reorder_keeps_the_selected_object_active() {
     assert!(app.move_workspace(workspace_b_id, 0));
     assert_eq!(app.active_workspace().id(), workspace_b_id);
     assert_eq!(app.workspaces()[1].id(), workspace_a_id);
+}
+
+#[test]
+fn hierarchy_names_and_explicit_closes_preserve_ids_and_non_empty_parents() {
+    let pane_a = PaneId::new();
+    let pane_b = PaneId::new();
+    let (mut tab_a, probe_a) = tab_with_terminal(TabId::new(), pane_a);
+    let tab_a_id = tab_a.id();
+    assert!(tab_a.rename(Some("  logs  ")));
+    assert_eq!(tab_a.custom_title(), Some("logs"));
+    assert!(tab_a.rename(Some("  ")));
+    assert_eq!(tab_a.custom_title(), None);
+
+    let (tab_b, _) = tab_with_terminal(TabId::new(), pane_b);
+    let mut group = GroupModel::new(GroupId::new(), vec![tab_a, tab_b], 0).unwrap();
+    let group_id = group.id();
+    assert!(group.rename("  workers  "));
+    assert_eq!(group.name(), "workers");
+    assert!(!group.rename("\n\t"));
+    assert_eq!(group.close_tab(0), Some(tab_a_id));
+    assert!(probe_a.snapshot().closed);
+    assert_eq!(group.close_tab(0), None);
+
+    let (group_b, probe_b) = group_with_terminal(GroupId::new(), TabId::new(), PaneId::new());
+    let mut workspace = WorkspaceModel::new(WorkspaceId::new(), vec![group, group_b], 0).unwrap();
+    let workspace_id = workspace.id();
+    assert!(workspace.rename("  deploy  "));
+    assert_eq!(workspace.name(), "deploy");
+    assert_eq!(workspace.close_group(0), Some(group_id));
+    assert_eq!(workspace.close_group(0), None);
+    assert!(!probe_b.snapshot().closed);
+
+    let (workspace_b, probe_c) = workspace_with_terminal(
+        WorkspaceId::new(),
+        GroupId::new(),
+        TabId::new(),
+        PaneId::new(),
+    );
+    let mut app = AppModel::new(vec![workspace, workspace_b], 0).unwrap();
+    assert!(app.cycle_workspace(1));
+    assert!(app.cycle_workspace(-1));
+    assert_eq!(app.close_workspace(0), Some(workspace_id));
+    assert!(probe_b.snapshot().closed);
+    assert_eq!(app.close_workspace(0), None);
+    assert!(!probe_c.snapshot().closed);
 }
 
 #[test]

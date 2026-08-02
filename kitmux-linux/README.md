@@ -1,7 +1,8 @@
 # Kitmux Linux proof workspace
 
-This directory holds the engine and GTK proof implementation. The Linux port
-is experimental; GTK is not selected for the production application yet.
+This directory holds the Linux engine, GTK proof harness, Rust product model,
+and one-terminal product application. The Linux port is experimental; GTK 4
+is the selected host toolkit.
 
 Current scope:
 
@@ -12,10 +13,14 @@ Current scope:
 5. Run the bounded GTK 4/libkitty toolkit spike.
 6. Build the display-free Rust product model and bounded host contracts
    against frozen portable fixtures.
+7. Prove cross-host fixture compatibility and preview macOS state without
+   writing it or executing saved commands.
+8. Build and gate a release-shaped one-terminal Rust/GTK product shell.
 
-No browser UI, package installer, or production navigation shell belongs here
-yet. For complete VM lifecycle, gates, release/SBOM commands, loader
-architecture, and limitations, see
+No browser UI or package installer belongs here yet. The multiplexer
+navigation shell is the next implementation slice but does not exist yet. For
+complete VM lifecycle, gates, release/SBOM commands, loader architecture, and
+limitations, see
 [`../docs/LINUX_DEVELOPMENT.md`](../docs/LINUX_DEVELOPMENT.md).
 
 ## Display-free model
@@ -23,16 +28,34 @@ architecture, and limitations, see
 `rust/model` owns stable workspace/group/tab/pane/surface/split identities,
 split geometry, navigation and reorder rules, close cascading, abstract
 terminal/browser runtime ownership, bounded state/settings/control codecs,
-command semantics, and small Linux filesystem/path adapters. It has no
-display, libkitty, WebKit, shell-execution, or network-runtime dependency. Run
-its complete Slice 3.1 and 3.2 gate from the repository root:
+command semantics, SSH review data, a read-only macOS-state import preview,
+and small Linux filesystem/path adapters. It has no display, libkitty, WebKit,
+shell-execution, or network-runtime dependency. Run the Rust-only gate from
+the repository root:
 
 ```sh
 kitmux-linux/scripts/test-model.sh
 ```
 
-Cross-host fixture exchange and the read-only macOS import preview remain the
-separate Slice 3.3 boundary.
+Run the complete Phase 3 gate, including macOS consumption of Linux-produced
+portable values:
+
+```sh
+kitmux-linux/scripts/test-phase3.sh
+```
+
+Preview a copied macOS `state.json` against an existing Linux home directory:
+
+```sh
+cargo run --locked \
+  --manifest-path kitmux-linux/rust/model/Cargo.toml \
+  --bin kitmux-import-preview -- \
+  /path/to/macos-state.json /home/example
+```
+
+The command prints accepted, translated, rejected, and inert-command fields
+as JSON. It never writes the source or executes a command; it is not a live
+import or restore tool.
 
 ## Current Ubuntu workflow
 
@@ -97,7 +120,60 @@ listed in [`../docs/LINUX_DEVELOPMENT.md`](../docs/LINUX_DEVELOPMENT.md).
 The current VM uses Mesa `llvmpipe`, nested Weston, and nested Sway/pixman.
 It proves the tested X11 and native-Wayland client paths, including virtual
 fractional scaling. It does not prove physical-GPU performance, physical
-mixed-DPI hardware, packaging, or the final GTK toolkit decision.
+mixed-DPI hardware, or packaging.
+
+Run the release-shaped one-terminal product gate against an existing display:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase4.sh"
+```
+
+The Phase 4 gates prove the passwd shell,
+PTY/render/resize/title/cwd lifecycle, isolated relative loader paths, ordered
+exit, child reaping, and terminal interaction on X11 and native Wayland. Both
+backends carry external clipboard evidence; X11 carries foreground-close
+confirmation evidence.
+The Slice 4.3 persistence gate uses isolated XDG roots to prove private atomic
+state, safe cwd/font restore into a fresh shell, inert saved commands,
+replacement watching, recovery policy, and real full-disk preservation.
+
+The Linux settings file can override the seven currently implemented terminal
+shortcuts by stable command ID without changing the portable settings schema:
+
+```json
+{
+  "linuxShortcutBindings": {
+    "terminal.find": {"key": "g", "control": true, "shift": true}
+  }
+}
+```
+
+Supported IDs are `terminal.copy`, `terminal.paste`, `terminal.find`,
+`terminal.clear-scrollback`, `font.increase`, `font.decrease`, and
+`font.reset`. Omitted or invalid entries keep their defaults; ambiguous chords
+are not consumed, and Control-only overrides are rejected so terminal control
+sequences remain reachable. Modifier fields are `control`, `shift`, `alt`, and
+`super`.
+
+Run the focused product gates from the host:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase4-wayland.sh"
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase4-persistence.sh"
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase4-programs.sh"
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase4-soak.sh"
+kitmux-linux/scripts/test-phase4-clean-target.sh
+```
+
+These add native-Wayland interaction, crash/failure persistence, explicit
+Bash/Zsh/Fish/Vim/Less/tmux input, the 30-minute PTY/resize/interaction soak,
+and a release launch in a runtime-only Ubuntu container with no SDK. The last
+gate is clean-runtime evidence, not native package or desktop-install proof.
 
 ## Release-shaped engine runtime
 

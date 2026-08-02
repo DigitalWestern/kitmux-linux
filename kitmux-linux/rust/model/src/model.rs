@@ -1,7 +1,7 @@
 use crate::{
     Direction, GroupId, PaneContainer, PaneContainerError, PaneId, PaneSurface, PixelRect,
-    PixelSize, RuntimeKind, SplitAxis, SplitLayout, SplitNode, SurfaceId, TabId, WorkspaceId,
-    directional_neighbor,
+    PixelSize, RuntimeKind, SplitAxis, SplitId, SplitLayout, SplitNode, SurfaceId, TabId,
+    WorkspaceId, directional_neighbor,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -47,6 +47,7 @@ impl From<PaneContainerError> for ModelError {
 
 pub struct TabModel {
     id: TabId,
+    custom_title: Option<String>,
     root: SplitNode,
     focused_pane_id: PaneId,
     panes: HashMap<PaneId, PaneContainer>,
@@ -79,6 +80,7 @@ impl TabModel {
         }
         Ok(Self {
             id,
+            custom_title: None,
             root,
             focused_pane_id,
             panes: pane_registry,
@@ -94,6 +96,20 @@ impl TabModel {
     #[must_use]
     pub const fn id(&self) -> TabId {
         self.id
+    }
+
+    #[must_use]
+    pub fn custom_title(&self) -> Option<&str> {
+        self.custom_title.as_deref()
+    }
+
+    pub fn rename(&mut self, title: Option<&str>) -> bool {
+        let title = title.and_then(normalized_optional_label);
+        if self.custom_title == title {
+            return false;
+        }
+        self.custom_title = title;
+        true
     }
 
     #[must_use]
@@ -158,6 +174,48 @@ impl TabModel {
         };
         self.focused_pane_id = neighbor;
         true
+    }
+
+    pub fn resize_focused(
+        &mut self,
+        direction: Direction,
+        rect: PixelRect,
+        gap: i32,
+        minimum_leaf_size: PixelSize,
+        ratio_step: f64,
+    ) -> bool {
+        let Some(target) = self.root.resize_target(self.focused_pane_id, direction) else {
+            return false;
+        };
+        let layout = self.layout(rect, gap, minimum_leaf_size);
+        let Some(split_rect) = layout.split_frames.get(&target.split_id).copied() else {
+            return false;
+        };
+        let Some(bounds) =
+            self.root
+                .ratio_bounds(target.split_id, split_rect, gap, minimum_leaf_size)
+        else {
+            return false;
+        };
+        self.root
+            .adjust_ratio(target.split_id, target.ratio_delta(ratio_step), bounds)
+    }
+
+    pub fn set_split_ratio(
+        &mut self,
+        split_id: SplitId,
+        ratio: f64,
+        split_rect: PixelRect,
+        gap: i32,
+        minimum_leaf_size: PixelSize,
+    ) -> bool {
+        let Some(bounds) = self
+            .root
+            .ratio_bounds(split_id, split_rect, gap, minimum_leaf_size)
+        else {
+            return false;
+        };
+        self.root.set_ratio(split_id, ratio, bounds)
     }
 
     pub fn split_pane(
@@ -242,6 +300,7 @@ impl TabModel {
 
 pub struct GroupModel {
     id: GroupId,
+    name: String,
     tabs: Vec<TabModel>,
     active_tab_index: usize,
 }
@@ -258,6 +317,7 @@ impl GroupModel {
         }
         Ok(Self {
             id,
+            name: "Group 1".to_owned(),
             tabs,
             active_tab_index,
         })
@@ -270,6 +330,22 @@ impl GroupModel {
     #[must_use]
     pub const fn id(&self) -> GroupId {
         self.id
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn rename(&mut self, name: &str) -> bool {
+        let Some(name) = normalized_required_label(name) else {
+            return false;
+        };
+        if self.name == name {
+            return false;
+        }
+        self.name = name;
+        true
     }
 
     #[must_use]
@@ -327,6 +403,13 @@ impl GroupModel {
         )
     }
 
+    pub fn close_tab(&mut self, index: usize) -> Option<TabId> {
+        let mut removed = self.remove_tab(index)?;
+        let id = removed.id();
+        removed.close_all();
+        Some(id)
+    }
+
     fn remove_tab(&mut self, index: usize) -> Option<TabModel> {
         remove_selected(&mut self.tabs, &mut self.active_tab_index, index)
     }
@@ -340,6 +423,7 @@ impl GroupModel {
 
 pub struct WorkspaceModel {
     id: WorkspaceId,
+    name: String,
     groups: Vec<GroupModel>,
     active_group_index: usize,
 }
@@ -356,6 +440,7 @@ impl WorkspaceModel {
         }
         Ok(Self {
             id,
+            name: "Workspace 1".to_owned(),
             groups,
             active_group_index,
         })
@@ -368,6 +453,22 @@ impl WorkspaceModel {
     #[must_use]
     pub const fn id(&self) -> WorkspaceId {
         self.id
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn rename(&mut self, name: &str) -> bool {
+        let Some(name) = normalized_required_label(name) else {
+            return false;
+        };
+        if self.name == name {
+            return false;
+        }
+        self.name = name;
+        true
     }
 
     #[must_use]
@@ -424,6 +525,13 @@ impl WorkspaceModel {
             target_index,
             GroupModel::id,
         )
+    }
+
+    pub fn close_group(&mut self, index: usize) -> Option<GroupId> {
+        let mut removed = self.remove_group(index)?;
+        let id = removed.id();
+        removed.close_all();
+        Some(id)
     }
 
     fn remove_group(&mut self, index: usize) -> Option<GroupModel> {
@@ -500,6 +608,18 @@ impl AppModel {
         true
     }
 
+    pub fn cycle_workspace(&mut self, direction: i32) -> bool {
+        if self.workspaces.len() <= 1 {
+            return false;
+        }
+        self.active_workspace_index = wrapped_index(
+            self.active_workspace_index,
+            direction,
+            self.workspaces.len(),
+        );
+        true
+    }
+
     pub fn append_workspace(&mut self, workspace: WorkspaceModel) -> Result<usize, ModelError> {
         let id = workspace.id;
         if self.workspaces.iter().any(|candidate| candidate.id == id) {
@@ -522,6 +642,17 @@ impl AppModel {
             target_index,
             WorkspaceModel::id,
         )
+    }
+
+    pub fn close_workspace(&mut self, index: usize) -> Option<WorkspaceId> {
+        let mut removed = remove_selected(
+            &mut self.workspaces,
+            &mut self.active_workspace_index,
+            index,
+        )?;
+        let id = removed.id();
+        removed.close_all();
+        Some(id)
     }
 
     pub fn focus_pane(&mut self, pane_id: PaneId) -> bool {
@@ -730,6 +861,16 @@ fn validate_non_empty_active<T>(
 fn all_unique<T: Eq + std::hash::Hash>(values: impl IntoIterator<Item = T>) -> bool {
     let mut seen = HashSet::new();
     values.into_iter().all(|value| seen.insert(value))
+}
+
+fn normalized_optional_label(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty() && !value.chars().any(char::is_control))
+        .then(|| value.chars().take(256).collect())
+}
+
+fn normalized_required_label(value: &str) -> Option<String> {
+    normalized_optional_label(value)
 }
 
 fn wrapped_index(index: usize, direction: i32, count: usize) -> usize {
