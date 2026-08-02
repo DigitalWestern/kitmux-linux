@@ -8,4 +8,5 @@ kitmux-linux/build-app/
 kitmux-linux/kitmux-app-debug.png
 target/
 kitmux-linux/vendor/
+.phase4-clean-target.*/
 compile_commands.json
