@@ -756,6 +756,23 @@ fn dispatch_control_request(
             "method is not in the control catalog",
         );
     };
+    if terminal.borrow().close_dialog_open
+        && !matches!(
+            method,
+            ControlMethod::Ping
+                | ControlMethod::Identify
+                | ControlMethod::Capabilities
+                | ControlMethod::Tree
+                | ControlMethod::EventList
+                | ControlMethod::PaneReadScreen
+        )
+    {
+        return control_failure(
+            &request,
+            "busy",
+            "control mutations are paused while a close dialog is open",
+        );
+    }
     if !matches!(
         method,
         ControlMethod::Ping
@@ -1099,6 +1116,7 @@ fn control_close(
         .params
         .get("force")
         .is_some_and(|value| value == "true");
+    let previous_close_confirmed = terminal.borrow().close_confirmed;
     let foreground = terminal.borrow().foreground_surfaces(Some(scope));
     if !foreground.is_empty() && !force {
         restore_navigation(terminal, previous_selection);
@@ -1130,6 +1148,7 @@ fn control_close(
         "tab" => {
             let mut terminal = terminal.borrow_mut();
             let Some(navigation) = terminal.navigation.as_mut() else {
+                terminal.close_confirmed = previous_close_confirmed;
                 return control_failure(request, "not_ready", "navigation is not ready");
             };
             let index = navigation
@@ -1145,6 +1164,7 @@ fn control_close(
         "group" => {
             let mut terminal = terminal.borrow_mut();
             let Some(navigation) = terminal.navigation.as_mut() else {
+                terminal.close_confirmed = previous_close_confirmed;
                 return control_failure(request, "not_ready", "navigation is not ready");
             };
             let index = navigation.active_workspace().active_group_index();
@@ -1156,6 +1176,7 @@ fn control_close(
         "workspace" => {
             let mut terminal = terminal.borrow_mut();
             let Some(navigation) = terminal.navigation.as_mut() else {
+                terminal.close_confirmed = previous_close_confirmed;
                 return control_failure(request, "not_ready", "navigation is not ready");
             };
             navigation
@@ -1164,7 +1185,7 @@ fn control_close(
         }
         _ => false,
     };
-    terminal.borrow_mut().close_confirmed = false;
+    terminal.borrow_mut().close_confirmed = previous_close_confirmed;
     if changed && !applied_effect {
         apply_navigation_effect(terminal, NavigationEffect::Changed);
         control_success(request, json!({"changed": true}))
