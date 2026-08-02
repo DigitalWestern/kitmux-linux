@@ -581,6 +581,14 @@ enum NavigationEffect {
     Rename(RenameTarget),
 }
 
+#[derive(Clone, Copy)]
+enum ForegroundScope {
+    Pane,
+    Tab,
+    Group,
+    Workspace,
+}
+
 struct PersistenceState {
     state_path: PathBuf,
     state_may_write: bool,
@@ -643,6 +651,15 @@ fn changed(value: bool) -> NavigationEffect {
         NavigationEffect::Changed
     } else {
         NavigationEffect::Rejected
+    }
+}
+
+fn foreground_scope(command: CommandId) -> ForegroundScope {
+    match command {
+        CommandId::PaneClose => ForegroundScope::Pane,
+        CommandId::GroupClose => ForegroundScope::Group,
+        CommandId::WorkspaceClose => ForegroundScope::Workspace,
+        _ => ForegroundScope::Pane,
     }
 }
 
@@ -799,12 +816,12 @@ fn dispatch_control_request(
         ControlMethod::GroupMove => control_move(terminal, &request, "group"),
         ControlMethod::TabMove => control_move(terminal, &request, "tab"),
         ControlMethod::WorkspaceClose => {
-            control_close(terminal, &request, "workspace", CommandId::WorkspaceClose)
+            control_close(terminal, &request, "workspace", ForegroundScope::Workspace)
         }
         ControlMethod::GroupClose => {
-            control_close(terminal, &request, "group", CommandId::GroupClose)
+            control_close(terminal, &request, "group", ForegroundScope::Group)
         }
-        ControlMethod::TabClose => control_close(terminal, &request, "tab", CommandId::PaneClose),
+        ControlMethod::TabClose => control_close(terminal, &request, "tab", ForegroundScope::Tab),
         ControlMethod::PaneSplit => {
             let axis = match request.params.get("axis").map(String::as_str) {
                 Some("right") => CommandId::PaneSplitRight,
@@ -871,7 +888,9 @@ fn dispatch_control_request(
                 control_failure(&request, "not_found", "target pane was not found")
             }
         }
-        ControlMethod::PaneClose => control_close(terminal, &request, "pane", CommandId::PaneClose),
+        ControlMethod::PaneClose => {
+            control_close(terminal, &request, "pane", ForegroundScope::Pane)
+        }
         ControlMethod::PaneSend => control_send(terminal, &request),
         ControlMethod::PaneSendKey => control_send_key(terminal, &request),
         ControlMethod::PaneReadScreen => control_read_screen(terminal, &request),
@@ -1055,7 +1074,7 @@ fn control_close(
     terminal: &Rc<RefCell<Terminal>>,
     request: &ControlRequest,
     noun: &str,
-    command: CommandId,
+    scope: ForegroundScope,
 ) -> ControlResponse {
     let id = request
         .params
@@ -1080,7 +1099,7 @@ fn control_close(
         .params
         .get("force")
         .is_some_and(|value| value == "true");
-    let foreground = terminal.borrow().foreground_surfaces(Some(command));
+    let foreground = terminal.borrow().foreground_surfaces(Some(scope));
     if !foreground.is_empty() && !force {
         restore_navigation(terminal, previous_selection);
         return control_failure(
@@ -2634,23 +2653,24 @@ impl Terminal {
         .map(|found| found.url)
     }
 
-    fn foreground_surfaces(&self, command: Option<CommandId>) -> Vec<SurfaceId> {
+    fn foreground_surfaces(&self, scope: Option<ForegroundScope>) -> Vec<SurfaceId> {
         let Some(navigation) = self.navigation.as_ref() else {
             return Vec::new();
         };
         let active_workspace = navigation.active_workspace().id();
         let active_group = navigation.active_workspace().active_group().id();
+        let active_tab = navigation.active_tab().id();
         let active_pane = navigation.active_tab().focused_pane_id();
         navigation
             .runtime_presentations()
             .into_iter()
-            .filter(|presentation| match command {
-                Some(CommandId::PaneClose) => presentation.location.pane_id == active_pane,
-                Some(CommandId::GroupClose) => presentation.location.group_id == active_group,
-                Some(CommandId::WorkspaceClose) => {
+            .filter(|presentation| match scope {
+                Some(ForegroundScope::Pane) => presentation.location.pane_id == active_pane,
+                Some(ForegroundScope::Tab) => presentation.location.tab_id == active_tab,
+                Some(ForegroundScope::Group) => presentation.location.group_id == active_group,
+                Some(ForegroundScope::Workspace) => {
                     presentation.location.workspace_id == active_workspace
                 }
-                Some(_) => false,
                 None => true,
             })
             .filter_map(|presentation| {
@@ -3517,7 +3537,7 @@ fn request_navigation_command(
         if !terminal.confirm_close_with_running_process {
             Vec::new()
         } else {
-            terminal.foreground_surfaces(Some(command))
+            terminal.foreground_surfaces(Some(foreground_scope(command)))
         }
     };
     if foreground.is_empty() {
@@ -3562,7 +3582,7 @@ fn request_navigation_command(
         if matches!(choice, Ok(1)) {
             let rechecked = terminal_confirm
                 .borrow()
-                .foreground_surfaces(Some(command))
+                .foreground_surfaces(Some(foreground_scope(command)))
                 .len();
             diagnostic(
                 "close_scope_reviewed",
