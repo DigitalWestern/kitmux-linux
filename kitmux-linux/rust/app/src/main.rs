@@ -1998,6 +1998,7 @@ unsafe extern "C" fn pump_pty(_fd: c_int, condition: u32, userdata: *mut c_void)
     let active = terminal.active_surface_id == surface_id;
     let (changed, bytes, area, child_alive, hidden_pump) = {
         let Some(session) = terminal.sessions.get_mut(&surface_id) else {
+            // Unreachable in the registry design: close removes the source before the session.
             return 0;
         };
         if session.session.is_null() {
