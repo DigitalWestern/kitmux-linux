@@ -11,10 +11,11 @@
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phases 0 through 4 are complete. GTK 4 is the selected
-Linux UI toolkit. Phase 5's navigation hierarchy, split/session ownership,
-product controls, full safe hierarchy persistence, close review, and initial
-accessibility are complete on X11 and native Wayland. See
+**Current progress:** Phases 0 through 5 and Slice 6.1 are complete. GTK 4 is
+the selected Linux UI toolkit. Phase 5's navigation hierarchy, split/session
+ownership, product controls, full safe hierarchy persistence, close review, and
+initial accessibility are complete on X11 and native Wayland, and the secure
+local control socket and `kitmuxctl` are closed. Slice 6.2 is next. See
 [`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could

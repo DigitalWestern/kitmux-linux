@@ -14,7 +14,7 @@ reviewed session.
 | Platform | Current state |
 | --- | --- |
 | macOS | Daily-driver application for macOS 13+ on Apple silicon. Terminal, navigation, persistence, settings, local control, SSH, browser panes, reliability gates, and local arm64 packaging exist. Public distribution still needs Developer ID signing, notarization, stapling, and real macOS 13 hardware qualification. |
-| Linux | Experimental, GPL-3.0-only. Phases 0 through 5 are complete: the engine passes headless and clean-runtime gates; GTK 4 is the selected toolkit; and a release-shaped terminal multiplexer alpha runs on X11 and native Wayland with Mesa llvmpipe — hierarchy navigation, nested splits, one permanent libkitty session per live surface, selection/clipboard/paste-safety/mouse/wheel/search, native command palette and settings, full safe hierarchy persistence, and close-chain foreground review. x86_64, physical-GPU and mixed-DPI hardware behavior, complete AT-SPI coverage, browser product behavior, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. |
+| Linux | Experimental, GPL-3.0-only. Phases 0 through 5 and Slice 6.1 are complete: the engine passes headless and clean-runtime gates, GTK 4 is the selected toolkit, and a release-shaped terminal multiplexer alpha with a secure local control socket runs on X11 and native Wayland under Mesa llvmpipe. x86_64, physical-GPU and mixed-DPI hardware behavior, complete AT-SPI coverage, browser product behavior, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. Exact per-slice evidence and non-claims are in [PORT_STATUS.md](PORT_STATUS.md). |
 
 Linux is not yet a production application or downloadable desktop package.
 GTK 4 was selected in Slice 2.3 on 2026-07-26 after every Phase 2 kill test passed;
@@ -76,8 +76,8 @@ control, SSH, reliability, and soak gates required for changes in those areas.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK
 run before the expensive ones that almost certainly cannot.
 
-1. Add secure local control and a CLI (Slice 6.1), then SSH and agent workflows,
-   then resume and recovery — Phase 6.
+1. Secure local control and a CLI (Slice 6.1) is closed. Next is SSH and agent
+   workflows, then resume and recovery — Phase 6.
 2. Prove one physical Mesa GPU before beta; llvmpipe proves correctness, not drivers.
 3. Close ADR 0008 R1 and R2 — standalone buildability and one automated gate — before
    any packaging work or a second contributor.

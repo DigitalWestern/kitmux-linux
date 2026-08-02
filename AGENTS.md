@@ -54,6 +54,27 @@ observations, not proof that a checkout is still unchanged.
 - Preserve user changes. Ask before deletion, history rewriting, or abandoning
   the dirty macOS refactor.
 
+## Document ownership
+
+Each document owns one thing. Do not restate another document's content —
+link to it. Six files once carried their own copy of "what is proven right
+now"; they drifted, which is why this rule exists.
+
+| Document | Owns |
+| --- | --- |
+| `PORT_STATUS.md` | Evidence. What is proven, by which exact command, on which date. Blockers, limits, the debt ledger, and the next-agent handoff. Append-only for dated entries. |
+| `NEXT_STEPS.md` | The next slice and its preconditions only. No completed-slice history. |
+| `LINUX_PORT_PLAN.md` | Phase and slice scope, dependency order, exit gates, and the rules the port must not forget. |
+| `docs/LINUX_DEVELOPMENT.md` | Every command: VM lifecycle, gates, release runtime, SBOM, loader boundary. |
+| `README.md` | The public-facing summary. One-paragraph platform status, architecture, licensing. |
+| `kitmux-linux/README.md` | Directory map only. |
+| `docs/decisions/` | Closed decisions. One ADR per decision; supersede rather than edit. |
+| `contracts/` | Fixture and inventory rules. |
+
+A remediation or audit plan is a working document. When its tasks are done,
+delete it — the commits it produced and the evidence entry in `PORT_STATUS.md`
+are the durable record.
+
 ## Source-of-truth order
 
 When documents disagree, use this order:

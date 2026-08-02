@@ -2,39 +2,32 @@
 
 **Last inspected:** 2026-08-02
 
-**Implementation state:** Phases 0 through 5 are closed. GTK 4
-is the selected Linux UI toolkit. Separate Ubuntu ARM64 headless and
-XFCE desktop VMs, an ELF `libkitty.so`, a relocatable 104 MB attributed engine runtime,
-Linux stress tests, a real GTK 4 terminal host over X11 and native Wayland
-client paths, deterministic keyboard, input-method, and fractional scaling
-harnesses, an authoritative portable contract corpus, a display-free Rust
-product model with bounded contracts, and a release-shaped terminal
-multiplexer alpha exist. The alpha has live hierarchy navigation, nested
-terminal splits, one permanent libkitty session per live surface, native
-command/settings controls, full safe hierarchy persistence, close-chain
-foreground review, and initial accessible roles/focus order. Native packaging
-does not exist yet.
-
-**Active track:** Slice 6.1 secure local control and CLI is closed. The
-mandatory macOS/libkitty v0.21 rebaseline is complete. Slice 6.2 SSH and
-agent workflows has not started.
-
-**Next gate:** Slice 6.2 SSH and agent workflows. It was not started by this
-audit. Physical-Mesa GPU rendering and interaction remain a Phase 6 beta
-obligation; native packaging remains Phase 8 work.
-Phase 4's shell/editor,
-X11/Wayland, 30-minute interaction-soak, and clean no-SDK gates all pass.
-Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK ran
-before product work. All passed, including the final relocatable-loader and
-accessibility viability gate. Selection, clipboard, safe paste, mouse, wheel,
-search, configurable terminal shortcuts, and crash-safe one-terminal
-persistence are wired into the product shell. Phase 3
-now consumes every frozen Phase 0.4
-contract family and exchanges Linux-produced values with macOS; its import
-preview remains data-only and separate from Phase 4's product persistence.
-The concrete sub-slice order is in [`NEXT_STEPS.md`](NEXT_STEPS.md).
-Operational VM, gate, runtime, and SBOM commands are in
+This file is the evidence ledger and the authority on what is currently true.
+The next slice is in [`NEXT_STEPS.md`](NEXT_STEPS.md); phase scope is in
+[`LINUX_PORT_PLAN.md`](LINUX_PORT_PLAN.md); commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
+
+**Implementation state:** Phases 0 through 5 and Slice 6.1 are closed. GTK 4 is
+the selected Linux UI toolkit. What exists: separate Ubuntu ARM64 headless and
+XFCE desktop VMs; an ELF `libkitty.so`; a relocatable ~104 MiB attributed engine
+runtime; Linux stress tests; a GTK 4 terminal host over X11 and native Wayland
+client paths; deterministic keyboard, input-method, and fractional-scaling
+harnesses; an authoritative portable contract corpus; a display-free Rust
+product model with bounded contracts; a release-shaped terminal multiplexer
+alpha; and a secure local control socket with the `kitmuxctl` CLI.
+
+The alpha has live hierarchy navigation, nested terminal splits, one permanent
+libkitty session per live surface, selection/clipboard/paste-safety/mouse/wheel/
+search, native command and settings controls, full safe hierarchy persistence,
+close-chain foreground review, and initial accessible roles and focus order.
+Native packaging does not exist yet.
+
+**Next gate:** Slice 6.2 SSH and agent workflows. Not started. Physical-Mesa GPU
+rendering and interaction remain a separate Phase 6 beta obligation; native
+packaging remains Phase 8 work.
+
+**Non-claims:** see [Current blockers and limits](#current-blockers-and-limits).
+All GUI evidence below is ARM64, Mesa llvmpipe, one machine, one person.
 
 **Licence:** GPL-3.0-only, decided 2026-07-25 in ADR 0006. `LICENSE` is at the
 repository root.
@@ -117,40 +110,40 @@ listed only in the checkout's local Git exclude file.
 
 ### 2026-08-02 — Slices 0–5 maintenance audit verification complete
 
-- \`git status --short\` returned empty after the final task commit.
-- \`python3 contracts/validate-fixtures.py\` passed: 6 contracts, 20 cases,
+- `git status --short` returned empty after the final task commit.
+- `python3 contracts/validate-fixtures.py` passed: 6 contracts, 20 cases,
   7 versioned JSON files; portable fixtures OK.
-- \`python3 contracts/validate-inventory.py\` passed: 97 Linux test references,
+- `python3 contracts/validate-inventory.py` passed: 97 Linux test references,
   234 macOS source and test references, 64 features across 17 areas; inventory OK.
-- \`kitmux-linux/scripts/test-model.sh\` passed 52 Rust model/contract/
+- `kitmux-linux/scripts/test-model.sh` passed 52 Rust model/contract/
   interaction/persistence tests with formatting and Clippy clean.
-- \`kitmux-linux/scripts/test-phase3.sh\` passed 52 Rust tests, 6 contracts/20
+- `kitmux-linux/scripts/test-phase3.sh` passed 52 Rust tests, 6 contracts/20
   cases/7 byte-identical fixture files, 97 Linux inventory references, 234 macOS
   references, and all 9 macOS portable-contract consumer tests. The first
-  sandboxed attempt was blocked by SwiftPM's \`sandbox-exec: sandbox_apply:
-  Operation not permitted\`; the same command passed when rerun with host
+  sandboxed attempt was blocked by SwiftPM's `sandbox-exec: sandbox_apply:
+  Operation not permitted`; the same command passed when rerun with host
   permissions.
-- \`kitmux-linux/scripts/materialize-reference.sh\` passed: 7 locked reference
+- `kitmux-linux/scripts/materialize-reference.sh` passed: 7 locked reference
   files and 1 Linux overlay verified.
-- \`kitmux-linux/scripts/report-reference-drift.py\` passed: frozen tag and
+- `kitmux-linux/scripts/report-reference-drift.py` passed: frozen tag and
   current macOS HEAD both resolve to
-  \`3088295003c0842d7c3198102d0d05378da4dc62\`; no relevant committed or
+  `3088295003c0842d7c3198102d0d05378da4dc62`; no relevant committed or
   uncommitted drift.
-- \`limactl shell kitmux-linux -- "$PWD/kitmux-linux/scripts/test-headless.sh"\`
+- `limactl shell kitmux-linux -- "$PWD/kitmux-linux/scripts/test-headless.sh"`
   passed all 6 C/C++/ELF/engine/session/stress tests. The guest skipped its
   reference check because the macOS checkout is not mounted in the headless VM;
   host materialization and drift checks above passed.
-- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
-  "$PWD/kitmux-linux/scripts/test-phase4.sh"\` passed: Phase 4 release-layout
+- `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4.sh"` passed: Phase 4 release-layout
   lifecycle and terminal-interaction gate OK.
-- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
-  "$PWD/kitmux-linux/scripts/test-phase5-product.sh"\` passed: Phase 5 product
+- `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase5-product.sh"` passed: Phase 5 product
   controls, close review, persistence, and accessibility gate OK.
-- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
-  KITMUX_RAPID_NAV_GATE=1 "$PWD/kitmux-linux/scripts/test-phase5-navigation.sh"\`
+- `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  KITMUX_RAPID_NAV_GATE=1 "$PWD/kitmux-linux/scripts/test-phase5-navigation.sh"`
   passed: Phase 5 rapid navigation and permanent-session churn gate OK.
-- \`limactl shell kitmux-linux-desktop -- env DISPLAY=:1
-  "$PWD/kitmux-linux/scripts/test-phase4-wayland.sh"\` passed: Phase 4
+- `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase4-wayland.sh"` passed: Phase 4
   release-layout lifecycle and terminal-interaction gate OK, and native-Wayland
   product interaction gate OK.
 - Source-tested: yes on macOS and Ubuntu ARM64, including cross-host fixtures.
@@ -1306,9 +1299,11 @@ clean-machine release evidence.
   features across 17 areas. Every row carries a stable ID, behavior, macOS
   source/test references, a classification, a Linux acceptance statement,
   dependencies, translation notes, and a `linux_status`. Verified by
-  `python3 contracts/validate-inventory.py`, which resolves 97 Linux test references
+  `python3 contracts/validate-inventory.py`, which resolved 97 Linux test references
   and 234 macOS source and test references at
-  `macos-linux-port-baseline-2026-08-02-v0.21` and reports `inventory OK`.
+  `macos-linux-port-baseline-2026-08-02-v0.21` and reported `inventory OK` when this
+  entry was written. The Linux count grows as slices add tests — Slice 6.1 took it to
+  105. Run the validator for the current figure rather than quoting this one.
   The 2026-07-25 plan audit found the original 16 rows too coarse for Phase 9's parity
   gate; decomposition to per-behavior rows was completed before Phase 5.
 - Slice 0.3 — decisions and support targets: ADRs 0001 through 0005 exist under
@@ -1378,45 +1373,73 @@ clean-machine release evidence.
 
 ### Carried-forward Phase 4 review findings
 
-\`docs/PHASE4_REVIEW_NOTES.md\` recorded eight findings on 2026-07-28 and none were fixed
-before Phase 5 closed. Status as of 2026-08-02:
+A second-pair-of-eyes review on 2026-07-28 recorded eight findings against the
+in-flight Slice 4.1/4.2 tree and none were fixed before Phase 5 closed. The full
+review text is in commit `e88a91b` (`docs/PHASE4_REVIEW_NOTES.md`, since removed);
+this ledger is the live record. Status as of 2026-08-02:
 
-- **#1 environment-disableable safety prompts — closed.** \`KITMUX_AUTOPASTE\` and
-  \`KITMUX_AUTOCLOSE\` are now behind the off-by-default \`test-hooks\` cargo feature.
-- **#2 build.rs did not relink on C changes — closed.** \`build.rs\` now emits
-  \`cargo:rerun-if-changed\` for both static archives.
+- **#1 environment-disableable safety prompts — closed.** `KITMUX_AUTOPASTE` and
+  `KITMUX_AUTOCLOSE` are now behind the off-by-default `test-hooks` cargo feature.
+- **#2 build.rs did not relink on C changes — closed.** `build.rs` now emits
+  `cargo:rerun-if-changed` for both static archives.
 - **#7 dangling event-source id — assessed unreachable.** The current close path
   removes the GLib source before deleting the corresponding session from
-  \`Terminal::sessions\`; shutdown only visits remaining registry entries, so no stale
+  `Terminal::sessions`; shutdown only visits remaining registry entries, so no stale
   ID can reach its loop under the current registry design.
 - **#3 two exported bridge functions have no caller — open.**
-  \`kitmux_widget_surface_scale\` and \`kitmux_session_draw_preserving_gl_state\` in
-  \`src/gtk_terminal_bridge.c\`. The review verified this is not a scaling bug. Delete
+  `kitmux_widget_surface_scale` and `kitmux_session_draw_preserving_gl_state` in
+  `src/gtk_terminal_bridge.c`. The review verified this is not a scaling bug. Delete
   them or record why they are kept.
-- **#4 \`let _ = committed;\` — open.** \`rust/app/src/main.rs\` in the key-pressed handler.
+- **#4 `let _ = committed;` — open.** `rust/app/src/main.rs` in the key-pressed handler.
   Either the commit state should affect whether the release is withheld, or this is a
   leftover.
-- **#5 shutdown runs and logs twice — open, mitigated.** \`connect_close_request\` and
-  \`connect_unrealize\` both call \`shutdown\`. The Phase 5 gates assert
-  \`sessions=N reaped=true\` with N greater than zero, and the second call emits
-  \`sessions=0\`, so it cannot satisfy them. The masking risk the review described is
+- **#5 shutdown runs and logs twice — open, mitigated.** `connect_close_request` and
+  `connect_unrealize` both call `shutdown`. The Phase 5 gates assert
+  `sessions=N reaped=true` with N greater than zero, and the second call emits
+  `sessions=0`, so it cannot satisfy them. The masking risk the review described is
   gated against, not fixed in code.
 - **#6 libkitty's error text is discarded on startup failure — open.**
-  \`initialize\` fills a 1024-byte buffer and returns a stage name without reading it.
-  \`render.init-failure-visible\` is also one of the inventory rows with no macOS test,
+  `initialize` fills a 1024-byte buffer and returns a stage name without reading it.
+  `render.init-failure-visible` is also one of the inventory rows with no macOS test,
   so no gate on either platform pins this.
-- **#8 wheel speed is an unnamed constant — open.** \`-dy * cell_points * 5.0\`; kitty's
+- **#8 wheel speed is an unnamed constant — open.** `-dy * cell_points * 5.0`; kitty's
   own default is three. It belongs in settings.
 
-Six inventory rows carry no \`macos_tests\`, five of them terminal-alpha:
-\`render.gl-state-isolation\`, \`render.scale-correctness\`,
-\`render.init-failure-visible\`, \`render.webkit-coexistence\`, and
-\`keyboard.press-release-repeat\`. Phase 9's parity gate resolves rows against macOS
+The same review recorded four smaller items. Verified against the tree on
+2026-08-02:
+
+- **Duplicated `repr(C)` type in `main.rs` — closed.** `RenderResult` now lives in
+  `rust/app/src/ffi.rs`. The remaining `unsafe extern "C"` block in `main.rs`
+  declares GLib entry points, not libkitty layout, so it carries no drift risk.
+- **`connect_close_request` returns `Propagation::Stop` on a borrowed `RefCell` —
+  open.** The window cannot be closed for that window of time. A hang-shaped
+  failure, not a crash-shaped one.
+- **CMake installs `libkitty.so` to both `lib/` and `lib/app/` — open.** The two
+  `install(TARGETS kitty …)` calls are guarded by `KITMUX_BUILD_GTK_HOST` and
+  `KITMUX_BUILD_APP` separately, so enabling both muddies the app-only loader
+  isolation Slice 4.1 claims. Release builds enable only the app path.
+- **`build.rs` panics without `KITMUX_NATIVE_LIB_DIR` — open, accepted.** `cargo
+  build` alone cannot build the app. This is one more thing ADR 0008 R1 has to
+  answer.
+
+The review also verified these as correct. Do not "fix" them without a
+regression to point at: GL state capture/restore coverage; withholding a key
+release only when the press never reached the terminal as a key event; the
+Ctrl+Shift shortcut defaults that keep terminal control codes reachable;
+diagnostics that record byte counts and status codes but never clipboard
+contents, titles, or paths; the PTY source at priority 200 matching the Slice
+2.2F fairness result; and the `--locked`/`--remap-path-prefix` cargo invocation
+with a hashed app `Cargo.lock`.
+
+Six inventory rows carry no `macos_tests`, five of them terminal-alpha:
+`render.gl-state-isolation`, `render.scale-correctness`,
+`render.init-failure-visible`, `render.webkit-coexistence`, and
+`keyboard.press-release-repeat`. Phase 9's parity gate resolves rows against macOS
 behavior; these have no macOS oracle.
 
 Slice 0.1 remains unmarked: its 2026-07-23 evidence names the baseline gates by family
-but does not enumerate the seven required \`make\` commands and
-\`git status --short --branch\`, so this ledger does not claim that gate was fully
+but does not enumerate the seven required `make` commands and
+`git status --short --branch`, so this ledger does not claim that gate was fully
 evidenced.
 
 ### Reproducibility defects (ADR 0008)

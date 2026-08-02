@@ -1,97 +1,43 @@
 # Linux development and evidence
 
-This is the operational reference for the experimental Linux port. Run all
+This is the operational reference for the experimental Linux port: how to build
+it, how to run every gate, and where its architectural boundaries are. Run all
 host commands from the Linux repository root on the macOS machine.
 
-## What is proven
+**What is currently proven, and what is not, lives in
+[`../PORT_STATUS.md`](../PORT_STATUS.md)** — its evidence log carries the exact
+per-slice commands and results, and its "Current blockers and limits" section
+carries the non-claims. This file does not restate them; when the two disagree,
+`PORT_STATUS.md` wins.
 
-- A pinned `libkitty.so` builds on Ubuntu 26.04 ARM64 and exports only its
-  intended C API.
-- Six headless C/C++/ELF/engine/session/stress tests and the Rust/C layout
-  check pass.
-- A relocatable release-shaped engine runtime passed twice in clean Ubuntu
-  26.04 and twice in clean Fedora 44 ARM64 containers. Each distribution
-  produced a stable repeated inventory.
-- Fresh clean-gate outputs were approximately 104 MiB, with 24 SPDX packages,
-  876 regular files, and 23 upstream notices. The SPDX 2.3 JSON document
-  passed the official `spdx-tools` validator.
-- One real libkitty terminal renders, pumps PTY output, resizes, restores
-  tracked GL state, reports initialization failure, closes, and reaps its
-  child in GTK 4.22.4 over X11 and a native Wayland client path with Mesa
-  llvmpipe.
-- Keyboard input reaches that terminal with exact, fixed byte expectations:
-  press, release, and auto-repeat; the kitty keyboard protocol and DECCKM;
-  Compose, dead keys, AltGr, a non-US layout, emoji, and a real IBus
-  preedit/commit flow; and focus transfer to an ordinary GTK control beside
-  the terminal.
-- WebKitGTK 2.52.3 renders a static in-memory fixture beside that terminal
-  under X11 and native Wayland without GL-state, loader, or focus conflict.
-  The live host resolved 139 native libraries while keeping pinned libpython
-  isolated from the distro WebKitGTK/GTK dependency set.
-- Under nested Sway, one native-Wayland session moves through virtual outputs
-  at 100%, 150%, and 200% and back to 100%. Exact surface/backing scales,
-  framebuffer, cell, grid, content, and child-PID assertions pass without
-  session or return-metric drift.
-- The display-free Rust model gate passes 52 model/contract/interaction/
-  persistence tests on
-  macOS and Ubuntu ARM64. Nine macOS fixture tests consume Linux-produced
-  state, settings, split, command, control, and SSH values. The state import
-  preview is read-only and keeps saved commands inert.
-- A release-shaped Rust/GTK product app launches one passwd-shell session on
-  X11 and native Wayland with isolated relative loader paths, pumps and renders
-  50,000 output lines through repeated resizes, reports secret-safe title/cwd
-  updates, and exits with its terminal child reaped. Its terminal controller
-  covers configurable shortcut-before-IME routing, clipboard/paste safety, selection,
-  search, font controls, mouse/wheel input, pointer-time PTY progress, and
-  foreground close confirmation.
-- The same product uses XDG state/config locations and private atomic writes.
-  A two-launch gate restores only safe cwd/font into a fresh passwd shell,
-  keeps saved commands inert, detects atomic settings replacement, preserves
-  corrupt/newer/read-only inputs, and preserves the last readable snapshot
-  under real `ENOSPC` on an isolated size-limited tmpfs.
-- The complete Phase 4 exit matrix passes: explicit Bash/Zsh/Fish/Vim/Less/
-  tmux input, final X11 and native-Wayland interaction, a 1,801-second soak
-  with 1,090 interaction cycles and 160 shell heartbeats (220 ms maximum), and
-  child cleanup. The release app also launches in a runtime-only Ubuntu 26.04
-  Xvfb container with no SDK; that container base is digest-pinned.
-- Phase 5 is closed. Slice 5.1's hierarchy — bounded workspace/group/tab naming,
-  stable-ID reorder, explicit non-empty closes, and separate Super+number workspace
-  versus Alt+number terminal-tab namespaces — is proven display-free on macOS and
-  Ubuntu ARM64 and GUI-proven through a responsive GTK sidebar, group row, and tab
-  row on X11 and native Wayland.
-- Slice 5.2 gives every live terminal surface a permanent libkitty child and
-  idle-priority GLib PTY source keyed by stable SurfaceId. One GTK GL area renders
-  the active tab's nested split leaves through a scissored multi-region C bridge;
-  inactive tabs stay owned and keep draining without entering layout or draw.
-  Pointer divider drag, pointer/cycle/directional focus, and Super-based keyboard
-  resize pass focused X11 and native-Wayland gates from fresh release runtimes.
-- Slice 5.3 adds a native command palette over the frozen 38-ID catalog and a native
-  settings dialog over the bounded settings document. State round-trips the complete
-  hierarchy, nested ratios, schema-supported IDs, names/titles, selection, surface
-  stacks, and safe per-surface cwd into fresh passwd shells without executing saved
-  resume text; a corrupt primary recovers the last-good hierarchy. Pane, group,
-  workspace, and window closes share one scoped live foreground recheck, and native
-  terminal/button roles with terminal → Commands → Settings → terminal focus transfer
-  pass on both backends.
+The short version: `libkitty.so`, the headless engine suite, the release-shaped
+engine runtime, the display-free Rust model, and the GTK terminal multiplexer
+alpha all pass on Ubuntu 26.04 ARM64 with Mesa llvmpipe over X11 and a native
+Wayland client path. Nothing here proves a physical GPU, physical input, x86_64,
+mixed-DPI hardware, complete AT-SPI coverage, browser product behavior, or a
+native package.
 
-## What is not proven
-- CJK or other conversion engines with candidate windows, and
-  surrounding-text requests; the input-method evidence covers one Latin
-  engine.
-- A physical Wayland desktop/libinput path, physical mixed-DPI monitors,
-  simultaneous windows on unlike scales, or physical-GPU behavior. The
-  fractional result uses virtual nested outputs and software rendering.
-- Complete AT-SPI screen-reader and terminal-content coverage. Slice 5.3 proves native
-  roles, labels, and keyboard-only focus order; it does not prove a screen reader.
-- Physical touchpad/libinput behavior, end-to-end default URL-handler launch,
-  and physical GPU. External clipboard interoperability is proven on X11 and
-  native Wayland.
-- Browser navigation, web data-session policy, web-process recovery, or a
-  packaged WebKitGTK dependency layout. The bounded coexistence probe is not
-  browser product evidence.
-- x86_64 build, GUI, clean-runtime, or package gates.
-- `.deb`, RPM, AppImage, desktop installation, launcher, upgrade/uninstall,
-  sandbox, signing, or public distribution.
+## Repository layout
+
+- `kitmux-linux/rust/model` — display-free product model. Stable
+  workspace/group/tab/pane/surface/split identities, split geometry, navigation
+  and reorder rules, close cascading, abstract terminal/browser runtime
+  ownership, bounded state/settings/control codecs, command semantics, SSH
+  review data, a read-only macOS-state import preview, and small Linux
+  filesystem/path adapters. No display, libkitty, WebKit, shell-execution, or
+  network-runtime dependency.
+- `kitmux-linux/rust/app` — the release-shaped Rust/GTK product application and
+  the `kitmuxctl` control client.
+- `kitmux-linux/src` — durable C: `gtk_key_translation.{c,h}` and
+  `gtk_terminal_bridge.{c,h}` behind the FFI boundary, plus the disposable
+  `gtk_terminal_host.c` spike (ADR 0007).
+- `kitmux-linux/tests` — C harnesses: key matrix, PTY input recorder, X11 key
+  injector, header compile checks, session stress.
+- `kitmux-linux/scripts` — every gate and build entry point named below.
+- `kitmux-linux/headless/lima.yaml`, `kitmux-linux/desktop/lima.yaml` — the two
+  pinned VM definitions.
+
+No browser UI or native package installer belongs here yet.
 
 ## Report reference drift
 
@@ -168,6 +114,11 @@ limactl shell kitmux-linux -- \
   "$PWD/kitmux-linux/scripts/test-headless.sh"
 ```
 
+It builds the pinned Kitty native extension, builds `libkitty.so`, audits its
+ELF runpath and exports, runs the C/C++ header, engine-lifecycle, full session
+API, and Linux flood/close/reaping/resource suites, then checks the public
+struct layout from Rust.
+
 ## Display-free Phase 3 gate
 
 Run the Rust model plus the cross-host macOS fixture consumer from the macOS
@@ -185,10 +136,20 @@ limactl shell kitmux-linux -- env CARGO_NET_OFFLINE=true \
 ```
 
 The cross-host gate generates compatibility values only in a temporary
-directory. It does not change the canonical fixture corpus or its macOS
-mirror. `kitmux-import-preview` is documented in
-[`../kitmux-linux/README.md`](../kitmux-linux/README.md); it reports state
-compatibility but does not write an imported state file.
+directory. It does not change the canonical fixture corpus or its macOS mirror.
+
+Preview a copied macOS `state.json` against an existing Linux home directory:
+
+```sh
+cargo run --locked \
+  --manifest-path kitmux-linux/rust/model/Cargo.toml \
+  --bin kitmux-import-preview -- \
+  /path/to/macos-state.json /home/example
+```
+
+It prints accepted, translated, rejected, and inert-command fields as JSON. It
+never writes the source or executes a command; it is not a live import or
+restore tool.
 
 ## Desktop VM and GTK gate
 
@@ -315,6 +276,82 @@ rejects compilers, Cargo, CMake, Make, pkg-config, and GTK/GLib/Epoxy developmen
 packages. This is clean runtime evidence, not a desktop installation or native
 package test.
 
+## Phase 5 multiplexer gates
+
+Both gates build their own fresh release runtime into a temporary directory and
+require an existing X11 display:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase5-product.sh"
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase5-navigation.sh"
+```
+
+`test-phase5-product.sh` uses isolated XDG config/state/data/cache roots. It
+drives the command palette and settings dialog by keyboard only, builds a
+two-workspace nested five-session hierarchy through the product shortcut and
+palette paths, checks that a foreground job in a non-active group is still
+reviewed when that group closes, and corrupts the primary state file to prove
+the last readable hierarchy is recovered before any new write.
+
+`test-phase5-navigation.sh` covers nested splits, divider drag, directional and
+cycle focus, keyboard resize, and hidden-tab output ownership. Two optional
+environment toggles select extra runs: `KITMUX_RAPID_NAV_GATE=1` for the rapid
+navigation pass and `KITMUX_ACCESSIBILITY_GATE=1` for the roles/labels and
+focus-order pass. Set `GDK_BACKEND` and `WAYLAND_DISPLAY` to run the same gate
+as a native Wayland client under nested Weston.
+
+## Secure local control and CLI
+
+The release-shaped app exposes a private Unix socket and the matching
+`kitmuxctl` executable. The socket uses a private XDG runtime path, mode `0600`,
+owner/type/symlink checks, Linux peer credentials, bounded newline-delimited
+frames, slow-client timeouts, and bounded event history.
+
+Run the X11 control gate in the desktop VM:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase6-control.sh"
+```
+
+The release runtime installs `bin/kitmuxctl`. For a user-local development
+fallback, link a known CLI binary into the user's bin directory:
+
+```sh
+kitmux-linux/scripts/install-user-cli.sh /path/to/runtime/bin/kitmuxctl
+```
+
+The script prints the destination and warns when the destination directory is
+not on `PATH`; it does not alter shell configuration.
+
+If the runtime socket file is removed while Kitmux is still running, restart
+Kitmux or set `KITMUX_SOCKET_PATH` to a stable private path. The server does not
+auto-rebind it.
+
+## Terminal shortcut overrides
+
+The Linux settings file can override the seven currently implemented terminal
+shortcuts by stable command ID without changing the portable settings schema:
+
+```json
+{
+  "linuxShortcutBindings": {
+    "terminal.find": {"key": "g", "control": true, "shift": true}
+  }
+}
+```
+
+Supported IDs are `terminal.copy`, `terminal.paste`, `terminal.find`,
+`terminal.clear-scrollback`, `font.increase`, `font.decrease`, and
+`font.reset`. Omitted or invalid entries keep their defaults; ambiguous chords
+are not consumed, and Control-only overrides are rejected so terminal control
+sequences remain reachable. Modifier fields are `control`, `shift`, `alt`, and
+`super`.
+
+## Keyboard harness structure
+
 The keyboard harness has two halves:
 
 - `gtk_key_matrix` needs no display. It drives the GDK-to-libkitty
@@ -377,6 +414,9 @@ The generated artifacts include:
 - `share/RUNTIME_DEPENDENCIES.json` — bundled/system SONAME resolution;
 - `share/SHA256SUMS` — complete regular-file inventory.
 
+The audit fails on missing attribution, unowned payload files, stale SBOM
+hashes, undeclared native dependencies, or a host Python resolution.
+
 The current ignored `kitmux-linux/build/kitmux-engine-runtime` directory may
 come from an older builder. Its size or contents are not evidence. Use a fresh
 output path and the successful audit output.
@@ -402,7 +442,8 @@ kitmux-linux/scripts/test-clean-containers.sh
 ```
 
 It builds the current Git-visible candidate twice in Ubuntu 26.04 and twice in
-Fedora 44 containers. It does not prove a desktop installation.
+Fedora 44 containers. Each distribution's two complete release inventories must
+be byte-identical. It does not prove a desktop installation.
 
 ## Kitty/GTK loader boundary
 
@@ -417,6 +458,11 @@ The development GTK host copies only the pinned
 narrow runpath. GTK and the terminal renderer use the distribution's native
 text, graphics, input, and desktop libraries. The release engine tree remains
 self-contained and `$ORIGIN`-relative because it is tested separately.
+
+The headless development Kitty bundle does use `LD_LIBRARY_PATH` for its
+downloaded native dependencies. That shortcut is confined to headless engine
+tests and must never enter the GTK process. A release runtime uses an isolated,
+relocatable `$ORIGIN` layout and no `LD_LIBRARY_PATH` at all.
 
 Any desktop package must preserve this boundary. If a self-contained package
 cannot keep one-process library resolution safe, isolate the engine in a
