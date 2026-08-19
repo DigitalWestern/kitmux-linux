@@ -183,8 +183,8 @@ Adjacent macOS checkout: `../macos/kitmux/`
   verifies the tree digest, then verifies the seven named file hashes and Linux
   overlay. The ARM64 and Nerd Font dependency bundles are mirrored and hashed.
   The historical x86_64 bundle remains intentionally unavailable: x86_64 has
-  an explicit source-built fallback and CI job, but no x86_64 reproducibility or
-  support claim.
+  an explicit unlocked fallback build and CI job, but no x86_64 reproducibility
+  or support claim.
 - Release dependency closure now includes `kitmux` and `kitmuxctl` when the
   application runtime is built. The fallback runtime component owns otherwise
   unassigned bundled libraries, and `test-all.sh` includes the tarball/.deb

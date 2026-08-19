@@ -25,8 +25,8 @@ lives in [`PORT_STATUS.md`](PORT_STATUS.md); phase scope and exit gates live in
 - ADR 0008 R1 is closed for ARM64. The standalone workflow exists, but its
   remote run is still required for R2.
 - The ARM64 and font dependency bundles are mirrored and checksum-verified;
-  x86_64 has an explicit source-build fallback while its historical bundle is
-  still unavailable.
+  x86_64 has an explicit unlocked fallback build while its historical bundle
+  is still unavailable.
 - Reproducible ARM64 tarball and `.deb` artifacts pass the fresh-VM install,
   launch, upgrade, downgrade, reinstall, and uninstall gate.
 - Accessibility/product coverage and the written threat-model review are

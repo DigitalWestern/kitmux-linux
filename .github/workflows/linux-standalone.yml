@@ -43,7 +43,7 @@ jobs:
             libsqlite3-dev libssl-dev libx11-dev libx11-xcb-dev \
             libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev \
             libxrandr-dev libxxhash-dev
-      - name: Verify source-built x86_64 fallback
+      - name: Verify explicit x86_64 fallback build
         env:
           KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD: "1"
           KITMUX_MACOS_REPO: /tmp/kitmux-private-macos-must-not-exist
