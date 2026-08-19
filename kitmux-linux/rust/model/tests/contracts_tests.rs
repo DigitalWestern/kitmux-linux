@@ -2,19 +2,22 @@ use kitmux_model::{
     AtomicWriteError, CONTROL_MAX_REQUEST_BYTES, CONTROL_MAX_RESPONSE_BYTES, CliParseError,
     CommandId, ControlCodecError, ControlEventHistory, ControlMethod, ControlRequest,
     ControlResponse, FileChange, ImportPreviewError, LineFrameDecoder, PollingFileWatcher,
-    RuntimePathError, SemanticAction, SettingsCodecError, SnapshotCodecError, SshCodecError,
-    SshProfile, SshResolution, UnixSocketAddress, XdgPaths, atomic_write_private,
-    decode_control_request, decode_control_response, decode_settings, decode_snapshot,
-    decode_ssh_profiles, encode_control_response, encode_settings, encode_snapshot,
-    encode_ssh_profiles, parse_cli, preview_macos_state_file, read_bounded, sha256_bytes,
-    sha256_file, valid_resume_command,
+    RuntimePathError, SemanticAction, SettingsCodecError, SnapshotCodecError, SshArgvError,
+    SshCodecError, SshProfile, SshProfileStore, SshResolution, UnixSocketAddress, XdgPaths,
+    atomic_write_private, decode_control_request, decode_control_response, decode_settings,
+    decode_snapshot, decode_ssh_profiles, encode_control_response, encode_settings,
+    encode_snapshot, encode_ssh_profiles, parse_cli, preview_macos_state_file, read_bounded,
+    sha256_bytes, sha256_file, valid_resume_command,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
+use std::thread;
 use uuid::Uuid;
 
 fn fixture(name: &str) -> Value {
@@ -440,6 +443,35 @@ fn cli_parser_maps_bounded_commands_without_shell_strings() {
         ),
         Err(CliParseError::Usage(_))
     ));
+
+    let ssh = parse_cli(
+        [
+            "ssh".to_owned(),
+            "connect".to_owned(),
+            "11111111-2222-3333-4444-555555555555".to_owned(),
+            "--approve".to_owned(),
+            "a".repeat(64),
+        ],
+        &environment,
+    )
+    .unwrap();
+    assert_eq!(ssh.request.method, "ssh.connect");
+    assert_eq!(
+        ssh.request.params["profile"],
+        "11111111-2222-3333-4444-555555555555"
+    );
+    assert_eq!(ssh.request.params["fingerprint"], "a".repeat(64));
+    assert!(matches!(
+        parse_cli(
+            [
+                "ssh".to_owned(),
+                "connect".to_owned(),
+                "not-an-id".to_owned()
+            ],
+            &environment
+        ),
+        Err(CliParseError::Usage(_))
+    ));
 }
 
 #[test]
@@ -642,6 +674,78 @@ fn ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields(
     let encoded: Value = serde_json::from_slice(&encode_ssh_profiles(document).unwrap()).unwrap();
     assert_eq!(encoded["futureDocumentField"], true);
     assert_eq!(encoded["profiles"][0]["futureProfileField"], 7);
+}
+
+#[test]
+fn ssh_argv_is_absolute_and_keeps_remote_command_as_one_argument() {
+    let profile: SshProfile = serde_json::from_value(json!({
+        "id": "11111111-2222-3333-4444-555555555555",
+        "name": "Production",
+        "hostAlias": "prod-via-config",
+        "remoteCommand": "tmux attach -t app",
+        "createdAt": "2026-07-23T12:00:00Z",
+        "updatedAt": "2026-07-23T12:00:00Z"
+    }))
+    .unwrap();
+    assert_eq!(
+        SshResolution::argv(Path::new("/opt/ssh"), &profile).unwrap(),
+        ["/opt/ssh", "--", "prod-via-config", "tmux attach -t app"]
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        SshResolution::argv(Path::new("ssh"), &profile),
+        Err(SshArgvError::InvalidExecutable)
+    );
+}
+
+#[test]
+fn ssh_profile_store_is_atomic_bounded_and_quarantines_corruption() {
+    let temp = TestDirectory::new();
+    let path = temp.path().join("ssh-profiles.json");
+    let store = Arc::new(SshProfileStore::open(path.clone()).unwrap());
+    let mut threads = Vec::new();
+    for index in 0..24 {
+        let store = Arc::clone(&store);
+        threads.push(thread::spawn(move || {
+            store
+                .create_at(
+                    format!("Host {index}"),
+                    format!("host-{index}"),
+                    None,
+                    "2026-07-23T12:00:00Z",
+                )
+                .unwrap();
+        }));
+    }
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    assert_eq!(store.list().len(), 24);
+    let profile = store.list().into_iter().next().unwrap();
+    store
+        .approve(profile.id, &"a".repeat(64))
+        .expect("review approval should persist");
+    let updated = store
+        .update(
+            profile.id,
+            None,
+            Some("changed-host".to_owned()),
+            Some(None),
+        )
+        .unwrap();
+    assert_eq!(updated.reviewed_fingerprint, None);
+
+    fs::write(&path, b"broken").unwrap();
+    let recovered = SshProfileStore::open(path.clone()).unwrap();
+    assert!(recovered.list().is_empty());
+    assert!(fs::read_dir(temp.path()).unwrap().flatten().any(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("ssh-profiles.json.corrupt-")
+    }));
 }
 
 #[test]

@@ -1460,9 +1460,10 @@
       "translation": "Package-managed CLI with a diagnosable user-local fallback.",
       "linux_tests": [
         "kitmux-linux/rust/model/tests/contracts_tests.rs::cli_parser_maps_bounded_commands_without_shell_strings",
-        "kitmux-linux/scripts/test-phase6-control.sh::Slice 6.1 secure local control and CLI gate"
+        "kitmux-linux/scripts/test-phase6-control.sh::Slice 6.1 secure local control and CLI gate",
+        "kitmux-linux/scripts/test-phase6-ssh.sh::Slice 6.2 SSH and agent workflow gate"
       ],
-      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; the Slice 6.1 gate proves bounded CLI parsing, local dispatch, release-runtime installation, the user-local fallback and its missing-source diagnostic, pane targeting, and read-only targeting"
+      "linux_status": "the 44-method bounded dispatch catalog and control-character envelope rejection are proven in Slice 3.2; the Slice 6.1 gate proves bounded CLI parsing, local dispatch, release-runtime installation, the user-local fallback and its missing-source diagnostic, pane targeting, and read-only targeting; Slice 6.2 adds allow-listed SSH profile and pane UUID routes without shell strings"
     },
     {
       "id": "ssh.argv-never-shell",
@@ -1482,7 +1483,11 @@
         "control.cli-mapping"
       ],
       "translation": "Resolve through the user's real ssh executable and ssh -G; handle nonstandard paths and a missing desktop-session agent.",
-      "linux_status": "unproven"
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_argv_is_absolute_and_keeps_remote_command_as_one_argument",
+        "kitmux-linux/scripts/test-phase6-ssh.sh::Slice 6.2 SSH and agent workflow gate"
+      ],
+      "linux_status": "Slice 6.2 proves resolution through a PATH-selected nonstandard ssh executable, bounded ssh -G output, an absolute argv with the remote command as one argument, and explicit missing-agent handling"
     },
     {
       "id": "ssh.review-and-approval",
@@ -1503,9 +1508,10 @@
       "translation": "None.",
       "linux_tests": [
         "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_ssh_corpus_validates_documents_and_builds_data_only_review",
-        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields"
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields",
+        "kitmux-linux/scripts/test-phase6-ssh.sh::Slice 6.2 SSH and agent workflow gate"
       ],
-      "linux_status": "recorded ssh -G parsing, review contents, fingerprint, external-forward approval, unknown-field preservation, and macOS consumption of Linux-produced review data proven display-free in Slice 3.3; live SSH resolution and edit-driven approval clearing remain Phase 6 work"
+      "linux_status": "recorded ssh -G parsing, review contents, fingerprint, external-forward approval, unknown-field preservation, and macOS consumption of Linux-produced review data proven display-free in Slice 3.3; Slice 6.2 adds live resolution, explicit review/approval, and reconnect re-review"
     },
     {
       "id": "ssh.store-safety",
@@ -1527,9 +1533,11 @@
       ],
       "translation": "Keep secrets and expanded private arguments out of structured diagnostics.",
       "linux_tests": [
-        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields"
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_codec_rejects_bounds_versions_duplicate_ids_and_preserves_unknown_fields",
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::ssh_profile_store_is_atomic_bounded_and_quarantines_corruption",
+        "kitmux-linux/scripts/test-phase6-ssh.sh::Slice 6.2 SSH and agent workflow gate"
       ],
-      "linux_status": "bounded profile documents, duplicate ID/name rejection, invalid command rejection, and unknown-field round-trip proven in Slice 3.3; no Linux SSH store, quarantine, or concurrent mutation path is claimed before Phase 6"
+      "linux_status": "Slice 6.2 proves private atomic profile persistence, bounded concurrent creates, duplicate and invalid-profile rejection, corruption quarantine, approval persistence, and log-safe live launch"
     },
     {
       "id": "browser.owned-session",

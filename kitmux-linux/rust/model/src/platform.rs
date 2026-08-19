@@ -52,6 +52,11 @@ impl XdgPaths {
     pub fn state_file(&self) -> PathBuf {
         self.state_home.join("kitmux/state.json")
     }
+
+    #[must_use]
+    pub fn ssh_profiles_file(&self) -> PathBuf {
+        self.config_home.join("kitmux/ssh-profiles.json")
+    }
 }
 
 fn xdg_home(

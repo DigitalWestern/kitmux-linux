@@ -14,28 +14,32 @@ use kitmux_model::{
     PaneDetail, PaneId, PaneRuntime, PaneSurface, PaneSurfaceDetail, PasteConfirmationReason,
     PixelRect, PixelSize, PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES,
     SNAPSHOT_VERSION, SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis,
-    SplitId, SplitLayout, SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime,
-    TerminalTabSnapshot, WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths,
-    accumulate_scroll_lines, command_palette_matches, detected_url, encode_control_response,
-    load_settings_at_launch, load_state_at_launch, namespaced_number_target,
-    paste_confirmation_reason, reload_settings, resolve_control_socket, save_settings, save_state,
-    terminal_cell_scaled,
+    SplitId, SplitLayout, SshProfile, SshProfileStore, SshProfileStoreError, SshResolution,
+    SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime, TerminalTabSnapshot,
+    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths, accumulate_scroll_lines,
+    command_palette_matches, detected_url, encode_control_response, load_settings_at_launch,
+    load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
+    resolve_control_socket, save_settings, save_state, terminal_cell_scaled,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::env;
-use std::ffi::{CStr, CString, c_char, c_int, c_void};
+use std::ffi::{CStr, CString, OsString, c_char, c_int, c_void};
+use std::io::Read;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::ptr;
 use std::rc::{Rc, Weak};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 const PTY_SOURCE_PRIORITY: c_int = 200;
 const G_IO_IN: u32 = 1;
@@ -44,8 +48,25 @@ const G_IO_HUP: u32 = 16;
 const G_IO_NVAL: u32 = 32;
 const SPLIT_GAP: i32 = 4;
 const MINIMUM_PANE: PixelSize = PixelSize::new(80, 50);
+const SSH_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
+const SSH_RESOLUTION_MAX_OUTPUT: usize = 512 * 1024;
 static UNSAFE_PASTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static FOREGROUND_CLOSE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static TERMINATION_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn handle_sigterm(_: c_int) {
+    TERMINATION_REQUESTED.store(true, Ordering::Release);
+}
+
+fn install_sigterm_handler() -> bool {
+    unsafe {
+        libc::signal(
+            libc::SIGTERM,
+            handle_sigterm as *const () as libc::sighandler_t,
+        ) != libc::SIG_ERR
+    }
+}
+
 thread_local! {
     static CONTROL_WAKE: RefCell<Option<Box<dyn Fn()>>> = RefCell::new(None);
 }
@@ -78,6 +99,9 @@ const IMPLEMENTED_CONTROL_METHODS: &[ControlMethod] = &[
     ControlMethod::PaneSendKey,
     ControlMethod::PaneReadScreen,
     ControlMethod::PaneNotify,
+    ControlMethod::SshProfileList,
+    ControlMethod::SshConnect,
+    ControlMethod::SshReconnect,
 ];
 
 #[cfg(test)]
@@ -86,7 +110,7 @@ mod control_surface_tests {
 
     #[test]
     fn implemented_control_methods_are_catalogued() {
-        assert_eq!(IMPLEMENTED_CONTROL_METHODS.len(), 28);
+        assert_eq!(IMPLEMENTED_CONTROL_METHODS.len(), 31);
         assert!(
             IMPLEMENTED_CONTROL_METHODS
                 .iter()
@@ -393,11 +417,173 @@ fn is_executable(path: &Path) -> bool {
     unsafe { libc::access(path.as_ptr(), libc::X_OK) == 0 }
 }
 
+#[derive(Debug)]
+enum SshRuntimeError {
+    ExecutableNotFound,
+    Launch,
+    TimedOut,
+    OutputTooLarge,
+    CommandFailed,
+    InvalidOutput,
+}
+
+impl std::fmt::Display for SshRuntimeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::ExecutableNotFound => "the user's ssh executable was not found on PATH",
+            Self::Launch => "ssh -G could not be launched",
+            Self::TimedOut => "ssh -G timed out",
+            Self::OutputTooLarge => "ssh -G returned too much output",
+            Self::CommandFailed => "ssh -G failed",
+            Self::InvalidOutput => "ssh -G returned incomplete output",
+        })
+    }
+}
+
+fn find_ssh_executable() -> Result<PathBuf, SshRuntimeError> {
+    let path = env::var_os("PATH").unwrap_or_else(|| OsString::from("/usr/bin:/bin"));
+    env::split_paths(&path)
+        .map(|directory| directory.join("ssh"))
+        .find_map(|candidate| {
+            (candidate.is_file() && is_executable(&candidate))
+                .then(|| std::fs::canonicalize(candidate).ok())
+                .flatten()
+        })
+        .ok_or(SshRuntimeError::ExecutableNotFound)
+}
+
+fn read_limited(mut reader: impl Read) -> (Vec<u8>, bool) {
+    let mut output = Vec::new();
+    let mut too_large = false;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => {
+                if output.len() < SSH_RESOLUTION_MAX_OUTPUT {
+                    let keep = count.min(SSH_RESOLUTION_MAX_OUTPUT - output.len());
+                    output.extend_from_slice(&buffer[..keep]);
+                    if keep < count {
+                        too_large = true;
+                    }
+                } else {
+                    too_large = true;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    (output, too_large)
+}
+
+fn run_ssh_resolution(executable: &Path, host_alias: &str) -> Result<Vec<u8>, SshRuntimeError> {
+    let mut child = Command::new(executable)
+        .args(["-G", "--", host_alias])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| SshRuntimeError::Launch)?;
+    let stdout = child.stdout.take().ok_or(SshRuntimeError::Launch)?;
+    let stderr = child.stderr.take().ok_or(SshRuntimeError::Launch)?;
+    let stdout_reader = thread::spawn(move || read_limited(stdout));
+    let stderr_reader = thread::spawn(move || read_limited(stderr));
+    let deadline = Instant::now() + SSH_RESOLUTION_TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(SshRuntimeError::TimedOut);
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(SshRuntimeError::Launch);
+            }
+        }
+    };
+    let (output, output_too_large) = stdout_reader.join().unwrap_or((Vec::new(), false));
+    let (_, error_too_large) = stderr_reader.join().unwrap_or((Vec::new(), false));
+    if output_too_large || error_too_large {
+        return Err(SshRuntimeError::OutputTooLarge);
+    }
+    status
+        .success()
+        .then_some(output)
+        .ok_or(SshRuntimeError::CommandFailed)
+}
+
+fn resolve_ssh_profile(profile: &SshProfile) -> Result<(PathBuf, SshResolution), SshRuntimeError> {
+    let executable = find_ssh_executable()?;
+    let output = run_ssh_resolution(&executable, &profile.host_alias)?;
+    let text = String::from_utf8(output).map_err(|_| SshRuntimeError::InvalidOutput)?;
+    let resolution =
+        SshResolution::parse(&profile.host_alias, &text).ok_or(SshRuntimeError::InvalidOutput)?;
+    Ok((executable, resolution))
+}
+
+fn ssh_review_json(review: &kitmux_model::SshConnectionReview) -> serde_json::Value {
+    json!({
+        "fingerprint": review.fingerprint,
+        "destination": review.destination,
+        "hostAlias": review.host_alias,
+        "remoteCommand": review.remote_command,
+        "strictHostKeyChecking": review.strict_host_key_checking,
+        "proxyJump": review.proxy_jump,
+        "proxyCommand": review.proxy_command,
+        "forwards": review.forwards,
+        "hasExternallyListeningForward": review.has_externally_listening_forward,
+        "requiresApproval": review.requires_approval,
+    })
+}
+
+fn session_environment(account: &Account, ssh: bool) -> Vec<OsString> {
+    let mut values = vec![
+        OsString::from(format!("SHELL={}", account.shell.to_string_lossy())),
+        OsString::from(format!("HOME={}", account.home.display())),
+        OsString::from(format!(
+            "PATH={}",
+            env::var_os("PATH")
+                .unwrap_or_else(|| OsString::from("/usr/bin:/bin"))
+                .to_string_lossy()
+        )),
+        OsString::from("COLORTERM=truecolor"),
+        OsString::from("TERM=xterm-256color"),
+    ];
+    for (key, value) in env::vars_os() {
+        let key = key.to_string_lossy();
+        if key == "USER" || key == "LOGNAME" || key == "LANG" || key.starts_with("LC_") {
+            values.push(OsString::from(format!("{key}={}", value.to_string_lossy())));
+        }
+    }
+    if ssh {
+        if let Some(agent) = env::var_os("SSH_AUTH_SOCK").filter(|value| !value.is_empty()) {
+            values.push(OsString::from(format!(
+                "SSH_AUTH_SOCK={}",
+                agent.to_string_lossy()
+            )));
+            diagnostic("ssh_agent", &[("available", "true".to_owned())]);
+        } else {
+            diagnostic("ssh_agent", &[("available", "false".to_owned())]);
+        }
+    }
+    values
+}
+
 struct CallbackUi {
     window: glib::WeakRef<ApplicationWindow>,
     area: glib::WeakRef<GLArea>,
     status: glib::WeakRef<Label>,
     visible: Cell<bool>,
+    disconnected: Cell<bool>,
+    close_window_on_exit: bool,
 }
 
 unsafe extern "C" fn on_damage(userdata: *mut c_void) {
@@ -441,13 +627,15 @@ unsafe extern "C" fn on_bell(userdata: *mut c_void) {
 
 unsafe extern "C" fn on_child_exit(userdata: *mut c_void, status: c_int) {
     let ui = unsafe { &*(userdata.cast::<CallbackUi>()) };
+    ui.disconnected.set(true);
     if ui.visible.get()
         && let Some(label) = ui.status.upgrade()
     {
         label.set_text(&format!("Shell exited with status {status}"));
     }
     diagnostic("child_exit", &[("status", status.to_string())]);
-    if ui.visible.get()
+    if ui.close_window_on_exit
+        && ui.visible.get()
         && let Some(window) = ui.window.upgrade()
     {
         glib::idle_add_local_once(move || window.close());
@@ -475,6 +663,7 @@ struct SessionState {
     selection_active: bool,
     mouse_reporting_button: Option<c_int>,
     hidden_pump_reported: bool,
+    ssh_profile_id: Option<Uuid>,
 }
 
 impl Default for SessionState {
@@ -500,6 +689,7 @@ impl Default for SessionState {
             selection_active: false,
             mouse_reporting_button: None,
             hidden_pump_reported: false,
+            ssh_profile_id: None,
         }
     }
 }
@@ -513,7 +703,7 @@ struct Terminal {
     default_font_size: f64,
     shortcut_consumed: KitmuxKeyTracker,
     close_confirmed: bool,
-    close_dialog_open: bool,
+    modal_dialog_open: bool,
     paste_confirmation_threshold: usize,
     confirm_close_with_running_process: bool,
     persistence: Option<PersistenceState>,
@@ -529,6 +719,7 @@ struct Terminal {
     control_server: Option<ControlServer>,
     control_notice: Option<String>,
     control_history: ControlEventHistory,
+    ssh_profiles: Option<SshProfileStore>,
 }
 
 struct PendingControlCall {
@@ -570,9 +761,9 @@ struct NavigationUi {
 
 #[derive(Clone, Copy)]
 enum RenameTarget {
-    Workspace,
-    Group,
-    Tab,
+    Workspace(WorkspaceId),
+    Group(GroupId),
+    Tab(TabId),
 }
 
 enum NavigationEffect {
@@ -610,7 +801,7 @@ impl Default for Terminal {
             default_font_size: 0.0,
             shortcut_consumed: KitmuxKeyTracker::default(),
             close_confirmed: false,
-            close_dialog_open: false,
+            modal_dialog_open: false,
             paste_confirmation_threshold: 8192,
             confirm_close_with_running_process: false,
             persistence: None,
@@ -626,6 +817,7 @@ impl Default for Terminal {
             control_server: None,
             control_notice: None,
             control_history: ControlEventHistory::default(),
+            ssh_profiles: None,
         }
     }
 }
@@ -768,7 +960,7 @@ fn dispatch_control_request(
             "method is not in the control catalog",
         );
     };
-    if terminal.borrow().close_dialog_open
+    if terminal.borrow().modal_dialog_open
         && !matches!(
             method,
             ControlMethod::Ping
@@ -782,7 +974,7 @@ fn dispatch_control_request(
         return control_failure(
             &request,
             "busy",
-            "control mutations are paused while a close dialog is open",
+            "control mutations are paused while a modal dialog is open",
         );
     }
     if !matches!(
@@ -932,11 +1124,220 @@ fn dispatch_control_request(
                 control_success(&request, json!({"message": "notification accepted"}))
             }
         }
+        ControlMethod::SshProfileList => control_ssh_profile_list(terminal, &request),
+        ControlMethod::SshConnect => control_ssh_connect(terminal, &request),
+        ControlMethod::SshReconnect => control_ssh_reconnect(terminal, &request),
         _ => control_failure(
             &request,
             "unsupported_method",
             "method is reserved for a later Phase 6 slice",
         ),
+    }
+}
+
+fn ssh_uuid_param(request: &ControlRequest, key: &str) -> Option<Uuid> {
+    Uuid::parse_str(request.params.get(key)?).ok()
+}
+
+fn valid_ssh_fingerprint(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn control_ssh_profile_list(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+) -> ControlResponse {
+    if !request.params.is_empty() {
+        return control_failure(
+            request,
+            "invalid_params",
+            "ssh.profile.list takes no parameters",
+        );
+    }
+    let profiles = terminal
+        .borrow()
+        .ssh_profiles
+        .as_ref()
+        .map(|store| {
+            store
+                .list()
+                .into_iter()
+                .map(|profile| {
+                    json!({
+                        "id": profile.id.to_string(),
+                        "name": profile.name,
+                        "hostAlias": profile.host_alias,
+                        "hasRemoteCommand": profile.remote_command.is_some(),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    control_success(request, json!({"sshProfiles": profiles}))
+}
+
+fn control_ssh_connect(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+) -> ControlResponse {
+    control_ssh_action(terminal, request, false)
+}
+
+fn control_ssh_reconnect(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+) -> ControlResponse {
+    control_ssh_action(terminal, request, true)
+}
+
+fn control_ssh_action(
+    terminal: &Rc<RefCell<Terminal>>,
+    request: &ControlRequest,
+    reconnect: bool,
+) -> ControlResponse {
+    let required = if reconnect { "pane" } else { "profile" };
+    if request
+        .params
+        .keys()
+        .any(|key| key != required && key != "fingerprint")
+    {
+        return control_failure(request, "invalid_params", "unknown SSH parameter");
+    }
+    let target = match ssh_uuid_param(request, required) {
+        Some(value) => value,
+        None => {
+            return control_failure(
+                request,
+                "invalid_params",
+                "SSH actions require an exact UUID",
+            );
+        }
+    };
+    let surface = if reconnect {
+        let Some(surface) = resolve_pane_surface(terminal, &target.to_string()) else {
+            return control_failure(request, "not_found", "SSH pane was not found");
+        };
+        let terminal_state = terminal.borrow();
+        let Some(session) = terminal_state.sessions.get(&surface) else {
+            return control_failure(request, "not_found", "SSH pane was not found");
+        };
+        if session.ssh_profile_id.is_none() {
+            return control_failure(request, "invalid_params", "pane is not an SSH surface");
+        }
+        let disconnected = session
+            .callback_ui
+            .as_ref()
+            .is_some_and(|callback| callback.disconnected.get());
+        if !disconnected
+            && !session.session.is_null()
+            && unsafe { ffi::kitty_session_child_alive(session.session) }
+        {
+            return control_failure(request, "busy", "SSH pane is still connected");
+        }
+        Some(surface)
+    } else {
+        None
+    };
+    let profile_id = if let Some(surface) = surface {
+        terminal
+            .borrow()
+            .sessions
+            .get(&surface)
+            .and_then(|session| session.ssh_profile_id)
+            .expect("SSH surface has a profile ID")
+    } else {
+        target
+    };
+    let profile = terminal
+        .borrow()
+        .ssh_profiles
+        .as_ref()
+        .and_then(|store| store.profile(profile_id));
+    let Some(profile) = profile else {
+        return control_failure(request, "not_found", "SSH profile was not found");
+    };
+    let (executable, resolution) = match resolve_ssh_profile(&profile) {
+        Ok(value) => value,
+        Err(error) => return control_failure(request, "resolution_failed", error.to_string()),
+    };
+    let review = resolution.review(&profile);
+    let requested_fingerprint = request.params.get("fingerprint");
+    if let Some(fingerprint) = requested_fingerprint {
+        if !valid_ssh_fingerprint(fingerprint) {
+            return control_failure(
+                request,
+                "invalid_params",
+                "fingerprint must be lowercase SHA-256",
+            );
+        }
+        if fingerprint != &review.fingerprint {
+            return control_failure(
+                request,
+                "stale_review",
+                "SSH resolution changed; review the new fingerprint",
+            );
+        }
+    }
+    if review.requires_approval && requested_fingerprint != Some(&review.fingerprint) {
+        return control_success(
+            request,
+            json!({
+                "connected": false,
+                "approvalRequired": true,
+                "review": ssh_review_json(&review),
+            }),
+        );
+    }
+    if review.requires_approval {
+        let approval = terminal
+            .borrow()
+            .ssh_profiles
+            .as_ref()
+            .ok_or(SshProfileStoreError::InvalidDocument)
+            .and_then(|store| store.approve(profile.id, &review.fingerprint));
+        if let Err(error) = approval {
+            return control_failure(request, "store_failed", error.to_string());
+        }
+    }
+    if let Some(surface) = surface {
+        let replaced = terminal
+            .borrow_mut()
+            .replace_ssh_surface(surface, &profile, &executable);
+        if !replaced {
+            return control_failure(request, "launch_failed", "SSH reconnect could not start");
+        }
+        let _ = attach_missing_pty_sources(terminal);
+        control_success(
+            request,
+            json!({
+                "connected": true,
+                "reconnected": true,
+                "destination": review.destination,
+                "pane": target.to_string(),
+            }),
+        )
+    } else {
+        let created = terminal.borrow_mut().create_ssh_tab(&profile, &executable);
+        if !created {
+            return control_failure(request, "launch_failed", "SSH tab could not start");
+        }
+        apply_navigation_effect(terminal, NavigationEffect::Changed);
+        let pane = terminal
+            .borrow()
+            .navigation
+            .as_ref()
+            .map(|navigation| navigation.active_tab().focused_pane_id().to_string());
+        control_success(
+            request,
+            json!({
+                "connected": true,
+                "destination": review.destination,
+                "pane": pane,
+            }),
+        )
     }
 }
 
@@ -1501,13 +1902,13 @@ fn restore_navigation(terminal: &Rc<RefCell<Terminal>>, selection: Option<(usize
     let Some(navigation) = terminal.navigation.as_mut() else {
         return;
     };
-    if navigation.select_workspace(workspace) {
-        if navigation.active_workspace_mut().select_group(group) {
-            let _ = navigation
-                .active_workspace_mut()
-                .active_group_mut()
-                .select_tab(tab);
-        }
+    if navigation.select_workspace(workspace)
+        && navigation.active_workspace_mut().select_group(group)
+    {
+        let _ = navigation
+            .active_workspace_mut()
+            .active_group_mut()
+            .select_tab(tab);
     }
 }
 
@@ -1739,6 +2140,17 @@ impl Terminal {
             settings_path,
             settings: settings_load.document,
         });
+        let ssh_profile_path = env::var_os("KITMUX_SSH_PROFILES_PATH")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| xdg.ssh_profiles_file());
+        self.ssh_profiles = match SshProfileStore::open(ssh_profile_path) {
+            Ok(store) => Some(store),
+            Err(error) => {
+                diagnostic("ssh_store_unavailable", &[("reason", error.to_string())]);
+                None
+            }
+        };
         self.xdg = Some(xdg);
         diagnostic(
             "persistence_loaded",
@@ -1824,6 +2236,8 @@ impl Terminal {
             area: area.downgrade(),
             status: status.downgrade(),
             visible: Cell::new(true),
+            disconnected: Cell::new(false),
+            close_window_on_exit: true,
         });
         let callbacks = ffi::KittySessionCallbacks {
             userdata: (&mut *callback_ui as *mut CallbackUi).cast(),
@@ -2134,24 +2548,93 @@ impl Terminal {
     }
 
     fn spawn_surface_at(&mut self, surface_id: SurfaceId, cwd: &Path) -> bool {
+        let account = account();
+        let login = OsString::from("-il");
+        self.spawn_surface_command(
+            surface_id,
+            cwd,
+            vec![
+                OsString::from(account.shell.to_string_lossy().into_owned()),
+                login,
+            ],
+            None,
+        )
+    }
+
+    fn spawn_surface_command(
+        &mut self,
+        surface_id: SurfaceId,
+        cwd: &Path,
+        argv: Vec<OsString>,
+        ssh_profile_id: Option<Uuid>,
+    ) -> bool {
         if self.engine.is_null() || self.sessions.contains_key(&surface_id) {
             return false;
         }
-        let Some(ui) = self.navigation_ui.as_ref() else {
+        let Some(session) = self.create_session_state(surface_id, cwd, argv, ssh_profile_id) else {
             return false;
         };
-        let (Some(window), Some(area)) = (ui.window.upgrade(), ui.area.upgrade()) else {
-            return false;
-        };
-        let Some(status) = ui.status.upgrade() else {
-            return false;
+        let pid = unsafe { ffi::kitty_session_child_pid(session.session) };
+        self.sessions.insert(surface_id, session);
+        diagnostic(
+            if ssh_profile_id.is_some() {
+                "ssh_surface_created"
+            } else {
+                "terminal_surface_created"
+            },
+            &[
+                ("surface", surface_id.to_string()),
+                ("pid", pid.to_string()),
+            ],
+        );
+        true
+    }
+
+    fn create_session_state(
+        &self,
+        surface_id: SurfaceId,
+        cwd: &Path,
+        argv: Vec<OsString>,
+        ssh_profile_id: Option<Uuid>,
+    ) -> Option<SessionState> {
+        let ui = self.navigation_ui.as_ref()?;
+        let (Some(window), Some(area), Some(status)) =
+            (ui.window.upgrade(), ui.area.upgrade(), ui.status.upgrade())
+        else {
+            return None;
         };
         let account = account();
+        let arguments = argv
+            .iter()
+            .map(|value| CString::new(value.as_os_str().as_bytes()).ok())
+            .collect::<Option<Vec<_>>>()?;
+        let mut argument_pointers = arguments
+            .iter()
+            .map(|value| value.as_ptr())
+            .collect::<Vec<_>>();
+        argument_pointers.push(ptr::null());
+        let environment = session_environment(&account, ssh_profile_id.is_some())
+            .into_iter()
+            .map(|value| CString::new(value.as_os_str().as_bytes()).ok())
+            .collect::<Option<Vec<_>>>()?;
+        let mut environment_pointers = environment
+            .iter()
+            .map(|value| value.as_ptr())
+            .collect::<Vec<_>>();
+        environment_pointers.push(ptr::null());
+        let cwd = if valid_restored_cwd(cwd) {
+            cwd
+        } else {
+            &account.home
+        };
+        let cwd_c = path_cstring(cwd).ok()?;
         let mut callback_ui = Box::new(CallbackUi {
             window: window.downgrade(),
             area: area.downgrade(),
             status: status.downgrade(),
-            visible: Cell::new(false),
+            visible: Cell::new(surface_id == self.active_surface_id),
+            disconnected: Cell::new(false),
+            close_window_on_exit: ssh_profile_id.is_none(),
         });
         let callbacks = ffi::KittySessionCallbacks {
             userdata: (&mut *callback_ui as *mut CallbackUi).cast(),
@@ -2162,28 +2645,15 @@ impl Terminal {
             on_notification: None,
             on_user_var: None,
         };
-        let shell_env = CString::new(format!("SHELL={}", account.shell.to_string_lossy())).unwrap();
-        let color_env = CString::new("COLORTERM=truecolor").unwrap();
-        let environment = [shell_env.as_ptr(), color_env.as_ptr(), ptr::null()];
-        let login = CString::new("-il").unwrap();
-        let argv = [account.shell.as_ptr(), login.as_ptr(), ptr::null()];
-        let cwd = if valid_restored_cwd(cwd) {
-            cwd
-        } else {
-            &account.home
-        };
-        let Ok(cwd_c) = path_cstring(cwd) else {
-            return false;
-        };
         let mut error = [0 as c_char; 1024];
         let session = unsafe {
             ffi::kitty_session_create_with_options(
                 self.engine,
                 24,
                 80,
-                argv.as_ptr(),
+                argument_pointers.as_ptr(),
                 cwd_c.as_ptr(),
-                environment.as_ptr(),
+                environment_pointers.as_ptr(),
                 &callbacks,
                 error.as_mut_ptr(),
                 error.len(),
@@ -2191,32 +2661,75 @@ impl Terminal {
         };
         if session.is_null() {
             diagnostic(
-                "terminal_surface_failed",
-                &[(
-                    "error",
-                    c_buffer(&error).unwrap_or_else(|| "session-create".to_owned()),
-                )],
+                if ssh_profile_id.is_some() {
+                    "ssh_surface_failed"
+                } else {
+                    "terminal_surface_failed"
+                },
+                &[("reason", "session-create".to_owned())],
             );
+            return None;
+        }
+        Some(SessionState {
+            session,
+            callback_ui: Some(callback_ui),
+            last_cwd: Some(cwd.to_owned()),
+            ssh_profile_id,
+            ..SessionState::default()
+        })
+    }
+
+    fn replace_ssh_surface(
+        &mut self,
+        surface_id: SurfaceId,
+        profile: &SshProfile,
+        executable: &Path,
+    ) -> bool {
+        let Ok(argv) = SshResolution::argv(executable, profile) else {
+            return false;
+        };
+        let cwd = self
+            .sessions
+            .get(&surface_id)
+            .and_then(|session| session.last_cwd.clone())
+            .unwrap_or_else(|| self.account_home.clone());
+        let Some(new_session) = self.create_session_state(surface_id, &cwd, argv, Some(profile.id))
+        else {
+            return false;
+        };
+        if let Some(mut old_session) = self.sessions.remove(&surface_id) {
+            if old_session.pty_source != 0 {
+                unsafe { g_source_remove(old_session.pty_source) };
+            }
+            if !old_session.session.is_null() {
+                unsafe { ffi::kitty_session_close(old_session.session) };
+                old_session.session = ptr::null_mut();
+            }
+        }
+        self.sessions.insert(surface_id, new_session);
+        diagnostic("ssh_reconnected", &[("surface", surface_id.to_string())]);
+        true
+    }
+
+    fn create_ssh_tab(&mut self, profile: &SshProfile, executable: &Path) -> bool {
+        let Ok(argv) = SshResolution::argv(executable, profile) else {
+            return false;
+        };
+        let (tab, surface) = pending_tab();
+        if !self.spawn_surface_command(surface, &self.account_home.clone(), argv, Some(profile.id))
+        {
             return false;
         }
-        let pid = unsafe { ffi::kitty_session_child_pid(session) };
-        self.sessions.insert(
-            surface_id,
-            SessionState {
-                session,
-                callback_ui: Some(callback_ui),
-                last_cwd: Some(cwd.to_owned()),
-                ..SessionState::default()
-            },
-        );
-        diagnostic(
-            "terminal_surface_created",
-            &[
-                ("surface", surface_id.to_string()),
-                ("pid", pid.to_string()),
-            ],
-        );
-        true
+        self.navigation
+            .as_mut()
+            .and_then(|navigation| {
+                navigation
+                    .active_workspace_mut()
+                    .active_group_mut()
+                    .append_tab(tab)
+                    .ok()
+            })
+            .is_some()
     }
 
     fn navigation_action(&mut self, command: CommandId) -> NavigationEffect {
@@ -2338,9 +2851,15 @@ impl Terminal {
                         let index = navigation.active_workspace_index();
                         changed(navigation.close_workspace(index).is_some())
                     }
-                    CommandId::WorkspaceRename => NavigationEffect::Rename(RenameTarget::Workspace),
-                    CommandId::GroupRename => NavigationEffect::Rename(RenameTarget::Group),
-                    CommandId::TerminalRenameTab => NavigationEffect::Rename(RenameTarget::Tab),
+                    CommandId::WorkspaceRename => NavigationEffect::Rename(
+                        RenameTarget::Workspace(navigation.active_workspace().id()),
+                    ),
+                    CommandId::GroupRename => NavigationEffect::Rename(RenameTarget::Group(
+                        navigation.active_workspace().active_group().id(),
+                    )),
+                    CommandId::TerminalRenameTab => {
+                        NavigationEffect::Rename(RenameTarget::Tab(navigation.active_tab().id()))
+                    }
                     CommandId::PaneFocusNext => changed(navigation.active_tab_mut().cycle_focus(1)),
                     CommandId::PaneFocusPrevious => {
                         changed(navigation.active_tab_mut().cycle_focus(-1))
@@ -2411,12 +2930,9 @@ impl Terminal {
             return false;
         };
         match target {
-            RenameTarget::Workspace => navigation.active_workspace_mut().rename(name),
-            RenameTarget::Group => navigation
-                .active_workspace_mut()
-                .active_group_mut()
-                .rename(name),
-            RenameTarget::Tab => navigation.active_tab_mut().rename(Some(name)),
+            RenameTarget::Workspace(id) => navigation.rename_workspace(id, name),
+            RenameTarget::Group(id) => navigation.rename_group(id, name),
+            RenameTarget::Tab(id) => navigation.rename_tab(id, Some(name)),
         }
     }
 
@@ -3101,10 +3617,8 @@ fn attach_missing_pty_sources(terminal: &Rc<RefCell<Terminal>>) -> Result<(), &'
         terminal
             .sessions
             .iter()
-            .filter_map(|(surface, session)| {
-                (session.pty_source == 0 && !session.session.is_null())
-                    .then(|| (*surface, unsafe { ffi::kitty_session_fd(session.session) }))
-            })
+            .filter(|(_, session)| session.pty_source == 0 && !session.session.is_null())
+            .map(|(surface, session)| (*surface, unsafe { ffi::kitty_session_fd(session.session) }))
             .collect::<Vec<_>>()
     };
     for (surface, fd) in pending {
@@ -3128,6 +3642,42 @@ fn attach_settings_source(terminal: &Rc<RefCell<Terminal>>) {
         glib::ControlFlow::Continue
     });
     terminal.borrow_mut().settings_source = Some(source);
+}
+
+fn attach_sigterm_source(
+    terminal: &Rc<RefCell<Terminal>>,
+    window: &ApplicationWindow,
+    area: &GLArea,
+) {
+    let weak = Rc::downgrade(terminal);
+    let window = window.downgrade();
+    let area = area.downgrade();
+    glib::timeout_add_local(Duration::from_millis(100), move || {
+        if !TERMINATION_REQUESTED.load(Ordering::Acquire) {
+            return if weak.upgrade().is_some() {
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            };
+        }
+        let Some(terminal) = weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let Some(window) = window.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let Some(_area) = area.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let Ok(mut terminal_state) = terminal.try_borrow_mut() else {
+            return glib::ControlFlow::Continue;
+        };
+        terminal_state.close_confirmed = true;
+        diagnostic("sigterm_shutdown", &[]);
+        drop(terminal_state);
+        window.close();
+        glib::ControlFlow::Break
+    });
 }
 
 fn clear_box(container: &gtk::Box) {
@@ -3472,12 +4022,24 @@ fn run_accessibility_gate(terminal: &Rc<RefCell<Terminal>>) {
     );
 }
 
+fn open_modal_dialog(terminal: &Rc<RefCell<Terminal>>) -> bool {
+    let mut terminal = terminal.borrow_mut();
+    if terminal.modal_dialog_open {
+        return false;
+    }
+    terminal.modal_dialog_open = true;
+    true
+}
+
 fn request_navigation_rename(
     terminal: &Rc<RefCell<Terminal>>,
     target: RenameTarget,
     window: &ApplicationWindow,
     area: &GLArea,
 ) {
+    if !open_modal_dialog(terminal) {
+        return;
+    }
     let dialog = gtk::Window::builder()
         .transient_for(window)
         .modal(true)
@@ -3502,6 +4064,14 @@ fn request_navigation_rename(
     content.append(&entry);
     content.append(&actions);
     dialog.set_child(Some(&content));
+
+    let dialog_terminal = terminal.clone();
+    let dialog_area = area.clone();
+    dialog.connect_close_request(move |_| {
+        dialog_terminal.borrow_mut().modal_dialog_open = false;
+        dialog_area.grab_focus();
+        Propagation::Proceed
+    });
 
     let dialog_cancel = dialog.downgrade();
     let cancel_area = area.clone();
@@ -3581,7 +4151,7 @@ fn request_navigation_command(
         apply_navigation_command(terminal, command, false);
         return;
     }
-    if terminal.borrow().close_dialog_open {
+    if terminal.borrow().modal_dialog_open {
         return;
     }
     if let Some(confirm) = autoclose_decision() {
@@ -3599,7 +4169,7 @@ fn request_navigation_command(
         }
         return;
     }
-    terminal.borrow_mut().close_dialog_open = true;
+    terminal.borrow_mut().modal_dialog_open = true;
     let dialog = gtk::AlertDialog::builder()
         .modal(true)
         .message(format!(
@@ -3615,7 +4185,7 @@ fn request_navigation_command(
     let terminal_confirm = terminal.clone();
     let area_confirm = area.clone();
     dialog.choose(Some(window), None::<&gio::Cancellable>, move |choice| {
-        terminal_confirm.borrow_mut().close_dialog_open = false;
+        terminal_confirm.borrow_mut().modal_dialog_open = false;
         if matches!(choice, Ok(1)) {
             let rechecked = terminal_confirm
                 .borrow()
@@ -3710,6 +4280,9 @@ fn request_command_palette(
     area: &GLArea,
     terminal: &Rc<RefCell<Terminal>>,
 ) {
+    if !open_modal_dialog(terminal) {
+        return;
+    }
     let dialog = gtk::Window::builder()
         .transient_for(window)
         .modal(true)
@@ -3782,8 +4355,10 @@ fn request_command_palette(
         Propagation::Stop
     });
     dialog.add_controller(palette_keys);
+    let dialog_terminal = terminal.clone();
     let area_close = area.clone();
     dialog.connect_close_request(move |_| {
+        dialog_terminal.borrow_mut().modal_dialog_open = false;
         area_close.grab_focus();
         Propagation::Proceed
     });
@@ -3802,6 +4377,9 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
         area.error_bell();
         return;
     };
+    if !open_modal_dialog(terminal) {
+        return;
+    }
     let resolved = document.resolved();
     let dialog = gtk::Window::builder()
         .transient_for(window)
@@ -3872,8 +4450,26 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
     let dialog_save = dialog.downgrade();
     let restore_focus = restore.clone();
     let confirm_shortcut = confirm.clone();
+    let dialog_document = document.clone();
     save.connect_clicked(move |_| {
-        let mut document = document.clone();
+        let current_document = terminal_save
+            .borrow()
+            .persistence
+            .as_ref()
+            .map(|state| state.settings.clone());
+        if current_document.as_ref() != Some(&dialog_document) {
+            if let Some(area) = terminal_save
+                .borrow()
+                .navigation_ui
+                .as_ref()
+                .and_then(|ui| ui.area.upgrade())
+            {
+                area.error_bell();
+            }
+            diagnostic("settings_changed_while_dialog_open", &[]);
+            return;
+        }
+        let mut document = dialog_document.clone();
         let mut resolved = document.resolved().clone();
         resolved.restore_layout = if restore.is_active() {
             RestoreLayoutPolicy::Always
@@ -3923,8 +4519,10 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
         Propagation::Proceed
     });
     dialog.add_controller(settings_shortcuts);
+    let dialog_terminal = terminal.clone();
     let area_close = area.clone();
     dialog.connect_close_request(move |_| {
+        dialog_terminal.borrow_mut().modal_dialog_open = false;
         area_close.grab_focus();
         Propagation::Proceed
     });
@@ -4780,7 +5378,7 @@ fn build_window(app: &Application) {
             current.shutdown(&area_close);
             return Propagation::Proceed;
         }
-        if current.close_dialog_open {
+        if current.modal_dialog_open {
             return Propagation::Stop;
         }
         if let Some(confirm) = autoclose_decision() {
@@ -4799,7 +5397,7 @@ fn build_window(app: &Application) {
             diagnostic("close_cancelled", &[]);
             return Propagation::Stop;
         }
-        current.close_dialog_open = true;
+        current.modal_dialog_open = true;
         drop(current);
         let dialog = gtk::AlertDialog::builder()
             .modal(true)
@@ -4814,7 +5412,7 @@ fn build_window(app: &Application) {
         let area_confirm = area_close.clone();
         dialog.choose(Some(window), None::<&gio::Cancellable>, move |choice| {
             let mut terminal = terminal_confirm.borrow_mut();
-            terminal.close_dialog_open = false;
+            terminal.modal_dialog_open = false;
             if matches!(choice, Ok(1)) {
                 terminal.close_confirmed = true;
                 let foreground = terminal.foreground_surfaces(None).len();
@@ -4836,17 +5434,22 @@ fn build_window(app: &Application) {
         Propagation::Stop
     });
 
-    let terminal_unrealize = terminal;
+    let terminal_unrealize = terminal.clone();
     area.connect_unrealize(move |area| {
         if let Ok(mut terminal) = terminal_unrealize.try_borrow_mut() {
             terminal.shutdown(area);
         }
     });
 
+    attach_sigterm_source(&terminal, &window, &area);
+
     window.present();
 }
 
 fn main() -> glib::ExitCode {
+    if !install_sigterm_handler() {
+        diagnostic("sigterm_handler_failed", &[]);
+    }
     let app = Application::builder()
         .application_id("dev.kitmux.Kitmux")
         .flags(gio::ApplicationFlags::NON_UNIQUE)

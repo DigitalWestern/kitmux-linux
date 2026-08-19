@@ -89,6 +89,7 @@ impl ControlServer {
         let _path_lock = SocketPathLock::acquire(&path)?;
         remove_stale_socket(&path, uid)?;
         let listener = UnixListener::bind(&path)?;
+        listener.set_nonblocking(true)?;
         let identity = socket_identity(&path)?;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
         validate_bound_socket(&path, uid, identity)?;
@@ -202,14 +203,23 @@ fn accept_loop<F>(
                 }
                 let handler = Arc::clone(&handler);
                 let active_clients = Arc::clone(&active_clients);
+                let client_slot = Arc::clone(&active_clients);
                 let history = history.clone();
                 let deadline = Instant::now() + CONTROL_SERVER_DEADLINE;
-                let _ = thread::Builder::new()
+                let spawned = thread::Builder::new()
                     .name("kitmux-control-client".to_owned())
                     .spawn(move || {
                         serve_client(stream, handler, history, deadline);
                         active_clients.fetch_sub(1, Ordering::AcqRel);
                     });
+                if spawned.is_err() {
+                    client_slot.fetch_sub(1, Ordering::AcqRel);
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                // ponytail: 10ms polling keeps shutdown independent of a renamed socket path;
+                // replace with a dedicated wake fd if sub-millisecond teardown matters.
+                thread::sleep(Duration::from_millis(10));
             }
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(_) => break,

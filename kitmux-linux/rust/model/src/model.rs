@@ -600,6 +600,30 @@ impl AppModel {
             .active_tab_mut()
     }
 
+    pub fn rename_workspace(&mut self, id: WorkspaceId, name: &str) -> bool {
+        self.workspaces
+            .iter_mut()
+            .find(|workspace| workspace.id() == id)
+            .is_some_and(|workspace| workspace.rename(name))
+    }
+
+    pub fn rename_group(&mut self, id: GroupId, name: &str) -> bool {
+        self.workspaces
+            .iter_mut()
+            .flat_map(|workspace| workspace.groups.iter_mut())
+            .find(|group| group.id() == id)
+            .is_some_and(|group| group.rename(name))
+    }
+
+    pub fn rename_tab(&mut self, id: TabId, title: Option<&str>) -> bool {
+        self.workspaces
+            .iter_mut()
+            .flat_map(|workspace| workspace.groups.iter_mut())
+            .flat_map(|group| group.tabs.iter_mut())
+            .find(|tab| tab.id() == id)
+            .is_some_and(|tab| tab.rename(title))
+    }
+
     pub fn select_workspace(&mut self, index: usize) -> bool {
         if index >= self.workspaces.len() {
             return false;

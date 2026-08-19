@@ -1,13 +1,21 @@
+use crate::atomic_write_private;
 use crate::sha256_bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
+use std::ffi::OsString;
 use std::fmt;
+use std::fs;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 pub const SSH_DOCUMENT_VERSION: i64 = 1;
 pub const SSH_DOCUMENT_MAX_BYTES: usize = 1024 * 1024;
 pub const SSH_RESOLUTION_MAX_BYTES: usize = 512 * 1024;
+pub const SSH_PROFILE_MAX_COUNT: usize = 1000;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +86,55 @@ pub struct SshConnectionReview {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SshArgvError {
+    InvalidProfile,
+    InvalidExecutable,
+}
+
+impl fmt::Display for SshArgvError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidProfile => formatter.write_str("invalid SSH profile"),
+            Self::InvalidExecutable => formatter.write_str("SSH executable must be absolute"),
+        }
+    }
+}
+
+impl std::error::Error for SshArgvError {}
+
+#[derive(Debug)]
+pub enum SshProfileStoreError {
+    Io(String),
+    InvalidPath,
+    InvalidProfile,
+    DuplicateName,
+    MissingProfile,
+    InvalidDocument,
+    Codec(SshCodecError),
+}
+
+impl fmt::Display for SshProfileStoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => formatter.write_str(error),
+            Self::InvalidPath => formatter.write_str("SSH profile path is not a private file"),
+            Self::InvalidProfile => formatter.write_str("invalid SSH profile"),
+            Self::DuplicateName => formatter.write_str("SSH profile name already exists"),
+            Self::MissingProfile => formatter.write_str("SSH profile was not found"),
+            Self::InvalidDocument => formatter.write_str("SSH profile document is invalid"),
+            Self::Codec(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for SshProfileStoreError {}
+
+pub struct SshProfileStore {
+    path: PathBuf,
+    document: Mutex<SshProfileDocument>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SshCodecError {
     TooLarge,
     Malformed,
@@ -124,7 +181,7 @@ fn validate_ssh_profiles(
     if document.version > SSH_DOCUMENT_VERSION {
         return Err(SshCodecError::UnsupportedVersion(document.version));
     }
-    if document.profiles.len() > 1000 {
+    if document.profiles.len() > SSH_PROFILE_MAX_COUNT {
         return Err(SshCodecError::Invalid("too many profiles"));
     }
     let mut ids = HashSet::new();
@@ -170,6 +227,33 @@ fn validate_ssh_profiles(
 }
 
 impl SshResolution {
+    pub fn argv(executable: &Path, profile: &SshProfile) -> Result<Vec<OsString>, SshArgvError> {
+        if !executable.is_absolute() {
+            return Err(SshArgvError::InvalidExecutable);
+        }
+        if safe_text(&profile.name, 128).is_none()
+            || safe_host_alias(&profile.host_alias).is_none()
+            || profile
+                .remote_command
+                .as_deref()
+                .is_some_and(|command| safe_text(command, 2048).is_none())
+            || !valid_timestamp(&profile.created_at)
+            || !valid_timestamp(&profile.updated_at)
+            || profile.updated_at < profile.created_at
+        {
+            return Err(SshArgvError::InvalidProfile);
+        }
+        let mut argv = vec![
+            executable.as_os_str().to_owned(),
+            OsString::from("--"),
+            OsString::from(&profile.host_alias),
+        ];
+        if let Some(command) = &profile.remote_command {
+            argv.push(OsString::from(command));
+        }
+        Ok(argv)
+    }
+
     #[must_use]
     pub fn parse(host_alias: &str, output: &str) -> Option<Self> {
         if output.len() > SSH_RESOLUTION_MAX_BYTES {
@@ -377,4 +461,284 @@ fn append_forwards(
             externally_listening,
         });
     }
+}
+
+impl SshProfileStore {
+    pub fn open(path: PathBuf) -> Result<Self, SshProfileStoreError> {
+        let document = match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(SshProfileStoreError::InvalidPath);
+                }
+                if metadata.uid() != unsafe { libc::geteuid() } {
+                    return Err(SshProfileStoreError::InvalidPath);
+                }
+                if metadata.mode() & 0o077 != 0 {
+                    return Err(SshProfileStoreError::InvalidPath);
+                }
+                let data =
+                    fs::read(&path).map_err(|error| SshProfileStoreError::Io(error.to_string()))?;
+                match decode_ssh_profiles(&data) {
+                    Ok(document) => document,
+                    Err(_) => {
+                        quarantine_profile_file(&path)?;
+                        SshProfileDocument {
+                            version: SSH_DOCUMENT_VERSION,
+                            profiles: Vec::new(),
+                            extra: BTreeMap::new(),
+                        }
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => SshProfileDocument {
+                version: SSH_DOCUMENT_VERSION,
+                profiles: Vec::new(),
+                extra: BTreeMap::new(),
+            },
+            Err(error) => return Err(SshProfileStoreError::Io(error.to_string())),
+        };
+        Ok(Self {
+            path,
+            document: Mutex::new(document),
+        })
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    #[must_use]
+    pub fn list(&self) -> Vec<SshProfile> {
+        let mut profiles = self
+            .document
+            .lock()
+            .expect("SSH profile store lock poisoned")
+            .profiles
+            .clone();
+        profiles.sort_by_key(|profile| profile.name.to_lowercase());
+        profiles
+    }
+
+    #[must_use]
+    pub fn profile(&self, id: Uuid) -> Option<SshProfile> {
+        self.document
+            .lock()
+            .expect("SSH profile store lock poisoned")
+            .profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .cloned()
+    }
+
+    pub fn create(
+        &self,
+        name: impl Into<String>,
+        host_alias: impl Into<String>,
+        remote_command: Option<String>,
+    ) -> Result<SshProfile, SshProfileStoreError> {
+        let now = utc_timestamp();
+        self.create_at(name, host_alias, remote_command, &now)
+    }
+
+    pub fn create_at(
+        &self,
+        name: impl Into<String>,
+        host_alias: impl Into<String>,
+        remote_command: Option<String>,
+        timestamp: &str,
+    ) -> Result<SshProfile, SshProfileStoreError> {
+        let mut document = self
+            .document
+            .lock()
+            .expect("SSH profile store lock poisoned");
+        let profile = SshProfile {
+            id: Uuid::new_v4(),
+            name: name.into(),
+            host_alias: host_alias.into(),
+            remote_command,
+            reviewed_fingerprint: None,
+            created_at: timestamp.to_owned(),
+            updated_at: timestamp.to_owned(),
+            extra: BTreeMap::new(),
+        };
+        if document.profiles.len() >= SSH_PROFILE_MAX_COUNT {
+            return Err(SshProfileStoreError::InvalidProfile);
+        }
+        if document
+            .profiles
+            .iter()
+            .any(|candidate| candidate.name.eq_ignore_ascii_case(&profile.name))
+        {
+            return Err(SshProfileStoreError::DuplicateName);
+        }
+        let mut candidate = document.profiles.clone();
+        candidate.push(profile.clone());
+        let validated = validate_ssh_profiles(SshProfileDocument {
+            version: document.version,
+            profiles: candidate,
+            extra: document.extra.clone(),
+        })
+        .map_err(|error| match error {
+            SshCodecError::Invalid(_) => SshProfileStoreError::InvalidProfile,
+            other => SshProfileStoreError::Codec(other),
+        })?;
+        self.save_locked(&validated)?;
+        *document = validated;
+        Ok(document
+            .profiles
+            .iter()
+            .find(|candidate| candidate.id == profile.id)
+            .expect("created SSH profile remains in the validated document")
+            .clone())
+    }
+
+    pub fn update(
+        &self,
+        id: Uuid,
+        name: Option<String>,
+        host_alias: Option<String>,
+        remote_command: Option<Option<String>>,
+    ) -> Result<SshProfile, SshProfileStoreError> {
+        let now = utc_timestamp();
+        let mut document = self
+            .document
+            .lock()
+            .expect("SSH profile store lock poisoned");
+        let index = document
+            .profiles
+            .iter()
+            .position(|profile| profile.id == id)
+            .ok_or(SshProfileStoreError::MissingProfile)?;
+        let mut candidate = document.clone();
+        let updated_name = {
+            let profile = &mut candidate.profiles[index];
+            let previous_host = profile.host_alias.clone();
+            let previous_command = profile.remote_command.clone();
+            if let Some(name) = name {
+                profile.name = name;
+            }
+            if let Some(host_alias) = host_alias {
+                profile.host_alias = host_alias;
+            }
+            if let Some(remote_command) = remote_command {
+                profile.remote_command = remote_command;
+            }
+            if profile.host_alias != previous_host || profile.remote_command != previous_command {
+                profile.reviewed_fingerprint = None;
+            }
+            profile.updated_at = std::cmp::max(now, profile.created_at.clone());
+            profile.name.clone()
+        };
+        if candidate
+            .profiles
+            .iter()
+            .enumerate()
+            .any(|(other, candidate)| {
+                other != index && candidate.name.eq_ignore_ascii_case(&updated_name)
+            })
+        {
+            return Err(SshProfileStoreError::DuplicateName);
+        }
+        let validated = validate_ssh_profiles(candidate).map_err(|error| match error {
+            SshCodecError::Invalid(_) => SshProfileStoreError::InvalidProfile,
+            other => SshProfileStoreError::Codec(other),
+        })?;
+        self.save_locked(&validated)?;
+        *document = validated;
+        let result = document.profiles[index].clone();
+        Ok(result)
+    }
+
+    pub fn approve(&self, id: Uuid, fingerprint: &str) -> Result<SshProfile, SshProfileStoreError> {
+        if fingerprint.len() != 64
+            || !fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(SshProfileStoreError::InvalidProfile);
+        }
+        let mut document = self
+            .document
+            .lock()
+            .expect("SSH profile store lock poisoned");
+        let index = document
+            .profiles
+            .iter()
+            .position(|profile| profile.id == id)
+            .ok_or(SshProfileStoreError::MissingProfile)?;
+        let mut candidate = document.clone();
+        let profile = &mut candidate.profiles[index];
+        profile.reviewed_fingerprint = Some(fingerprint.to_owned());
+        profile.updated_at = std::cmp::max(utc_timestamp(), profile.created_at.clone());
+        let result = profile.clone();
+        let candidate = validate_ssh_profiles(candidate).map_err(|error| match error {
+            SshCodecError::Invalid(_) => SshProfileStoreError::InvalidProfile,
+            other => SshProfileStoreError::Codec(other),
+        })?;
+        self.save_locked(&candidate)?;
+        *document = candidate;
+        Ok(result)
+    }
+
+    pub fn delete(&self, id: Uuid) -> Result<(), SshProfileStoreError> {
+        let mut document = self
+            .document
+            .lock()
+            .expect("SSH profile store lock poisoned");
+        let index = document
+            .profiles
+            .iter()
+            .position(|profile| profile.id == id)
+            .ok_or(SshProfileStoreError::MissingProfile)?;
+        let mut candidate = document.clone();
+        candidate.profiles.remove(index);
+        let candidate = validate_ssh_profiles(candidate).map_err(|error| match error {
+            SshCodecError::Invalid(_) => SshProfileStoreError::InvalidProfile,
+            other => SshProfileStoreError::Codec(other),
+        })?;
+        self.save_locked(&candidate)?;
+        *document = candidate;
+        Ok(())
+    }
+
+    fn save_locked(&self, document: &SshProfileDocument) -> Result<(), SshProfileStoreError> {
+        let data = encode_ssh_profiles(document.clone()).map_err(SshProfileStoreError::Codec)?;
+        atomic_write_private(&self.path, &data)
+            .map_err(|error| SshProfileStoreError::Io(error.to_string()))
+    }
+}
+
+fn quarantine_profile_file(path: &Path) -> Result<(), SshProfileStoreError> {
+    let parent = path.parent().ok_or(SshProfileStoreError::InvalidPath)?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let destination = parent.join(format!(
+        "{}.corrupt-{stamp}-{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .ok_or(SshProfileStoreError::InvalidPath)?,
+        Uuid::new_v4()
+    ));
+    fs::rename(path, destination).map_err(|error| SshProfileStoreError::Io(error.to_string()))
+}
+
+fn utc_timestamp() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs()) as libc::time_t;
+    let mut broken_down = unsafe { std::mem::zeroed::<libc::tm>() };
+    if unsafe { libc::gmtime_r(&seconds, &mut broken_down) }.is_null() {
+        return "1970-01-01T00:00:00Z".to_owned();
+    }
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        broken_down.tm_year + 1900,
+        broken_down.tm_mon + 1,
+        broken_down.tm_mday,
+        broken_down.tm_hour,
+        broken_down.tm_min,
+        broken_down.tm_sec
+    )
 }

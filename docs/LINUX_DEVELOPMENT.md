@@ -330,6 +330,29 @@ If the runtime socket file is removed while Kitmux is still running, restart
 Kitmux or set `KITMUX_SOCKET_PATH` to a stable private path. The server does not
 auto-rebind it.
 
+## SSH and agent workflows
+
+The Linux alpha stores bounded SSH profiles at
+`$XDG_CONFIG_HOME/kitmux/ssh-profiles.json` (or the path supplied by the
+absolute `KITMUX_SSH_PROFILES_PATH` override). It resolves the user's
+PATH-selected `ssh` executable with `ssh -G`, shows a fingerprinted review for
+externally listening forwards, and launches only the reviewed argument array.
+The profile store is atomic and private (`0600`), and corrupt input is moved to
+a timestamped quarantine file. `SSH_AUTH_SOCK` is passed through when present;
+its absence is reported without logging the socket path.
+
+Run the ARM64 X11 acceptance gate against a fresh release runtime:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase6-ssh.sh"
+```
+
+The gate covers `kitmuxctl ssh profile list`, review then approval for
+`ssh.connect`, explicit reconnect review/approval for a disconnected SSH pane,
+nonstandard executable lookup, one-argument remote commands, missing agent
+environment, private profile permissions, and log-safety checks.
+
 ## Terminal shortcut overrides
 
 The Linux settings file can override the seven currently implemented terminal

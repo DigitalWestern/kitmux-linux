@@ -158,11 +158,12 @@ pub fn save_state(path: &Path, snapshot: AppSnapshot) -> Result<(), String> {
     let bytes = encode_snapshot(snapshot).map_err(|error| error.to_string())?;
     let last_good =
         match read_private(path, SNAPSHOT_MAX_BYTES as u64).map_err(|error| error.to_string())? {
-            Some(previous) => {
-                decode_snapshot(&previous).map_err(|error| error.to_string())?;
-                previous
-            }
-            None => bytes.clone(),
+            Some(previous) if decode_snapshot(&previous).is_ok() => previous,
+            _ => read_private(&last_good_path(path), SNAPSHOT_MAX_BYTES as u64)
+                .ok()
+                .flatten()
+                .filter(|previous| decode_snapshot(previous).is_ok())
+                .unwrap_or_else(|| bytes.clone()),
         };
     atomic_write_private(&last_good_path(path), &last_good).map_err(|error| error.to_string())?;
     atomic_write_private(path, &bytes).map_err(|error| error.to_string())?;

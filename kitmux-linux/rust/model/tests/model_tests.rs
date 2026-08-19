@@ -353,6 +353,37 @@ fn hierarchy_names_and_explicit_closes_preserve_ids_and_non_empty_parents() {
 }
 
 #[test]
+fn rename_by_id_does_not_follow_the_active_selection() {
+    let (workspace_a, _) = workspace_with_terminal(
+        WorkspaceId::new(),
+        GroupId::new(),
+        TabId::new(),
+        PaneId::new(),
+    );
+    let (workspace_b, _) = workspace_with_terminal(
+        WorkspaceId::new(),
+        GroupId::new(),
+        TabId::new(),
+        PaneId::new(),
+    );
+    let workspace_b_id = workspace_b.id();
+    let group_b_id = workspace_b.groups()[0].id();
+    let tab_b_id = workspace_b.groups()[0].tabs()[0].id();
+    let mut app = AppModel::new(vec![workspace_a, workspace_b], 0).unwrap();
+
+    assert!(app.rename_workspace(workspace_b_id, "Second"));
+    assert!(app.rename_group(group_b_id, "Remote"));
+    assert!(app.rename_tab(tab_b_id, Some("Logs")));
+    assert_eq!(app.active_workspace().name(), "Workspace 1");
+    assert_eq!(app.workspaces()[1].name(), "Second");
+    assert_eq!(app.workspaces()[1].groups()[0].name(), "Remote");
+    assert_eq!(
+        app.workspaces()[1].groups()[0].tabs()[0].custom_title(),
+        Some("Logs")
+    );
+}
+
+#[test]
 fn focusing_hidden_pane_selects_its_full_hierarchy() {
     let hidden_pane = PaneId::new();
     let (hidden_workspace, _) = workspace_with_terminal(

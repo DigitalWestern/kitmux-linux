@@ -199,7 +199,8 @@ second_pid=$!
 wait_for_log_file "$second_log" "$second_pid" '^kitmux event=control_server_declined reason=live_server$'
 wait_for_log_file "$second_log" "$second_pid" '^kitmux event=navigation_ready$'
 cli ping | grep '"message": "pong"' >/dev/null
-kill "$app_pid"
+# SIGKILL leaves the socket stale; SIGTERM now performs the graceful save path.
+kill -KILL "$app_pid"
 wait "$app_pid" || true
 app_pid=""
 if grep -q '^kitmux event=control_server_ready ' "$second_log"; then
@@ -211,8 +212,8 @@ wait "$second_pid" || true
 second_pid=""
 [[ -S "$socket_path" ]]
 
-# ponytail: SIGTERM cannot run Rust destructors; restart must safely replace
-# this stale socket, while graceful GTK shutdown remains covered by Phase 5.
+# ponytail: SIGKILL cannot run Rust destructors; restart must safely replace
+# this stale socket, while the graceful SIGTERM save path is tested separately.
 launch_app
 cli ping | grep -q '"message": "pong"'
 
@@ -251,7 +252,7 @@ fi
 [[ "$install_missing_status" -eq 2 ]]
 grep -q 'source must be an executable' "$temporary_root/install-user-cli-missing.log"
 
-kill "$app_pid"
+kill -KILL "$app_pid"
 wait "$app_pid" || true
 app_pid=""
 [[ -S "$socket_path" ]]

@@ -130,6 +130,39 @@ fn state_recovers_last_good_and_never_executes_inert_resume_text() {
 }
 
 #[test]
+fn save_state_replaces_a_corrupt_primary_without_losing_the_last_good_backup() {
+    let temp = TestDirectory::new();
+    let path = temp.path().join("state.json");
+    save_state(&path, snapshot("/tmp", None)).unwrap();
+    fs::write(&path, b"broken").unwrap();
+
+    save_state(&path, snapshot("/", None)).unwrap();
+
+    let loaded = load_state_at_launch(&path);
+    assert_eq!(loaded.disposition, LoadDisposition::Loaded);
+    let restored = loaded.snapshot.unwrap();
+    let detail = restored.workspaces[0].tab_groups[0].terminal_tabs[0]
+        .pane_details
+        .as_ref()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
+    assert_eq!(detail.cwd.as_deref(), Some("/"));
+
+    let backup = load_state_at_launch(&last_good_path(&path));
+    let backup = backup.snapshot.unwrap();
+    let detail = backup.workspaces[0].tab_groups[0].terminal_tabs[0]
+        .pane_details
+        .as_ref()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
+    assert_eq!(detail.cwd.as_deref(), Some("/tmp"));
+}
+
+#[test]
 fn failed_private_write_preserves_the_last_readable_files() {
     let temp = TestDirectory::new();
     let path = temp.path().join("state.json");

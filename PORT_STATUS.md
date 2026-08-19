@@ -1,20 +1,20 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-08-02
+**Last inspected:** 2026-08-17
 
 This file is the evidence ledger and the authority on what is currently true.
 The next slice is in [`NEXT_STEPS.md`](NEXT_STEPS.md); phase scope is in
 [`LINUX_PORT_PLAN.md`](LINUX_PORT_PLAN.md); commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
 
-**Implementation state:** Phases 0 through 5 and Slice 6.1 are closed. GTK 4 is
+**Implementation state:** Phases 0 through 5 and Slices 6.1–6.2 are closed. GTK 4 is
 the selected Linux UI toolkit. What exists: separate Ubuntu ARM64 headless and
 XFCE desktop VMs; an ELF `libkitty.so`; a relocatable ~104 MiB attributed engine
 runtime; Linux stress tests; a GTK 4 terminal host over X11 and native Wayland
 client paths; deterministic keyboard, input-method, and fractional-scaling
 harnesses; an authoritative portable contract corpus; a display-free Rust
 product model with bounded contracts; a release-shaped terminal multiplexer
-alpha; and a secure local control socket with the `kitmuxctl` CLI.
+alpha; and secure local control plus reviewed SSH connect/reconnect workflows.
 
 The alpha has live hierarchy navigation, nested terminal splits, one permanent
 libkitty session per live surface, selection/clipboard/paste-safety/mouse/wheel/
@@ -22,9 +22,9 @@ search, native command and settings controls, full safe hierarchy persistence,
 close-chain foreground review, and initial accessible roles and focus order.
 Native packaging does not exist yet.
 
-**Next gate:** Slice 6.2 SSH and agent workflows. Not started. Physical-Mesa GPU
-rendering and interaction remain a separate Phase 6 beta obligation; native
-packaging remains Phase 8 work.
+**Next gate:** Slice 6.3 resume and recovery. Physical-Mesa GPU rendering and
+interaction remain a separate Phase 6 beta obligation; native packaging remains
+Phase 8 work.
 
 **Non-claims:** see [Current blockers and limits](#current-blockers-and-limits).
 All GUI evidence below is ARM64, Mesa llvmpipe, one machine, one person.
@@ -35,6 +35,61 @@ repository root.
 ## Verified checkout state
 
 Adjacent macOS checkout: `../macos/kitmux/`
+
+### 2026-08-17 — Slice 6.2 SSH and agent workflows closed
+
+- Added a bounded Linux SSH profile store at the XDG config path, with an
+  absolute `KITMUX_SSH_PROFILES_PATH` override for gates. Existing profile files
+  must be user-owned, non-symlink regular files, and private; writes are atomic
+  `0600` replacements. Duplicate names, invalid profiles, oversized documents,
+  corruption quarantine, concurrent creates, approval persistence, and
+  edit-driven approval clearing are covered by the model tests.
+- Added real executable discovery through `PATH`, bounded `ssh -G -- host`
+  resolution with a five-second deadline and 512 KiB output bound, separated
+  stdout/stderr draining, and generic failure messages that do not carry
+  stderr or expanded private arguments into diagnostics. SSH sessions receive
+  `SSH_AUTH_SOCK` when present; missing agent state is reported only as a
+  boolean.
+- Added exact-UUID `kitmuxctl ssh profile list`, `ssh connect`, and
+  `ssh reconnect` routes. Connect returns a fingerprinted review before an
+  externally listening forward can launch. Reconnect requires a disconnected
+  SSH pane and performs the same explicit review/approval before replacing the
+  dead runtime. Launches use an absolute argv with the remote command as one
+  argument and never pass through a shell.
+- Source evidence: `limactl shell kitmux-linux -- env
+  CARGO_NET_OFFLINE=true "$PWD/kitmux-linux/scripts/test-model.sh"` passed
+  model Clippy/formatting, 28 contract, 9 control-socket, 8 interaction, 18
+  model, and 5 persistence tests; the duplicated Linux control-socket run also
+  passed 9 tests. App Clippy passed with `-D warnings` against the ARM64 native
+  bridge libraries.
+- Release/GUI evidence: `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  "$PWD/kitmux-linux/scripts/test-phase6-ssh.sh"` passed with a fresh
+  release-shaped runtime, 25 bundled and 10 system SONAMEs, a 24-package SPDX
+  SBOM, the 16-session flood, 24 forced-close cycles, and the SSH acceptance
+  checks for nonstandard executable lookup, review/approval, explicit
+  reconnect, one-argument remote commands, missing agent environment, private
+  profile mode, and log safety. This is Ubuntu 26.04 ARM64 X11 with Mesa
+  llvmpipe.
+- Contract/inventory evidence: `python3 contracts/validate-fixtures.py` passed
+  (6 contracts, 20 cases, 7 versioned files), and
+  `python3 contracts/validate-inventory.py` passed (111 Linux references, 234
+  macOS references, 64 features across 17 areas). The locked materialization
+  check passed: 7 reference files and 1 Linux overlay.
+- Phase-boundary drift: `kitmux-linux/scripts/report-reference-drift.py`
+  passed with the frozen tag and current macOS `HEAD` both at
+  `3088295003c0842d7c3198102d0d05378da4dc62` and no relevant committed drift.
+  Rebaselining remains blocked by five relevant uncommitted macOS files; no
+  macOS files were changed here.
+- Limits: the acceptance executable is a deterministic nonstandard-path test
+  harness, so this slice does not prove a real remote host, network
+  authentication, host-key interaction, a desktop agent actually signing, or
+  profile authoring UI. SSH pane metadata is not restored across app launches;
+  that belongs to Slice 6.3. Native Wayland SSH, physical-GPU behavior,
+  packaging, clean-machine installation, x86_64, and native package evidence
+  remain unproven.
+- Source-tested, GUI-tested, and release-runtime-tested: yes as stated above.
+  Native-package-tested, clean-desktop-installed, x86_64-runtime-tested,
+  physical-input-tested, physical-GPU-tested, and network/auth-tested: not run.
 
 ### 2026-08-02 — Slice 6.1 secure local control and CLI audit closed
 
@@ -74,6 +129,36 @@ Adjacent macOS checkout: `../macos/kitmux/`
   clean-desktop-installed, x86_64-runtime-tested, physical-input-tested, and
   physical-GPU-tested: not run. Slice 6.2, SSH, resume, packaging, and
   physical-Mesa proof remain open.
+
+### 2026-08-17 — reliability remediation verified
+
+- `save_state` now replaces a corrupt primary snapshot while retaining a valid
+  `.last-good` backup when one exists. The app installs a SIGTERM flag handler
+  and the GTK main loop performs the normal state save and session reap before
+  closing. The control gate's intentionally abrupt-death checks use SIGKILL;
+  graceful SIGTERM shutdown is tested separately.
+- Rename dialogs capture workspace, group, and tab IDs. Palette, settings,
+  rename, and close dialogs share one modal-mutation guard; settings also refuse
+  to overwrite a document changed while the dialog was open. Control-client
+  thread-spawn failure now releases its reserved client slot.
+- `cargo test --manifest-path kitmux-linux/rust/model/Cargo.toml --locked`
+  passed on macOS and in the Ubuntu ARM64 desktop VM. The VM run passed 1 unit,
+  28 contract, 9 control-socket, 8 interaction, 18 model, and 5 persistence
+  tests; model Clippy with warnings denied passed.
+- In the Ubuntu ARM64 desktop VM, `cargo check --manifest-path
+  kitmux-linux/rust/app/Cargo.toml --locked` passed with the release native
+  library path. `KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON
+  kitmux-linux/scripts/build-release-runtime.sh /tmp/kitmux-fix-runtime-20260817`
+  passed, as did `DISPLAY=:1 kitmux-linux/scripts/test-phase5-product.sh` and
+  `DISPLAY=:1 kitmux-linux/scripts/test-phase6-control.sh`.
+- A live release-runtime SIGTERM smoke with temporary XDG roots observed
+  `sigterm_shutdown`, `state_saved`, and shutdown with two sessions after a
+  control-created second workspace. This proves the graceful termination path,
+  not persistence after SIGKILL, a crash, or power loss.
+- Source-tested: yes on macOS and Ubuntu ARM64; GUI/release-runtime-tested:
+  Ubuntu ARM64 X11 with Mesa llvmpipe; current app and model Clippy with
+  `-D warnings` passed. Native packaging, clean-desktop installation, x86_64
+  runtime, and physical-GPU evidence remain unproven.
 
 Clean reference revision:
 `3088295003c0842d7c3198102d0d05378da4dc62`
@@ -1490,18 +1575,17 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Begin [Slice 6.2 in the implementation plan](LINUX_PORT_PLAN.md#slice-62-ssh-and-agent-workflows)
+Begin [Slice 6.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-63-resume-and-recovery)
 using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through 5 and
-Slice 6.1 are
-closed; GTK 4 is selected, and the release-shaped terminal multiplexer alpha has
+Slices 6.1–6.2 are closed; GTK 4 is selected, and the release-shaped terminal multiplexer alpha has
 hierarchy navigation, nested splits, one permanent session per live surface, native
 command/settings controls, full safe hierarchy persistence, and close-chain foreground
 review. The macOS/libkitty v0.21 reference is locked and its Ubuntu headless gate passes.
 
 Phase 3 is closed through Slice 3.3. Do not expand its preview into a live state import,
-shell restore, SSH launcher, or persistence writer before those product paths reach their
-assigned later phases.
+shell restore, or persistence writer; those paths remain assigned to later phases.
 
-Implement only Slice 6.2: reviewed SSH resolution and agent workflows. Do not begin
-live macOS import/restore, browser product functionality, packaging, or repository
-migration. Physical-Mesa GPU proof remains a separate Phase 6 beta obligation.
+Implement only Slice 6.3: inert resume and recovery. Do not begin live macOS
+import/restore, browser product functionality, packaging, repository migration, or
+new SSH feature work. Physical-Mesa GPU proof remains a separate Phase 6 beta
+obligation.

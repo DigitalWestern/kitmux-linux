@@ -74,9 +74,9 @@ pub use split::{
     directional_neighbor,
 };
 pub use ssh::{
-    SSH_DOCUMENT_MAX_BYTES, SSH_RESOLUTION_MAX_BYTES, SshCodecError, SshConnectionReview,
-    SshForward, SshForwardKind, SshProfile, SshProfileDocument, SshResolution, decode_ssh_profiles,
-    encode_ssh_profiles,
+    SSH_DOCUMENT_MAX_BYTES, SSH_PROFILE_MAX_COUNT, SSH_RESOLUTION_MAX_BYTES, SshArgvError,
+    SshCodecError, SshConnectionReview, SshForward, SshForwardKind, SshProfile, SshProfileDocument,
+    SshProfileStore, SshProfileStoreError, SshResolution, decode_ssh_profiles, encode_ssh_profiles,
 };
 pub use state::{
     AppSnapshot, PaneContentKind, PaneDetail, PaneSurfaceDetail, SNAPSHOT_MAX_BYTES,

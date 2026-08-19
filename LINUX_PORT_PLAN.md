@@ -7,15 +7,16 @@
 
 **Reference commit:** `3088295003c0842d7c3198102d0d05378da4dc62`
 
-**Last reviewed:** 2026-08-02 (Phase 5, v0.21 rebaseline, and Slice 6.1 audit complete; Slice 6.2 not started)
+**Last reviewed:** 2026-08-17 (Phase 5, v0.21 rebaseline, and Slices 6.1–6.2 complete; Slice 6.3 next)
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phases 0 through 5 and Slice 6.1 are complete. GTK 4 is
+**Current progress:** Phases 0 through 5 and Slices 6.1–6.2 are complete. GTK 4 is
 the selected Linux UI toolkit. Phase 5's navigation hierarchy, split/session
 ownership, product controls, full safe hierarchy persistence, close review, and
 initial accessibility are complete on X11 and native Wayland, and the secure
-local control socket and `kitmuxctl` are closed. Slice 6.2 is next. See
+local control socket, `kitmuxctl`, and reviewed SSH workflows are closed. Slice
+6.3 is next. See
 [`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
@@ -990,9 +991,9 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Slice 6.1 is closed; Slice 6.2 SSH and agent workflows is next**: the
-   secure local control and CLI evidence is complete. Slice 6.2 was not started
-   in this audit.
+1. **Slices 6.1 and 6.2 are closed; Slice 6.3 resume and recovery is next**:
+   secure local control, the CLI, and reviewed SSH workflows have evidence in
+   `PORT_STATUS.md`.
 2. **Prove one physical Mesa GPU during Phase 6** before beta; do not treat
    llvmpipe correctness as driver evidence.
 3. **Keep Phases 3 through 5 closed.** Cross-host compatibility, the read-only
@@ -1010,8 +1011,8 @@ items that unblock everything else stay open.
 ## Immediate next step
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
-[`NEXT_STEPS.md`](NEXT_STEPS.md). Phase 5 and the macOS/libkitty v0.21
-rebaseline are complete; begin Slice 6.2. Do not start browser product
+[`NEXT_STEPS.md`](NEXT_STEPS.md). Phase 5, the macOS/libkitty v0.21 rebaseline,
+and Slice 6.2 are complete; begin Slice 6.3. Do not start browser product
 behavior or packaging.
 Do not turn the closed Slice 3.3 preview into a live import or restore path
 incidentally.

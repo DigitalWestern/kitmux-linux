@@ -488,6 +488,7 @@ dependencies = [
  "kitmux-model",
  "libc",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

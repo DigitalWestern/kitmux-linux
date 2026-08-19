@@ -5,6 +5,7 @@ use crate::{
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 const CLI_MAX_ARGUMENT_BYTES: usize = 16 * 1024;
 
@@ -93,6 +94,7 @@ fn parse_command(arguments: &[String]) -> Result<ControlRequest, CliParseError> 
             request(command, BTreeMap::new())
         }
         "events" => parse_events(tail),
+        "ssh" => parse_ssh(tail),
         "request" => {
             let Some(method) = tail.first() else {
                 return Err(usage("request requires a method"));
@@ -238,6 +240,57 @@ fn parse_events(arguments: &[String]) -> Result<ControlRequest, CliParseError> {
     request("event.list", params)
 }
 
+fn parse_ssh(arguments: &[String]) -> Result<ControlRequest, CliParseError> {
+    if arguments.len() == 2 && arguments[0] == "profile" && arguments[1] == "list" {
+        return request("ssh.profile.list", BTreeMap::new());
+    }
+    let Some(action) = arguments.first().map(String::as_str) else {
+        return Err(usage(
+            "usage: kitmuxctl ssh profile list|connect PROFILE_UUID|reconnect PANE_UUID",
+        ));
+    };
+    if !matches!(action, "connect" | "reconnect") {
+        return Err(usage(
+            "usage: kitmuxctl ssh profile list|connect PROFILE_UUID|reconnect PANE_UUID",
+        ));
+    }
+    if arguments.len() != 2 && arguments.len() != 4 {
+        return Err(usage(format!(
+            "ssh {action} requires an exact UUID and optional --approve FINGERPRINT"
+        )));
+    }
+    let id = &arguments[1];
+    if Uuid::parse_str(id).is_err() {
+        return Err(usage(format!("ssh {action} requires an exact UUID")));
+    }
+    let mut params = BTreeMap::new();
+    insert_param(
+        &mut params,
+        if action == "connect" {
+            "profile"
+        } else {
+            "pane"
+        },
+        id,
+    )?;
+    if arguments.len() == 4 {
+        if arguments[2] != "--approve" || !valid_fingerprint(&arguments[3]) {
+            return Err(usage(
+                "--approve requires a lowercase 64-character SHA-256 fingerprint",
+            ));
+        }
+        insert_param(&mut params, "fingerprint", &arguments[3])?;
+    }
+    request(&format!("ssh.{action}"), params)
+}
+
+fn valid_fingerprint(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
 fn one_param(key: &str, value: &str) -> Result<BTreeMap<String, String>, CliParseError> {
     let mut params = BTreeMap::new();
     insert_param(&mut params, key, value)?;
@@ -286,5 +339,5 @@ fn usage(message: impl Into<String>) -> CliParseError {
 
 #[must_use]
 pub const fn cli_help() -> &'static str {
-    "usage: kitmuxctl [--json] [--socket PATH] COMMAND\n\nCommands: ping, tree, identify, capabilities, events, request METHOD key=value..., workspace, group, tab, pane\nUse `kitmuxctl pane send ID TEXT` to send text without invoking a shell."
+    "usage: kitmuxctl [--json] [--socket PATH] COMMAND\n\nCommands: ping, tree, identify, capabilities, events, ssh, request METHOD key=value..., workspace, group, tab, pane\nSSH: `ssh profile list`, `ssh connect PROFILE_UUID [--approve FINGERPRINT]`, `ssh reconnect PANE_UUID [--approve FINGERPRINT]`.\nUse `kitmuxctl pane send ID TEXT` to send text without invoking a shell."
 }

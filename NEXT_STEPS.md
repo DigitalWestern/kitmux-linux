@@ -1,8 +1,8 @@
 # Kitmux Linux next steps
 
-**Next slice: 6.2 — SSH and agent workflows.** Not started.
+**Next slice: 6.3 — Resume and recovery.**
 
-Phases 0 through 5 and Slice 6.1 are closed. The clean tag
+Phases 0 through 5 and Slices 6.1–6.2 are closed. The clean tag
 `macos-linux-port-baseline-2026-08-02-v0.21` is locked and its Ubuntu headless
 gate passes.
 
@@ -27,21 +27,20 @@ in [`PORT_STATUS.md`](PORT_STATUS.md); phase scope and exit gates live in
 4. If the tagged baseline no longer materializes exactly, stop and record the
    drift before changing contracts or Linux behavior.
 
-## Slice 6.2 — SSH and agent workflows
+## Slice 6.3 — Resume and recovery
 
 Scope and exit criteria are in
-[Phase 6 of the plan](LINUX_PORT_PLAN.md#slice-62-ssh-and-agent-workflows). In
+[Phase 6 of the plan](LINUX_PORT_PLAN.md#slice-63-resume-and-recovery). In
 short:
 
-- Resolve through the user's real `ssh` executable and `ssh -G`.
-- Preserve reviewed argument arrays and explicit reconnect behavior.
-- Handle nonstandard executable paths and a missing desktop-session agent
-  environment.
-- Keep secrets and expanded private arguments out of logs.
-- Add hooks only after control identity is stable.
+- Capture resume metadata as inert data.
+- Present every saved command unchecked for explicit review.
+- Revalidate identity and unchanged text immediately before execution.
+- Add packaged persistence, crash, socket, SSH, upgrade, and stress harnesses.
+- Add bounded scrollback sidecars only if retained in scope.
 
-The model already carries SSH review data (Slice 3.2) and the control identity
-is stable as of Slice 6.1. Both are inputs to this slice, not work to redo.
+The existing state snapshot is already safe and inert; this slice must not turn
+it into automatic command execution or silently restore SSH runtimes.
 
 ## Before adding any file: which category is it?
 
@@ -75,14 +74,14 @@ implementing how Kitmux does X is product work.
   in Slice 4.2; touch them only for a regression.
 
 Physical-Mesa GPU proof is a real Phase 6 beta obligation, but it is a separate
-gate from Slice 6.2 and does not substitute for it.
+gate from Slice 6.3 and does not substitute for it.
 
 ## Standing obligations
 
 - Run `kitmux-linux/scripts/report-reference-drift.py` at every phase boundary
   and record the result in `PORT_STATUS.md`, including "no relevant drift".
 - Keep `contracts/feature-inventory.json` current as Phase 6 adds behavior. It
-  currently resolves 105 Linux and 234 macOS test references across 64
+  currently resolves 111 Linux and 234 macOS test references across 64
   features.
 - ADR 0008 R1 (standalone buildability), R2 (one automated gate), and R5
   (durable mirrors for the two dependency bundles) remain open. R3 and R4
@@ -95,12 +94,12 @@ gate from Slice 6.2 and does not substitute for it.
 
 ```text
 Read AGENTS.md, PORT_STATUS.md, NEXT_STEPS.md, Phase 6 in LINUX_PORT_PLAN.md,
-and ADRs 0007 and 0008. Phases 0 through 5 and Slice 6.1 are closed; GTK 4 is
-selected, and the full terminal multiplexer alpha plus the secure local control
-socket pass source, cross-host, X11, and native-Wayland gates. The clean
+and ADRs 0007 and 0008. Phases 0 through 5 and Slices 6.1–6.2 are closed; GTK 4
+is selected, and the full terminal multiplexer alpha plus secure local control
+and reviewed SSH workflows pass source and X11 gates. The clean
 macOS/libkitty v0.21 reference is locked and its headless gate passes.
-Implement only Slice 6.2 SSH and agent workflows. Do not begin live macOS
-import/restore, browser product work, packaging, or repository migration; keep
-physical-GPU proof explicit as the separate Phase 6 beta gate. Preserve
-unrelated worktree changes.
+Implement only Slice 6.3 resume and recovery. Do not begin live macOS
+import/restore, browser product work, packaging, repository migration, or new
+SSH feature work; keep physical-GPU proof explicit as the separate Phase 6 beta
+gate. Preserve unrelated worktree changes.
 ```
