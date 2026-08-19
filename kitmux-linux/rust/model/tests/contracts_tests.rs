@@ -260,6 +260,18 @@ fn settings_codec_bounds_versions_and_cross_field_ranges() {
 }
 
 #[test]
+fn linux_wheel_setting_is_bounded_without_changing_portable_values() {
+    let mut document = decode_settings(br#"{"wheelScrollLines":8}"#).unwrap();
+    assert_eq!(document.wheel_scroll_lines(), 8);
+    assert_eq!(document.validated_values().get("wheelScrollLines"), None);
+    document.set_wheel_scroll_lines(11);
+    assert_eq!(document.wheel_scroll_lines(), 8);
+    document.set_wheel_scroll_lines(4);
+    let encoded: Value = serde_json::from_slice(&encode_settings(&document).unwrap()).unwrap();
+    assert_eq!(encoded["wheelScrollLines"], 4);
+}
+
+#[test]
 fn frozen_control_protocol_corpus_enforces_envelope_and_byte_bounds() {
     let corpus = fixture("control-protocol.json");
     for case in corpus["cases"].as_array().unwrap() {

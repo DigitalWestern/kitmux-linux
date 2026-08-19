@@ -4,6 +4,7 @@ use std::fmt;
 
 pub const SETTINGS_VERSION: i64 = 1;
 pub const SETTINGS_MAX_BYTES: usize = 1024 * 1024;
+pub const DEFAULT_WHEEL_SCROLL_LINES: u64 = 3;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -108,6 +109,22 @@ impl SettingsDocument {
 
     pub fn replace_resolved(&mut self, resolved: ValidatedSettings) {
         self.resolved = resolved;
+    }
+
+    #[must_use]
+    pub fn wheel_scroll_lines(&self) -> u64 {
+        self.raw
+            .get("wheelScrollLines")
+            .and_then(Value::as_u64)
+            .filter(|lines| (1..=10).contains(lines))
+            .unwrap_or(DEFAULT_WHEEL_SCROLL_LINES)
+    }
+
+    pub fn set_wheel_scroll_lines(&mut self, lines: u64) {
+        if (1..=10).contains(&lines) {
+            self.raw
+                .insert("wheelScrollLines".to_owned(), Value::from(lines));
+        }
     }
 }
 

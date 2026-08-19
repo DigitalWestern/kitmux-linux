@@ -1,0 +1,50 @@
+name: Linux standalone headless gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  standalone-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            binutils build-essential cargo cmake file git patchelf \
+            pkg-config python3 python3-dev \
+            libdbus-1-dev libfontconfig1-dev libfreetype6-dev libgl-dev \
+            libharfbuzz-dev liblcms2-dev libpng-dev libreadline-dev \
+            libsqlite3-dev libssl-dev libx11-dev libx11-xcb-dev \
+            libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libxrandr-dev libxxhash-dev
+      - name: Verify standalone source and headless runtime
+        env:
+          KITMUX_MACOS_REPO: /tmp/kitmux-private-macos-must-not-exist
+        run: kitmux-linux/scripts/test-standalone.sh
+
+  standalone-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            binutils build-essential cargo cmake file git patchelf \
+            pkg-config python3 python3-dev \
+            libdbus-1-dev libfontconfig1-dev libfreetype6-dev libgl-dev \
+            libharfbuzz-dev liblcms2-dev libpng-dev libreadline-dev \
+            libsqlite3-dev libssl-dev libx11-dev libx11-xcb-dev \
+            libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libxrandr-dev libxxhash-dev
+      - name: Verify source-built x86_64 fallback
+        env:
+          KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD: "1"
+          KITMUX_MACOS_REPO: /tmp/kitmux-private-macos-must-not-exist
+        run: kitmux-linux/scripts/test-standalone.sh

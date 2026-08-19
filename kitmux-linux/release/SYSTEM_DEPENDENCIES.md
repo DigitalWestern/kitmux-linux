@@ -25,3 +25,9 @@ terminal-first engine runtime.
 
 This declaration is part of the runtime audit. An unexpected unresolved ELF
 dependency fails `test-release-runtime.sh`.
+
+The durable dependency mirror currently covers `linux-arm64` and the Nerd Font
+archive. The historical `linux-64` archive remains checksum-locked in
+`source-lock.json`, but is not present in the mirror; x86_64 source builds may
+use `KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD=1` explicitly. That fallback is a
+build-input escape hatch, not x86_64 reproducibility or support evidence.

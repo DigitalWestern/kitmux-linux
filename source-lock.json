@@ -14,6 +14,12 @@
     "linux-arm64.tar.xz": "eb5400212879ced80d02aee1a121e6b0efa3a6c71737a26b9dc5b3e3a4179431",
     "NerdFontsSymbolsOnly.tar.xz": "7f8c090da3b0eaa7108646bf34cbbb6ed13d5358a72460522108b06c7ecd716a"
   },
+  "durable_inputs": {
+    "reference": "kitmux-linux/locked-inputs/reference",
+    "dependency_bundles": "kitmux-linux/locked-inputs/dependency-bundles",
+    "durable_dependency_platforms": ["linux-arm64"],
+    "reference_tree_sha256": "8362dda2eec5d131e5a98142c668ab5c6b008b48536202fb297e0bcc24d02045"
+  },
   "sha256": {
     "libkitty/include/libkitty.h": "62810a3f1f26813a68de72b89f9b1a9b1fbaf40f651f3eaaa804cad898294695",
     "libkitty/src/engine.c": "7973f795968adf0ace4e57b2a78a2b2be4c384a21e754f0e4359b3bdad01b226",

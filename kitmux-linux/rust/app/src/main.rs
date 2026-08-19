@@ -1,25 +1,27 @@
 mod ffi;
+mod window;
 
 use ffi::{KitmuxGdkKeyInput, KitmuxKeyTracker, KitmuxKeyTranslation};
 use gtk::gdk;
 use gtk::gio;
-use gtk::glib::translate::IntoGlib;
 use gtk::glib::{self, Propagation};
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
 use kitmux_model::{
     AppModel, AppSnapshot, CONTROL_DISPATCH_TIMEOUT, CloseOutcome, CommandId, ControlEventHistory,
-    ControlMethod, ControlRequest, ControlResponse, ControlServer, ControlSocketError, Direction,
-    GroupId, GroupModel, LoadDisposition, NavigationTarget, PaneContainer, PaneContentKind,
-    PaneDetail, PaneId, PaneRuntime, PaneSurface, PaneSurfaceDetail, PasteConfirmationReason,
-    PixelRect, PixelSize, PollingFileWatcher, RestoreLayoutPolicy, SETTINGS_MAX_BYTES,
-    SNAPSHOT_VERSION, SettingsDocument, ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis,
-    SplitId, SplitLayout, SshProfile, SshProfileStore, SshProfileStoreError, SshResolution,
-    SurfaceId, TabGroupSnapshot, TabId, TabModel, TerminalRuntime, TerminalTabSnapshot,
-    WorkspaceId, WorkspaceModel, WorkspaceSnapshot, XdgPaths, accumulate_scroll_lines,
-    command_palette_matches, detected_url, encode_control_response, load_settings_at_launch,
-    load_state_at_launch, namespaced_number_target, paste_confirmation_reason, reload_settings,
-    resolve_control_socket, save_settings, save_state, terminal_cell_scaled,
+    ControlMethod, ControlRequest, ControlResponse, ControlServer, ControlSocketError,
+    DEFAULT_WHEEL_SCROLL_LINES, Direction, GroupId, GroupModel, LoadDisposition, NavigationTarget,
+    PaneContainer, PaneContentKind, PaneDetail, PaneId, PaneRuntime, PaneSurface,
+    PaneSurfaceDetail, PasteConfirmationReason, PixelRect, PixelSize, PollingFileWatcher,
+    RestoreLayoutPolicy, ResumeCommandCurrentState, ResumeCommandIdentity,
+    ResumeCommandSelectionPolicy, SETTINGS_MAX_BYTES, SNAPSHOT_VERSION, SettingsDocument,
+    ShortcutAction, ShortcutChord, ShortcutMap, SplitAxis, SplitId, SplitLayout, SshProfile,
+    SshProfileStore, SshProfileStoreError, SshResolution, SurfaceId, TabGroupSnapshot, TabId,
+    TabModel, TerminalRuntime, TerminalTabSnapshot, WorkspaceId, WorkspaceModel, WorkspaceSnapshot,
+    XdgPaths, command_palette_matches, detected_url, encode_control_response,
+    load_settings_at_launch, load_state_at_launch, namespaced_number_target,
+    paste_confirmation_reason, reload_settings, resolve_control_socket, save_settings, save_state,
+    terminal_cell_scaled, valid_resume_command,
 };
 use serde_json::json;
 use std::cell::{Cell, RefCell};
@@ -278,21 +280,32 @@ struct RestoredProduct {
     navigation: AppModel,
     active_surface: SurfaceId,
     surface_cwds: HashMap<SurfaceId, PathBuf>,
+    surface_resume_commands: HashMap<SurfaceId, String>,
+    surface_ssh_profiles: HashMap<SurfaceId, Uuid>,
+    resume_offers: Vec<ResumeOffer>,
     created_workspaces: usize,
     created_groups: usize,
+}
+
+struct ResumeOffer {
+    identity: ResumeCommandIdentity,
+    location: String,
 }
 
 fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProduct> {
     let mut surface_ids = HashSet::new();
     let mut surface_cwds = HashMap::new();
+    let mut surface_resume_commands = HashMap::new();
+    let mut surface_ssh_profiles = HashMap::new();
+    let mut resume_offers = Vec::new();
     let mut workspaces = Vec::with_capacity(snapshot.workspaces.len());
     for workspace in &snapshot.workspaces {
         let mut groups = Vec::with_capacity(workspace.tab_groups.len());
         for group in &workspace.tab_groups {
             let mut tabs = Vec::with_capacity(group.terminal_tabs.len());
-            for tab in &group.terminal_tabs {
+            for (tab_index, tab) in group.terminal_tabs.iter().enumerate() {
                 let mut panes = Vec::new();
-                for pane_id in tab.root.pane_ids() {
+                for (pane_index, pane_id) in tab.root.pane_ids().into_iter().enumerate() {
                     let detail = tab
                         .pane_details
                         .as_ref()
@@ -320,7 +333,27 @@ fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProdu
                                 .map(PathBuf::from)
                                 .filter(|path| valid_restored_cwd(path))
                                 .unwrap_or_else(|| home.to_owned());
+                            let cwd_label = cwd.to_string_lossy().into_owned();
                             surface_cwds.insert(id, cwd);
+                            if let Some(command) = saved.resume_command.clone() {
+                                surface_resume_commands.insert(id, command.clone());
+                                resume_offers.push(ResumeOffer {
+                                    identity: ResumeCommandIdentity {
+                                        pane_id,
+                                        surface_id: id,
+                                        command,
+                                        cwd: Some(cwd_label),
+                                    },
+                                    location: format!(
+                                        "{} ▸ {} ▸ tab {} ▸ pane {} ▸ surface {}",
+                                        workspace.name,
+                                        group.name,
+                                        tab_index + 1,
+                                        pane_index + 1,
+                                        surfaces.len() + 1
+                                    ),
+                                });
+                            }
                             surfaces.push(PaneSurface::new(
                                 id,
                                 PaneRuntime::Terminal(Box::new(PendingTerminalRuntime {
@@ -337,7 +370,30 @@ fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProdu
                             .map(PathBuf::from)
                             .filter(|path| valid_restored_cwd(path))
                             .unwrap_or_else(|| home.to_owned());
+                        let cwd_label = cwd.to_string_lossy().into_owned();
                         surface_cwds.insert(id, cwd);
+                        if let Some(profile_id) = detail.and_then(|detail| detail.ssh_profile_id) {
+                            surface_ssh_profiles.insert(id, profile_id);
+                        } else if let Some(command) =
+                            detail.and_then(|detail| detail.resume_command.clone())
+                        {
+                            surface_resume_commands.insert(id, command.clone());
+                            resume_offers.push(ResumeOffer {
+                                identity: ResumeCommandIdentity {
+                                    pane_id,
+                                    surface_id: id,
+                                    command,
+                                    cwd: Some(cwd_label),
+                                },
+                                location: format!(
+                                    "{} ▸ {} ▸ tab {} ▸ pane {}",
+                                    workspace.name,
+                                    group.name,
+                                    tab_index + 1,
+                                    pane_index + 1
+                                ),
+                            });
+                        }
                         surfaces.push(PaneSurface::new(
                             id,
                             PaneRuntime::Terminal(Box::new(PendingTerminalRuntime {
@@ -384,6 +440,9 @@ fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProdu
         navigation,
         active_surface,
         surface_cwds,
+        surface_resume_commands,
+        surface_ssh_profiles,
+        resume_offers,
         created_workspaces: snapshot.created_workspace_count.max(1) as usize,
         created_groups: snapshot
             .workspaces
@@ -584,6 +643,7 @@ struct CallbackUi {
     visible: Cell<bool>,
     disconnected: Cell<bool>,
     close_window_on_exit: bool,
+    pending_resume_command: RefCell<Option<Option<String>>>,
 }
 
 unsafe extern "C" fn on_damage(userdata: *mut c_void) {
@@ -642,6 +702,20 @@ unsafe extern "C" fn on_child_exit(userdata: *mut c_void, status: c_int) {
     }
 }
 
+unsafe extern "C" fn on_user_var(userdata: *mut c_void, key: *const c_char, value: *const c_char) {
+    if key.is_null() || value.is_null() {
+        return;
+    }
+    let ui = unsafe { &*(userdata.cast::<CallbackUi>()) };
+    let key = unsafe { CStr::from_ptr(key) };
+    if key.to_bytes() != b"kitmux_resume" {
+        return;
+    }
+    let value = unsafe { CStr::from_ptr(value) }.to_string_lossy();
+    let command = valid_resume_command((!value.is_empty()).then_some(value.as_ref()));
+    *ui.pending_resume_command.borrow_mut() = Some(command);
+}
+
 struct SessionState {
     session: *mut ffi::KittySession,
     callback_ui: Option<Box<CallbackUi>>,
@@ -664,6 +738,7 @@ struct SessionState {
     mouse_reporting_button: Option<c_int>,
     hidden_pump_reported: bool,
     ssh_profile_id: Option<Uuid>,
+    resume_command: Option<String>,
 }
 
 impl Default for SessionState {
@@ -690,6 +765,7 @@ impl Default for SessionState {
             mouse_reporting_button: None,
             hidden_pump_reported: false,
             ssh_profile_id: None,
+            resume_command: None,
         }
     }
 }
@@ -705,6 +781,7 @@ struct Terminal {
     close_confirmed: bool,
     modal_dialog_open: bool,
     paste_confirmation_threshold: usize,
+    wheel_scroll_lines: u64,
     confirm_close_with_running_process: bool,
     persistence: Option<PersistenceState>,
     settings_source: Option<glib::SourceId>,
@@ -720,6 +797,7 @@ struct Terminal {
     control_notice: Option<String>,
     control_history: ControlEventHistory,
     ssh_profiles: Option<SshProfileStore>,
+    pending_resume_offers: Vec<ResumeOffer>,
 }
 
 struct PendingControlCall {
@@ -803,6 +881,7 @@ impl Default for Terminal {
             close_confirmed: false,
             modal_dialog_open: false,
             paste_confirmation_threshold: 8192,
+            wheel_scroll_lines: DEFAULT_WHEEL_SCROLL_LINES,
             confirm_close_with_running_process: false,
             persistence: None,
             settings_source: None,
@@ -818,6 +897,7 @@ impl Default for Terminal {
             control_notice: None,
             control_history: ControlEventHistory::default(),
             ssh_profiles: None,
+            pending_resume_offers: Vec::new(),
         }
     }
 }
@@ -2018,6 +2098,16 @@ fn pending_pane(id: PaneId, surface_id: SurfaceId) -> PaneContainer {
     .expect("a one-surface pane is valid")
 }
 
+fn disconnected_ssh_argv(profile_id: Uuid) -> Vec<OsString> {
+    vec![
+        OsString::from("/usr/bin/printf"),
+        OsString::from("%s\\n"),
+        OsString::from(format!(
+            "SSH profile {profile_id} restored disconnected; use explicit reconnect."
+        )),
+    ]
+}
+
 fn pending_tab() -> (TabModel, SurfaceId) {
     let pane = PaneId::new();
     let surface = SurfaceId::new();
@@ -2053,20 +2143,21 @@ impl Terminal {
         area: &GLArea,
         window: &ApplicationWindow,
         status: &Label,
-    ) -> Result<c_int, &'static str> {
+    ) -> Result<c_int, String> {
         if !self.engine.is_null() {
             return Ok(unsafe { ffi::kitty_session_fd(self.session) });
         }
         area.make_current();
         if area.error().is_some() {
-            return Err("opengl-context");
+            return Err("opengl-context".to_owned());
         }
-        let runtime = RuntimeBundle::discover()?;
+        let runtime = RuntimeBundle::discover().map_err(str::to_owned)?;
         let account = account();
         let environment: HashMap<String, String> = env::vars_os()
             .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
             .collect();
-        let xdg = XdgPaths::resolve(&environment, &account.home).map_err(|_| "xdg-paths")?;
+        let xdg =
+            XdgPaths::resolve(&environment, &account.home).map_err(|_| "xdg-paths".to_owned())?;
         let settings_path = xdg.settings_file();
         let state_path = xdg.state_file();
         let settings_load = load_settings_at_launch(&settings_path);
@@ -2079,6 +2170,7 @@ impl Terminal {
                 .paste_confirmation_threshold_bytes,
         )
         .unwrap_or(usize::MAX);
+        self.wheel_scroll_lines = settings_load.document.wheel_scroll_lines();
         self.confirm_close_with_running_process = settings_load
             .document
             .resolved()
@@ -2107,20 +2199,40 @@ impl Terminal {
             .flatten();
         let restored_layout = restored.is_some();
         self.account_home = account.home.clone();
-        let (navigation, surface_cwds) = if let Some(restored) = restored {
+        let (
+            navigation,
+            surface_cwds,
+            surface_resume_commands,
+            surface_ssh_profiles,
+            resume_offers,
+        ) = if let Some(restored) = restored {
             self.active_surface_id = restored.active_surface;
             self.sessions = HashMap::from([(restored.active_surface, SessionState::default())]);
             self.created_workspaces = restored.created_workspaces;
             self.created_groups = restored.created_groups;
-            (restored.navigation, restored.surface_cwds)
+            (
+                restored.navigation,
+                restored.surface_cwds,
+                restored.surface_resume_commands,
+                restored.surface_ssh_profiles,
+                restored.resume_offers,
+            )
         } else {
             let workspace = WorkspaceId::new();
             let pane = PaneId::new();
             (
                 initial_navigation(workspace, pane, self.active_surface_id),
                 HashMap::from([(self.active_surface_id, account.home.clone())]),
+                HashMap::new(),
+                HashMap::new(),
+                Vec::new(),
             )
         };
+        self.pending_resume_offers = resume_offers;
+        let restored_resume_command = surface_resume_commands
+            .get(&self.active_surface_id)
+            .cloned();
+        let restored_ssh_profile = surface_ssh_profiles.get(&self.active_surface_id).copied();
         let restored_cwd = surface_cwds.get(&self.active_surface_id).cloned();
         self.last_cwd = restored_cwd.clone();
         if self.last_cwd.is_some() {
@@ -2167,19 +2279,11 @@ impl Terminal {
                 ("font", restored_font.is_some().to_string()),
             ],
         );
-        if restored_layout {
+        if restored_layout && let Some(navigation) = self.navigation.as_ref() {
             diagnostic(
                 "hierarchy_restored",
                 &[
-                    (
-                        "workspaces",
-                        self.navigation
-                            .as_ref()
-                            .unwrap()
-                            .workspaces()
-                            .len()
-                            .to_string(),
-                    ),
+                    ("workspaces", navigation.workspaces().len().to_string()),
                     ("sessions", surface_cwds.len().to_string()),
                 ],
             );
@@ -2197,7 +2301,7 @@ impl Terminal {
         let mut error = [0 as c_char; 1024];
         let engine = unsafe { ffi::kitty_engine_init(&config, error.as_mut_ptr(), error.len()) };
         if engine.is_null() {
-            return Err("engine-init");
+            return Err(kitty_stage_error("engine-init", &error));
         }
         let scale = f64::from(area.scale_factor());
         if !unsafe {
@@ -2211,7 +2315,7 @@ impl Terminal {
             )
         } {
             unsafe { ffi::kitty_engine_shutdown(engine) };
-            return Err("renderer-init");
+            return Err(kitty_stage_error("renderer-init", &error));
         }
         self.default_font_size = unsafe { ffi::kitty_render_font_size(engine) };
         if let Some(points) = restored_font {
@@ -2226,7 +2330,7 @@ impl Terminal {
                 )
             } {
                 unsafe { ffi::kitty_engine_shutdown(engine) };
-                return Err("restored-font");
+                return Err(kitty_stage_error("restored-font", &error));
             }
             diagnostic("font_restored", &[("points", format!("{points:.2}"))]);
         }
@@ -2237,7 +2341,8 @@ impl Terminal {
             status: status.downgrade(),
             visible: Cell::new(true),
             disconnected: Cell::new(false),
-            close_window_on_exit: true,
+            close_window_on_exit: restored_ssh_profile.is_none(),
+            pending_resume_command: RefCell::new(None),
         });
         let callbacks = ffi::KittySessionCallbacks {
             userdata: (&mut *callback_ui as *mut CallbackUi).cast(),
@@ -2246,14 +2351,33 @@ impl Terminal {
             on_bell: Some(on_bell),
             on_child_exit: Some(on_child_exit),
             on_notification: None,
-            on_user_var: None,
+            on_user_var: Some(on_user_var),
         };
         let shell_env = CString::new(format!("SHELL={}", account.shell.to_string_lossy())).unwrap();
         let color_env = CString::new("COLORTERM=truecolor").unwrap();
         let environment = [shell_env.as_ptr(), color_env.as_ptr(), ptr::null()];
         let login = CString::new("-il").unwrap();
-        let argv = [account.shell.as_ptr(), login.as_ptr(), ptr::null()];
-        let cwd = path_cstring(restored_cwd.as_deref().unwrap_or(&account.home))?;
+        let ssh_marker_executable = CString::new("/usr/bin/printf").unwrap();
+        let ssh_marker_format = CString::new("%s\\n").unwrap();
+        let ssh_marker =
+            CString::new("SSH session restored disconnected; use explicit reconnect.").unwrap();
+        let argv = if restored_ssh_profile.is_some() {
+            [
+                ssh_marker_executable.as_ptr(),
+                ssh_marker_format.as_ptr(),
+                ssh_marker.as_ptr(),
+                ptr::null(),
+            ]
+        } else {
+            [
+                account.shell.as_ptr(),
+                login.as_ptr(),
+                ptr::null(),
+                ptr::null(),
+            ]
+        };
+        let cwd = path_cstring(restored_cwd.as_deref().unwrap_or(&account.home))
+            .map_err(|_| "invalid-cwd".to_owned())?;
         let session = unsafe {
             ffi::kitty_session_create_with_options(
                 engine,
@@ -2269,13 +2393,22 @@ impl Terminal {
         };
         if session.is_null() {
             unsafe { ffi::kitty_engine_shutdown(engine) };
-            return Err("session-create");
+            return Err(kitty_stage_error("session-create", &error));
         }
         self.engine = engine;
         self.session = session;
+        self.ssh_profile_id = restored_ssh_profile;
+        self.resume_command = restored_resume_command;
         self.callback_ui = Some(callback_ui);
         for (surface, cwd) in surface_cwds {
-            if surface != self.active_surface_id && !self.spawn_surface_at(surface, &cwd) {
+            if surface != self.active_surface_id
+                && !self.spawn_restored_surface(
+                    surface,
+                    &cwd,
+                    surface_resume_commands.get(&surface).cloned(),
+                    surface_ssh_profiles.get(&surface).copied(),
+                )
+            {
                 diagnostic(
                     "state_restore_surface_failed",
                     &[("surface", surface.to_string())],
@@ -2331,7 +2464,9 @@ impl Terminal {
         else {
             return false;
         };
-        let navigation = self.navigation.as_mut().unwrap();
+        let Some(navigation) = self.navigation.as_mut() else {
+            return false;
+        };
         pane != navigation.active_tab().focused_pane_id() && navigation.focus_pane(pane)
     }
 
@@ -2386,9 +2521,10 @@ impl Terminal {
                 (y * scale - f64::from(split_rect.y)) / f64::from((split_rect.height - gap).max(1))
             }
         };
-        self.navigation
-            .as_mut()
-            .unwrap()
+        let Some(navigation) = self.navigation.as_mut() else {
+            return false;
+        };
+        navigation
             .active_tab_mut()
             .set_split_ratio(split_id, ratio, split_rect, gap, minimum)
     }
@@ -2561,6 +2697,32 @@ impl Terminal {
         )
     }
 
+    fn spawn_restored_surface(
+        &mut self,
+        surface_id: SurfaceId,
+        cwd: &Path,
+        resume_command: Option<String>,
+        ssh_profile_id: Option<Uuid>,
+    ) -> bool {
+        let argv = ssh_profile_id.map_or_else(
+            || {
+                let account = account();
+                vec![
+                    OsString::from(account.shell.to_string_lossy().into_owned()),
+                    OsString::from("-il"),
+                ]
+            },
+            disconnected_ssh_argv,
+        );
+        if !self.spawn_surface_command(surface_id, cwd, argv, ssh_profile_id) {
+            return false;
+        }
+        if let Some(session) = self.sessions.get_mut(&surface_id) {
+            session.resume_command = resume_command;
+        }
+        true
+    }
+
     fn spawn_surface_command(
         &mut self,
         surface_id: SurfaceId,
@@ -2635,6 +2797,7 @@ impl Terminal {
             visible: Cell::new(surface_id == self.active_surface_id),
             disconnected: Cell::new(false),
             close_window_on_exit: ssh_profile_id.is_none(),
+            pending_resume_command: RefCell::new(None),
         });
         let callbacks = ffi::KittySessionCallbacks {
             userdata: (&mut *callback_ui as *mut CallbackUi).cast(),
@@ -2643,7 +2806,7 @@ impl Terminal {
             on_bell: Some(on_bell),
             on_child_exit: Some(on_child_exit),
             on_notification: None,
-            on_user_var: None,
+            on_user_var: Some(on_user_var),
         };
         let mut error = [0 as c_char; 1024];
         let session = unsafe {
@@ -2744,9 +2907,10 @@ impl Terminal {
                 if !self.spawn_surface(surface) {
                     return NavigationEffect::Rejected;
                 }
-                self.navigation
-                    .as_mut()
-                    .unwrap()
+                let Some(navigation) = self.navigation.as_mut() else {
+                    return NavigationEffect::Rejected;
+                };
+                navigation
                     .append_workspace(workspace)
                     .map_or(NavigationEffect::Rejected, |_| NavigationEffect::Changed)
             }
@@ -2757,9 +2921,10 @@ impl Terminal {
                 if !self.spawn_surface(surface) {
                     return NavigationEffect::Rejected;
                 }
-                self.navigation
-                    .as_mut()
-                    .unwrap()
+                let Some(navigation) = self.navigation.as_mut() else {
+                    return NavigationEffect::Rejected;
+                };
+                navigation
                     .active_workspace_mut()
                     .append_group(group)
                     .map_or(NavigationEffect::Rejected, |_| NavigationEffect::Changed)
@@ -2769,9 +2934,10 @@ impl Terminal {
                 if !self.spawn_surface(surface) {
                     return NavigationEffect::Rejected;
                 }
-                self.navigation
-                    .as_mut()
-                    .unwrap()
+                let Some(navigation) = self.navigation.as_mut() else {
+                    return NavigationEffect::Rejected;
+                };
+                navigation
                     .active_workspace_mut()
                     .active_group_mut()
                     .append_tab(tab)
@@ -2783,7 +2949,10 @@ impl Terminal {
                 if !self.spawn_surface(surface) {
                     return NavigationEffect::Rejected;
                 }
-                let tab = self.navigation.as_mut().unwrap().active_tab_mut();
+                let Some(navigation) = self.navigation.as_mut() else {
+                    return NavigationEffect::Rejected;
+                };
+                let tab = navigation.active_tab_mut();
                 let focused = tab.focused_pane_id();
                 let axis = if command == CommandId::PaneSplitRight {
                     SplitAxis::LeftRight
@@ -2798,17 +2967,19 @@ impl Terminal {
                     .navigation_ui
                     .as_ref()
                     .and_then(|ui| ui.area.upgrade())
-                    .map(|area| {
+                    .and_then(|area| {
                         let (rect, gap, minimum) = split_geometry(&area);
-                        let layout = self
-                            .navigation
-                            .as_ref()
-                            .unwrap()
-                            .active_tab()
-                            .layout(rect, gap, minimum);
-                        (rect, gap, minimum, layout)
+                        let navigation = self.navigation.as_ref()?;
+                        Some((
+                            rect,
+                            gap,
+                            minimum,
+                            navigation.active_tab().layout(rect, gap, minimum),
+                        ))
                     });
-                let navigation = self.navigation.as_mut().unwrap();
+                let Some(navigation) = self.navigation.as_mut() else {
+                    return NavigationEffect::Rejected;
+                };
                 match command {
                     CommandId::TerminalNextTab => changed(
                         navigation
@@ -3299,6 +3470,7 @@ impl Terminal {
         let resolved = document.resolved();
         let threshold =
             usize::try_from(resolved.paste_confirmation_threshold_bytes).unwrap_or(usize::MAX);
+        let wheel_scroll_lines = document.wheel_scroll_lines();
         let confirm = resolved.confirm_close_with_running_process;
         if let Some(sidebar) = self
             .navigation_ui
@@ -3313,11 +3485,13 @@ impl Terminal {
             persistence.settings = document;
         }
         self.paste_confirmation_threshold = threshold;
+        self.wheel_scroll_lines = wheel_scroll_lines;
         self.confirm_close_with_running_process = confirm;
         diagnostic(
             "settings_reloaded",
             &[
                 ("paste_threshold", threshold.to_string()),
+                ("wheel_lines", wheel_scroll_lines.to_string()),
                 ("confirm_close", confirm.to_string()),
             ],
         );
@@ -3354,6 +3528,21 @@ impl Terminal {
                                             .into_iter()
                                             .filter_map(|pane_id| {
                                                 let pane = tab.pane(pane_id)?;
+                                                if let Some(profile_id) =
+                                                    pane.surfaces().iter().find_map(|surface| {
+                                                        self.sessions.get(&surface.id()).and_then(
+                                                            |session| session.ssh_profile_id,
+                                                        )
+                                                    })
+                                                {
+                                                    return Some((
+                                                        pane_id.to_string(),
+                                                        PaneDetail {
+                                                            ssh_profile_id: Some(profile_id),
+                                                            ..PaneDetail::default()
+                                                        },
+                                                    ));
+                                                }
                                                 let surfaces = pane
                                                     .surfaces()
                                                     .iter()
@@ -3375,7 +3564,12 @@ impl Terminal {
                                                         PaneSurfaceDetail {
                                                             id: surface.id().as_uuid(),
                                                             cwd: Some(cwd),
-                                                            resume_command: None,
+                                                            resume_command: self
+                                                                .sessions
+                                                                .get(&surface.id())
+                                                                .and_then(|session| {
+                                                                    session.resume_command.clone()
+                                                                }),
                                                             kind: PaneContentKind::Terminal,
                                                             url: None,
                                                         }
@@ -3423,7 +3617,97 @@ impl Terminal {
         }
     }
 
+    fn persist_state_now(&self) -> Result<(), String> {
+        let Some(persistence) = self.persistence.as_ref() else {
+            return Err("persistence unavailable".to_owned());
+        };
+        if !persistence.state_may_write {
+            return Err("state input was not safely writable".to_owned());
+        }
+        save_state(&persistence.state_path, self.snapshot())
+    }
+
+    fn resume_current_state(&self, surface_id: SurfaceId) -> Option<ResumeCommandCurrentState> {
+        let pane_id = self
+            .navigation
+            .as_ref()?
+            .runtime_presentations()
+            .into_iter()
+            .find(|presentation| presentation.location.surface_id == surface_id)?
+            .location
+            .pane_id;
+        let session = self.sessions.get(&surface_id)?;
+        let cwd = session
+            .last_cwd
+            .as_deref()
+            .filter(|path| valid_restored_cwd(path))
+            .unwrap_or(&self.account_home)
+            .to_string_lossy()
+            .into_owned();
+        Some(ResumeCommandCurrentState {
+            pane_id,
+            surface_id,
+            command: session.resume_command.clone(),
+            cwd: Some(cwd),
+            is_eligible: !session.session.is_null()
+                && unsafe { ffi::kitty_session_child_alive(session.session) }
+                && session.ssh_profile_id.is_none(),
+        })
+    }
+
+    fn run_resume_commands(&mut self, policy: ResumeCommandSelectionPolicy) {
+        for surface_id in policy.selected_row_ids() {
+            let Some(displayed) = policy
+                .displayed_rows()
+                .iter()
+                .find(|row| row.surface_id == surface_id)
+                .cloned()
+            else {
+                continue;
+            };
+            let Some(current) = self.resume_current_state(surface_id) else {
+                continue;
+            };
+            if !policy
+                .executable_rows(std::slice::from_ref(&current))
+                .contains(&displayed)
+            {
+                diagnostic(
+                    "resume_command_skipped",
+                    &[("reason", "identity-changed".to_owned())],
+                );
+                continue;
+            }
+            let Some(session) = self.sessions.get(&surface_id) else {
+                continue;
+            };
+            if session.session.is_null()
+                || session.ssh_profile_id.is_some()
+                || !unsafe { ffi::kitty_session_child_alive(session.session) }
+            {
+                continue;
+            }
+            let bytes = displayed.command.as_bytes();
+            unsafe {
+                ffi::kitty_session_write(session.session, bytes.as_ptr(), bytes.len());
+                ffi::kitty_session_write(session.session, b"\r".as_ptr(), 1);
+            }
+            diagnostic(
+                "resume_command_executed",
+                &[("pane", displayed.pane_id.to_string())],
+            );
+        }
+    }
+
     fn shutdown(&mut self, area: &GLArea) {
+        if self.engine.is_null()
+            && self
+                .sessions
+                .values()
+                .all(|session| session.session.is_null())
+        {
+            return;
+        }
         CONTROL_WAKE.with(|wake| {
             wake.borrow_mut().take();
         });
@@ -3512,6 +3796,13 @@ fn c_buffer(value: &[c_char]) -> Option<String> {
     )
 }
 
+fn kitty_stage_error(stage: &str, error: &[c_char]) -> String {
+    let detail = c_buffer(error)
+        .filter(|message| !message.is_empty())
+        .unwrap_or_else(|| "libkitty returned no diagnostic".to_owned());
+    format!("{stage}: {detail}")
+}
+
 struct PumpContext {
     terminal: Weak<RefCell<Terminal>>,
     surface_id: SurfaceId,
@@ -3527,7 +3818,7 @@ unsafe extern "C" fn pump_pty(_fd: c_int, condition: u32, userdata: *mut c_void)
     };
     let surface_id = context.surface_id;
     let active = terminal.active_surface_id == surface_id;
-    let (changed, bytes, area, child_alive, hidden_pump) = {
+    let (changed, bytes, area, child_alive, hidden_pump, resume_changed) = {
         let Some(session) = terminal.sessions.get_mut(&surface_id) else {
             // Unreachable in the registry design: close removes the source before the session.
             return 0;
@@ -3537,6 +3828,15 @@ unsafe extern "C" fn pump_pty(_fd: c_int, condition: u32, userdata: *mut c_void)
         }
         let changed = unsafe { ffi::kitty_session_pump(session.session) };
         let bytes = unsafe { ffi::kitty_session_last_pump_bytes(session.session) };
+        let resume_changed = session
+            .callback_ui
+            .as_ref()
+            .and_then(|ui| ui.pending_resume_command.borrow_mut().take())
+            .map(|command| {
+                session.resume_command = command;
+                true
+            })
+            .unwrap_or(false);
         let hidden_pump = !active && bytes > 0 && !session.hidden_pump_reported;
         session.hidden_pump_reported |= hidden_pump;
         (
@@ -3548,8 +3848,21 @@ unsafe extern "C" fn pump_pty(_fd: c_int, condition: u32, userdata: *mut c_void)
                 .and_then(|ui| ui.visible.get().then(|| ui.area.upgrade()).flatten()),
             unsafe { ffi::kitty_session_child_alive(session.session) },
             hidden_pump,
+            resume_changed,
         )
     };
+    if resume_changed {
+        diagnostic(
+            "resume_metadata_captured",
+            &[("surface", surface_id.to_string())],
+        );
+        if terminal.persist_state_now().is_err() {
+            diagnostic(
+                "state_save_failed",
+                &[("reason", "resume-metadata".to_owned())],
+            );
+        }
+    }
     if hidden_pump {
         diagnostic(
             "hidden_session_pumped",
@@ -3867,10 +4180,10 @@ fn apply_navigation_effect(terminal: &Rc<RefCell<Terminal>>, effect: NavigationE
             reconcile_sessions(terminal);
             let (workspaces, groups, tabs, workspace, group, tab, panes, focused) = {
                 let terminal = terminal.borrow();
-                let navigation = terminal
-                    .navigation
-                    .as_ref()
-                    .expect("navigation initialized");
+                let Some(navigation) = terminal.navigation.as_ref() else {
+                    diagnostic("navigation_not_ready", &[]);
+                    return;
+                };
                 let workspace_model = navigation.active_workspace();
                 let group_model = workspace_model.active_group();
                 (
@@ -4112,7 +4425,6 @@ fn palette_command_supported(command: CommandId) -> bool {
         command,
         CommandId::BrowserNewPane
             | CommandId::NotificationJumpUnread
-            | CommandId::TerminalResumeCommand
             | CommandId::AppInstallCommandLineTool
             | CommandId::AppReloadKittyConfig
     )
@@ -4132,6 +4444,10 @@ fn request_navigation_command(
     window: &ApplicationWindow,
     area: &GLArea,
 ) {
+    if command == CommandId::TerminalResumeCommand {
+        request_resume_command(terminal, window, area);
+        return;
+    }
     if !matches!(
         command,
         CommandId::PaneClose | CommandId::GroupClose | CommandId::WorkspaceClose
@@ -4204,6 +4520,259 @@ fn request_navigation_command(
             diagnostic("close_cancelled", &[]);
         }
     });
+}
+
+fn request_resume_command(
+    terminal: &Rc<RefCell<Terminal>>,
+    window: &ApplicationWindow,
+    area: &GLArea,
+) {
+    if !open_modal_dialog(terminal) {
+        return;
+    }
+    let current = terminal.borrow().resume_command.clone().unwrap_or_default();
+    let dialog = gtk::Window::builder()
+        .transient_for(window)
+        .modal(true)
+        .title("Set startup / resume command")
+        .default_width(560)
+        .build();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    content.set_margin_start(16);
+    content.set_margin_end(16);
+    content.set_margin_top(16);
+    content.set_margin_bottom(16);
+    let note = Label::new(Some(
+        "The command is saved as inert text and always needs explicit review before it runs.",
+    ));
+    note.set_wrap(true);
+    note.set_xalign(0.0);
+    let entry = Entry::builder().text(&current).build();
+    entry.update_property(&[gtk::accessible::Property::Label("Startup / resume command")]);
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.set_halign(gtk::Align::End);
+    let cancel = Button::with_label("Cancel");
+    let save = Button::with_label("Save");
+    actions.append(&cancel);
+    actions.append(&save);
+    content.append(&note);
+    content.append(&entry);
+    content.append(&actions);
+    dialog.set_child(Some(&content));
+
+    let dialog_cancel = dialog.downgrade();
+    cancel.connect_clicked(move |_| {
+        if let Some(dialog) = dialog_cancel.upgrade() {
+            dialog.close();
+        }
+    });
+    let terminal_save = terminal.clone();
+    let dialog_save = dialog.downgrade();
+    let area_save = area.clone();
+    let entry_save = entry.clone();
+    save.connect_clicked(move |_| {
+        let raw = entry_save.text();
+        let command = if raw.trim().is_empty() {
+            None
+        } else {
+            let Some(command) = valid_resume_command(Some(raw.as_str())) else {
+                area_save.error_bell();
+                diagnostic("resume_command_rejected", &[]);
+                return;
+            };
+            Some(command)
+        };
+        let mut terminal = terminal_save.borrow_mut();
+        terminal.resume_command = command;
+        if terminal.persist_state_now().is_err() {
+            diagnostic(
+                "state_save_failed",
+                &[("reason", "resume-command".to_owned())],
+            );
+        }
+        drop(terminal);
+        if let Some(dialog) = dialog_save.upgrade() {
+            dialog.close();
+        }
+        diagnostic("resume_command_saved", &[]);
+    });
+    let terminal_close = terminal.clone();
+    let area_close = area.clone();
+    dialog.connect_close_request(move |_| {
+        terminal_close.borrow_mut().modal_dialog_open = false;
+        area_close.grab_focus();
+        Propagation::Proceed
+    });
+    dialog.present();
+    entry.grab_focus();
+}
+
+fn present_resume_offers(
+    terminal: &Rc<RefCell<Terminal>>,
+    window: &ApplicationWindow,
+    area: &GLArea,
+) {
+    let offers = {
+        let mut terminal_state = terminal.borrow_mut();
+        std::mem::take(&mut terminal_state.pending_resume_offers)
+    };
+    if offers.is_empty() || !open_modal_dialog(terminal) {
+        return;
+    }
+    let dialog = gtk::Window::builder()
+        .transient_for(window)
+        .modal(true)
+        .title("Review saved commands")
+        .default_width(560)
+        .default_height(420)
+        .build();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    content.set_margin_start(16);
+    content.set_margin_end(16);
+    content.set_margin_top(16);
+    content.set_margin_bottom(16);
+    let explanation = Label::new(Some(
+        "Saved commands are shown for review. Nothing runs unless you select it.",
+    ));
+    explanation.set_wrap(true);
+    explanation.set_xalign(0.0);
+    content.append(&explanation);
+    let rows_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let scroll = gtk::ScrolledWindow::builder()
+        .vexpand(true)
+        .child(&rows_box)
+        .build();
+    content.append(&scroll);
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.set_halign(gtk::Align::End);
+    let cancel = Button::with_label("Don't Run");
+    let run = Button::with_label("Run selected");
+    run.set_sensitive(false);
+    actions.append(&cancel);
+    actions.append(&run);
+    content.append(&actions);
+    dialog.set_child(Some(&content));
+
+    let policy = Rc::new(RefCell::new(ResumeCommandSelectionPolicy::new(
+        offers.iter().map(|offer| offer.identity.clone()).collect(),
+    )));
+    for offer in &offers {
+        let row = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        let check = gtk::CheckButton::with_label(&offer.location);
+        check.set_active(false);
+        check.update_property(&[gtk::accessible::Property::Label(&format!(
+            "Run saved command in {}",
+            offer.location
+        ))]);
+        let command = Label::new(Some(&format!("Command: {}", offer.identity.command)));
+        command.set_selectable(true);
+        command.set_xalign(0.0);
+        command.set_wrap(true);
+        let cwd = Label::new(Some(&format!(
+            "Working directory: {}",
+            offer.identity.cwd.as_deref().unwrap_or("(default)")
+        )));
+        cwd.set_xalign(0.0);
+        cwd.set_selectable(true);
+        row.append(&check);
+        row.append(&command);
+        row.append(&cwd);
+        rows_box.append(&row);
+
+        let policy_changed = Rc::clone(&policy);
+        let run_changed = run.clone();
+        let surface_id = offer.identity.surface_id;
+        check.connect_toggled(move |check| {
+            let mut policy = policy_changed.borrow_mut();
+            policy.set_selected(surface_id, check.is_active());
+            run_changed.set_sensitive(!policy.selected_row_ids().is_empty());
+        });
+    }
+
+    let terminal_cancel = terminal.clone();
+    let dialog_cancel = dialog.downgrade();
+    cancel.connect_clicked(move |_| {
+        diagnostic("resume_review_cancelled", &[]);
+        if let Some(dialog) = dialog_cancel.upgrade() {
+            dialog.close();
+        }
+        terminal_cancel.borrow_mut().pending_resume_offers.clear();
+    });
+    let terminal_run = terminal.clone();
+    let dialog_run = dialog.downgrade();
+    let policy_run = Rc::clone(&policy);
+    run.connect_clicked(move |_| {
+        let policy = policy_run.borrow().clone();
+        if policy.selected_row_ids().is_empty() {
+            return;
+        }
+        diagnostic(
+            "resume_review_approved",
+            &[("selected", policy.selected_row_ids().len().to_string())],
+        );
+        if let Some(dialog) = dialog_run.upgrade() {
+            dialog.close();
+        }
+        terminal_run.borrow_mut().run_resume_commands(policy);
+    });
+
+    let terminal_close = terminal.clone();
+    let area_close = area.clone();
+    dialog.connect_close_request(move |_| {
+        terminal_close.borrow_mut().modal_dialog_open = false;
+        area_close.grab_focus();
+        Propagation::Proceed
+    });
+    dialog.present();
+    diagnostic(
+        "resume_review",
+        &[
+            ("rows", offers.len().to_string()),
+            ("unchecked", "true".to_owned()),
+        ],
+    );
+
+    match autoresume_decision() {
+        Some("restore") => {
+            if let Some(offer) = offers.first() {
+                policy
+                    .borrow_mut()
+                    .set_selected(offer.identity.surface_id, true);
+                let selected = policy.borrow().clone();
+                dialog.close();
+                terminal.borrow_mut().run_resume_commands(selected);
+            }
+        }
+        Some("restore-all") => {
+            let mut policy = policy.borrow_mut();
+            for offer in &offers {
+                policy.set_selected(offer.identity.surface_id, true);
+            }
+            let selected = policy.clone();
+            drop(policy);
+            dialog.close();
+            terminal.borrow_mut().run_resume_commands(selected);
+        }
+        Some("race") => {
+            if let Some(offer) = offers.first() {
+                let surface = offer.identity.surface_id;
+                if let Some(session) = terminal.borrow_mut().sessions.get_mut(&surface) {
+                    session.resume_command = Some("printf resume-race-replacement".to_owned());
+                }
+                policy
+                    .borrow_mut()
+                    .set_selected(offer.identity.surface_id, true);
+                let selected = policy.borrow().clone();
+                dialog.close();
+                terminal.borrow_mut().run_resume_commands(selected);
+            }
+        }
+        Some("decline") => {
+            diagnostic("resume_review_cancelled", &[]);
+            dialog.close();
+        }
+        _ => {}
+    }
 }
 
 fn execute_palette_command(
@@ -4402,6 +4971,10 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
     paste_label.set_xalign(0.0);
     let paste = gtk::SpinButton::with_range(0.0, 10_485_760.0, 1024.0);
     paste.set_value(resolved.paste_confirmation_threshold_bytes as f64);
+    let wheel_label = Label::new(Some("Mouse wheel lines"));
+    wheel_label.set_xalign(0.0);
+    let wheel = gtk::SpinButton::with_range(1.0, 10.0, 1.0);
+    wheel.set_value(document.wheel_scroll_lines() as f64);
     let sidebar_width_label = Label::new(Some("Sidebar width (points)"));
     sidebar_width_label.set_xalign(0.0);
     let sidebar_width = gtk::SpinButton::with_range(140.0, 320.0, 1.0);
@@ -4418,6 +4991,8 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
         confirm.upcast_ref(),
         paste_label.upcast_ref(),
         paste.upcast_ref(),
+        wheel_label.upcast_ref(),
+        wheel.upcast_ref(),
         sidebar_width_label.upcast_ref(),
         sidebar_width.upcast_ref(),
         actions.upcast_ref(),
@@ -4430,6 +5005,7 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
         (sidebar.upcast_ref(), "sidebar"),
         (confirm.upcast_ref(), "confirm"),
         (paste.upcast_ref(), "paste-threshold"),
+        (wheel.upcast_ref(), "wheel-lines"),
         (sidebar_width.upcast_ref(), "sidebar-width"),
         (cancel.upcast_ref(), "cancel"),
         (save.upcast_ref(), "save"),
@@ -4479,6 +5055,7 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
         resolved.sidebar_visible_on_launch = sidebar.is_active();
         resolved.confirm_close_with_running_process = confirm.is_active();
         resolved.paste_confirmation_threshold_bytes = paste.value() as u64;
+        document.set_wheel_scroll_lines(wheel.value() as u64);
         resolved.sidebar_width_points = sidebar_width.value() as u64;
         document.replace_resolved(resolved);
         if save_settings(&settings_path, &document).is_ok() {
@@ -4618,6 +5195,19 @@ fn paste_reason(reason: PasteConfirmationReason) -> String {
     }
 }
 
+fn autoresume_decision() -> Option<&'static str> {
+    if !cfg!(feature = "test-hooks") {
+        return None;
+    }
+    match env::var("KITMUX_AUTORESUME").as_deref() {
+        Ok("restore") => Some("restore"),
+        Ok("restore-all") => Some("restore-all"),
+        Ok("race") => Some("race"),
+        Ok("decline") => Some("decline"),
+        _ => None,
+    }
+}
+
 fn autopaste_decision() -> Option<bool> {
     // Test-only driver for the modal path; ordinary launches leave it unset.
     // Compiled inert unless the `test-hooks` feature is on, so a release build
@@ -4665,787 +5255,6 @@ fn open_url(url: String) {
     );
 }
 
-fn build_window(app: &Application) {
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .title("Kitmux")
-        .default_width(900)
-        .default_height(580)
-        .build();
-    let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    let sidebar_shell = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    sidebar_shell.set_width_request(180);
-    sidebar_shell.set_margin_start(8);
-    sidebar_shell.set_margin_end(8);
-    sidebar_shell.set_margin_top(8);
-    sidebar_shell.set_margin_bottom(8);
-    let workspace_header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let workspace_title = Label::new(Some("Workspaces"));
-    workspace_title.set_xalign(0.0);
-    workspace_title.set_hexpand(true);
-    let workspace_new = Button::with_label("+");
-    workspace_new.update_property(&[gtk::accessible::Property::Label("New workspace")]);
-    workspace_header.append(&workspace_title);
-    workspace_header.append(&workspace_new);
-    let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    let workspace_controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    let workspace_up = Button::with_label("↑");
-    let workspace_down = Button::with_label("↓");
-    let workspace_rename = Button::with_label("Rename");
-    let workspace_close = Button::with_label("×");
-    for control in [
-        &workspace_up,
-        &workspace_down,
-        &workspace_rename,
-        &workspace_close,
-    ] {
-        control.set_focus_on_click(false);
-        workspace_controls.append(control);
-    }
-    sidebar_shell.append(&workspace_header);
-    sidebar_shell.append(&sidebar);
-    sidebar_shell.append(&workspace_controls);
-    root.append(&sidebar_shell);
-
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content.set_hexpand(true);
-    content.set_vexpand(true);
-    let status = Label::new(Some("Initializing terminal…"));
-    status.set_xalign(0.0);
-    status.set_margin_start(12);
-    status.set_margin_end(12);
-    status.set_margin_top(8);
-    status.set_margin_bottom(8);
-    content.append(&status);
-
-    let navigation_bar = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    navigation_bar.set_margin_start(8);
-    navigation_bar.set_margin_end(8);
-    navigation_bar.set_margin_bottom(6);
-    let group_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let app_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    app_row.set_halign(gtk::Align::End);
-    let tab_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let group_label = Label::new(Some("Group 1"));
-    let group_previous = Button::with_label("‹");
-    let group_next = Button::with_label("›");
-    let group_new = Button::with_label("+ Group");
-    let group_rename = Button::with_label("Rename");
-    let group_close = Button::with_label("×");
-    let command_palette = Button::with_label("Commands");
-    command_palette.update_property(&[gtk::accessible::Property::Label("Open command palette")]);
-    let settings = Button::with_label("Settings");
-    settings.update_property(&[gtk::accessible::Property::Label("Open settings")]);
-    let tab_strip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    tab_strip.set_hexpand(true);
-    let tab_previous = Button::with_label("←");
-    let tab_next = Button::with_label("→");
-    let tab_new = Button::with_label("+");
-    let tab_rename = Button::with_label("Rename");
-    let tab_close = Button::with_label("×");
-    for control in [
-        &group_previous,
-        &group_next,
-        &group_new,
-        &group_rename,
-        &group_close,
-        &tab_previous,
-        &tab_next,
-        &tab_new,
-        &tab_rename,
-        &tab_close,
-    ] {
-        control.set_focus_on_click(false);
-    }
-    group_row.append(&group_label);
-    group_row.append(&group_previous);
-    group_row.append(&group_next);
-    group_row.append(&group_new);
-    group_row.append(&group_rename);
-    group_row.append(&group_close);
-    app_row.append(&command_palette);
-    app_row.append(&settings);
-    tab_row.append(&tab_strip);
-    tab_row.append(&tab_previous);
-    tab_row.append(&tab_next);
-    tab_row.append(&tab_new);
-    tab_row.append(&tab_rename);
-    tab_row.append(&tab_close);
-    navigation_bar.append(&group_row);
-    navigation_bar.append(&app_row);
-    navigation_bar.append(&tab_row);
-    content.append(&navigation_bar);
-
-    let search_bar = SearchBar::new();
-    let search_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    search_row.set_margin_start(12);
-    search_row.set_margin_end(12);
-    search_row.set_margin_bottom(8);
-    let search_entry = Entry::builder()
-        .placeholder_text("Search terminal")
-        .hexpand(true)
-        .build();
-    let search_count = Label::new(Some("0 matches"));
-    let search_previous = Button::with_label("Previous");
-    let search_next = Button::with_label("Next");
-    let search_close = Button::with_label("Close");
-    search_row.append(&search_entry);
-    search_row.append(&search_count);
-    search_row.append(&search_previous);
-    search_row.append(&search_next);
-    search_row.append(&search_close);
-    search_bar.set_child(Some(&search_row));
-    content.append(&search_bar);
-
-    let area: GLArea = unsafe {
-        glib::translate::from_glib_full(
-            ffi::kitmux_product_terminal_area_new().cast::<gtk::ffi::GtkGLArea>(),
-        )
-    };
-    area.set_allowed_apis(gdk::GLAPI::GL);
-    area.set_required_version(3, 3);
-    area.set_has_depth_buffer(false);
-    area.set_has_stencil_buffer(false);
-    area.set_hexpand(true);
-    area.set_vexpand(true);
-    area.set_focusable(true);
-    area.update_property(&[gtk::accessible::Property::Label("Terminal")]);
-    content.append(&area);
-    root.append(&content);
-    window.set_child(Some(&root));
-
-    let terminal = Rc::new(RefCell::new(Terminal::default()));
-    terminal.borrow_mut().navigation_ui = Some(NavigationUi {
-        sidebar_shell: sidebar_shell.downgrade(),
-        sidebar: sidebar.downgrade(),
-        tab_strip: tab_strip.downgrade(),
-        group_label: group_label.downgrade(),
-        status: status.downgrade(),
-        window: window.downgrade(),
-        area: area.downgrade(),
-        search_bar: search_bar.downgrade(),
-        search_entry: search_entry.downgrade(),
-        command_palette: command_palette.downgrade(),
-        settings: settings.downgrade(),
-    });
-    if let Err(error) = install_control_server(&terminal) {
-        match error {
-            ControlSocketError::LiveServer => {
-                diagnostic(
-                    "control_server_declined",
-                    &[("reason", "live_server".to_owned())],
-                );
-                terminal.borrow_mut().control_notice =
-                    Some("local control handled by another instance".to_owned());
-            }
-            error => {
-                let message = error.to_string();
-                diagnostic("control_server_failed", &[("error", message.clone())]);
-                terminal.borrow_mut().control_notice =
-                    Some(format!("local control unavailable: {message}"));
-            }
-        }
-    }
-
-    let terminal_palette = terminal.clone();
-    let window_palette = window.clone();
-    let area_palette = area.clone();
-    command_palette.connect_clicked(move |_| {
-        request_command_palette(&window_palette, &area_palette, &terminal_palette);
-    });
-    let terminal_settings = terminal.clone();
-    let window_settings = window.clone();
-    let area_settings = area.clone();
-    settings.connect_clicked(move |_| {
-        request_settings(&window_settings, &area_settings, &terminal_settings);
-    });
-
-    let connect_action = |button: &Button, command: CommandId| {
-        let weak = Rc::downgrade(&terminal);
-        let window = window.clone();
-        let area = area.clone();
-        button.connect_clicked(move |_| {
-            let Some(terminal) = weak.upgrade() else {
-                return;
-            };
-            request_navigation_command(&terminal, command, &window, &area);
-        });
-    };
-    connect_action(&workspace_new, CommandId::WorkspaceNew);
-    connect_action(&workspace_rename, CommandId::WorkspaceRename);
-    connect_action(&workspace_close, CommandId::WorkspaceClose);
-    connect_action(&group_previous, CommandId::GroupPrevious);
-    connect_action(&group_next, CommandId::GroupNext);
-    connect_action(&group_new, CommandId::GroupNew);
-    connect_action(&group_rename, CommandId::GroupRename);
-    connect_action(&group_close, CommandId::GroupClose);
-    connect_action(&tab_new, CommandId::TerminalNewTab);
-    connect_action(&tab_rename, CommandId::TerminalRenameTab);
-    connect_action(&tab_close, CommandId::PaneClose);
-
-    let connect_move = |button: &Button, workspace: bool, direction: isize| {
-        let weak = Rc::downgrade(&terminal);
-        button.connect_clicked(move |_| {
-            let Some(terminal) = weak.upgrade() else {
-                return;
-            };
-            let moved = if workspace {
-                terminal.borrow_mut().move_active_workspace(direction)
-            } else {
-                terminal.borrow_mut().move_active_tab(direction)
-            };
-            apply_navigation_effect(&terminal, changed(moved));
-        });
-    };
-    connect_move(&workspace_up, true, -1);
-    connect_move(&workspace_down, true, 1);
-    connect_move(&tab_previous, false, -1);
-    connect_move(&tab_next, false, 1);
-
-    let terminal_search = terminal.clone();
-    let search_count_changed = search_count.clone();
-    search_entry.connect_changed(move |entry| {
-        let result = terminal_search.borrow_mut().search(entry.text().as_str());
-        match result {
-            Ok(count) => search_count_changed.set_text(&format!("{count} matches")),
-            Err(message) => search_count_changed.set_text(&message),
-        }
-    });
-    let terminal_search_activate = terminal.clone();
-    let area_search_activate = area.clone();
-    search_entry.connect_activate(move |_| {
-        if !terminal_search_activate.borrow_mut().navigate_search(false) {
-            area_search_activate.error_bell();
-        }
-    });
-    let terminal_search_next = terminal.clone();
-    let area_search_next = area.clone();
-    search_next.connect_clicked(move |_| {
-        if !terminal_search_next.borrow_mut().navigate_search(false) {
-            area_search_next.error_bell();
-        }
-    });
-    let terminal_search_previous = terminal.clone();
-    let area_search_previous = area.clone();
-    search_previous.connect_clicked(move |_| {
-        if !terminal_search_previous.borrow_mut().navigate_search(true) {
-            area_search_previous.error_bell();
-        }
-    });
-    let terminal_search_close = terminal.clone();
-    let search_entry_close = search_entry.clone();
-    let search_bar_close = search_bar.clone();
-    let area_search_close = area.clone();
-    search_close.connect_clicked(move |_| {
-        search_entry_close.set_text("");
-        terminal_search_close.borrow_mut().search("").ok();
-        search_bar_close.set_search_mode(false);
-        area_search_close.grab_focus();
-    });
-    let search_keys = gtk::EventControllerKey::new();
-    let terminal_search_escape = terminal.clone();
-    let search_entry_escape = search_entry.clone();
-    let search_bar_escape = search_bar.clone();
-    let area_search_escape = area.clone();
-    search_keys.connect_key_pressed(move |_, key, _, _| {
-        if key != gdk::Key::Escape {
-            return Propagation::Proceed;
-        }
-        search_entry_escape.set_text("");
-        terminal_search_escape.borrow_mut().search("").ok();
-        search_bar_escape.set_search_mode(false);
-        area_search_escape.grab_focus();
-        Propagation::Stop
-    });
-    search_entry.add_controller(search_keys);
-    let terminal_realize = terminal.clone();
-    let window_realize = window.clone();
-    let status_realize = status.clone();
-    area.connect_realize(move |area| {
-        let initialized = {
-            terminal_realize
-                .borrow_mut()
-                .initialize(area, &window_realize, &status_realize)
-        };
-        match initialized {
-            Ok(fd) => {
-                let surface = terminal_realize.borrow().active_surface_id;
-                if let Err(stage) = attach_pty_source(&terminal_realize, surface, fd) {
-                    status_realize.set_text("Terminal event source failed");
-                    diagnostic("terminal_init_failed", &[("stage", stage.to_owned())]);
-                } else {
-                    if let Err(stage) = attach_missing_pty_sources(&terminal_realize) {
-                        status_realize.set_text("Restored terminal event source failed");
-                        diagnostic("terminal_init_failed", &[("stage", stage.to_owned())]);
-                        return;
-                    }
-                    attach_settings_source(&terminal_realize);
-                    let weak = Rc::downgrade(&terminal_realize);
-                    glib::idle_add_local_once(move || {
-                        let Some(terminal) = weak.upgrade() else {
-                            return;
-                        };
-                        refresh_navigation(&terminal);
-                        diagnostic("navigation_ready", &[]);
-                        if env::var_os("KITMUX_ACCESSIBILITY_GATE").is_some() {
-                            run_accessibility_gate(&terminal);
-                        }
-                        if env::var_os("KITMUX_AUTONAVIGATION").is_some() {
-                            let weak = Rc::downgrade(&terminal);
-                            glib::timeout_add_local_once(Duration::from_millis(250), move || {
-                                if let Some(terminal) = weak.upgrade() {
-                                    run_navigation_gate_driver(&terminal);
-                                }
-                            });
-                        }
-                    });
-                }
-            }
-            Err(stage) => {
-                status_realize.set_text("Terminal unavailable");
-                diagnostic("terminal_init_failed", &[("stage", stage.to_owned())]);
-            }
-        }
-    });
-
-    let terminal_render = terminal.clone();
-    let status_render = status.clone();
-    area.connect_render(move |area, _context| {
-        if let Ok(mut terminal) = terminal_render.try_borrow_mut() {
-            terminal.render(area, &status_render);
-        }
-        Propagation::Stop
-    });
-
-    let im_context = gtk::IMMulticontext::new();
-    im_context.set_client_widget(Some(&area));
-    im_context.set_use_preedit(true);
-    let terminal_commit = terminal.clone();
-    im_context.connect_commit(move |_, text| {
-        if let Ok(mut terminal) = terminal_commit.try_borrow_mut() {
-            terminal.im_commit(text);
-        }
-    });
-    let terminal_preedit_start = terminal.clone();
-    im_context.connect_preedit_start(move |_| {
-        if let Ok(mut terminal) = terminal_preedit_start.try_borrow_mut() {
-            terminal.preedit_active = true;
-        }
-    });
-    let terminal_preedit_end = terminal.clone();
-    im_context.connect_preedit_end(move |_| {
-        if let Ok(mut terminal) = terminal_preedit_end.try_borrow_mut() {
-            terminal.preedit_active = false;
-        }
-    });
-
-    let terminal_press = terminal.clone();
-    let area_press = area.clone();
-    let window_press = window.clone();
-    let search_bar_press = search_bar.clone();
-    let search_entry_press = search_entry.clone();
-    let im_press = im_context.clone();
-    let keys = gtk::EventControllerKey::new();
-    keys.connect_key_pressed(move |controller, keyval, keycode, state| {
-        if keyval == gdk::Key::F4 && state.contains(gdk::ModifierType::ALT_MASK) {
-            window_press.close();
-            return Propagation::Stop;
-        }
-        let shortcut = { terminal_press.borrow().shortcut(keyval, state) };
-        if let Some(shortcut) = shortcut {
-            let first_press = unsafe {
-                ffi::kitmux_key_tracker_press(
-                    &mut terminal_press.borrow_mut().shortcut_consumed,
-                    keycode,
-                ) == 1
-            };
-            if first_press {
-                match shortcut {
-                    ShortcutAction::Copy => copy_selection(&area_press, &terminal_press),
-                    ShortcutAction::Paste => {
-                        request_paste(&window_press, &area_press, &terminal_press)
-                    }
-                    ShortcutAction::Search => {
-                        search_bar_press.set_search_mode(true);
-                        search_entry_press.grab_focus();
-                    }
-                    ShortcutAction::CommandPalette => {
-                        request_command_palette(&window_press, &area_press, &terminal_press)
-                    }
-                    ShortcutAction::FontLarger => terminal_press
-                        .borrow_mut()
-                        .change_font_size(&area_press, 2.0),
-                    ShortcutAction::FontSmaller => terminal_press
-                        .borrow_mut()
-                        .change_font_size(&area_press, -2.0),
-                    ShortcutAction::FontReset => {
-                        let size = terminal_press.borrow().default_font_size;
-                        terminal_press.borrow_mut().set_font_size(&area_press, size);
-                    }
-                    ShortcutAction::ClearScrollback => {
-                        let mut terminal = terminal_press.borrow_mut();
-                        terminal.clear_selection();
-                        if !terminal.session.is_null() {
-                            unsafe { ffi::kitty_session_clear_scrollback(terminal.session) };
-                            area_press.queue_render();
-                        }
-                    }
-                    ShortcutAction::Navigation(command) => {
-                        request_navigation_command(
-                            &terminal_press,
-                            command,
-                            &window_press,
-                            &area_press,
-                        );
-                    }
-                    ShortcutAction::Select(target) => {
-                        let effect = terminal_press.borrow_mut().select_navigation_target(target);
-                        apply_navigation_effect(&terminal_press, effect);
-                    }
-                }
-            }
-            return Propagation::Stop;
-        }
-        let input = {
-            let mut terminal = terminal_press.borrow_mut();
-            let action = unsafe { ffi::kitmux_key_tracker_press(&mut terminal.keys, keycode) };
-            let input = KitmuxGdkKeyInput {
-                keyval: keyval.into_glib(),
-                unshifted_keyval: unsafe {
-                    ffi::kitmux_gdk_base_layout_keyval(
-                        area_press.as_ptr().cast(),
-                        controller.as_ptr().cast(),
-                        keycode,
-                    )
-                },
-                state: state.bits(),
-                action,
-            };
-            terminal.filtering = true;
-            terminal.filtering_input = input;
-            terminal.filtering_had_preedit = terminal.preedit_active;
-            terminal.filtering_committed = false;
-            terminal.filtering_encoded = false;
-            input
-        };
-        let consumed = controller
-            .current_event()
-            .is_some_and(|event| im_press.filter_keypress(event));
-        let mut terminal = terminal_press.borrow_mut();
-        let committed = terminal.filtering_committed;
-        let encoded = terminal.filtering_encoded;
-        terminal.filtering = false;
-        if consumed {
-            if !encoded {
-                unsafe { ffi::kitmux_key_tracker_press(&mut terminal.im_consumed, keycode) };
-            }
-            let _ = committed;
-            return Propagation::Stop;
-        }
-        terminal.route_key(&input, None);
-        Propagation::Stop
-    });
-    let terminal_release = terminal.clone();
-    let area_release = area.clone();
-    keys.connect_key_released(move |controller, keyval, keycode, state| {
-        let mut terminal = terminal_release.borrow_mut();
-        if unsafe { ffi::kitmux_key_tracker_release(&mut terminal.shortcut_consumed, keycode) } {
-            return;
-        }
-        unsafe { ffi::kitmux_key_tracker_release(&mut terminal.keys, keycode) };
-        if unsafe { ffi::kitmux_key_tracker_release(&mut terminal.im_consumed, keycode) } {
-            return;
-        }
-        let input = KitmuxGdkKeyInput {
-            keyval: keyval.into_glib(),
-            unshifted_keyval: unsafe {
-                ffi::kitmux_gdk_base_layout_keyval(
-                    area_release.as_ptr().cast(),
-                    controller.as_ptr().cast(),
-                    keycode,
-                )
-            },
-            state: state.bits(),
-            action: ffi::KEY_ACTION_RELEASE,
-        };
-        terminal.route_key(&input, None);
-    });
-    area.add_controller(keys);
-
-    let focus = gtk::EventControllerFocus::new();
-    let im_focus_in = im_context.clone();
-    focus.connect_enter(move |_| im_focus_in.focus_in());
-    let im_focus_out = im_context;
-    let terminal_focus_out = terminal.clone();
-    focus.connect_leave(move |_| {
-        im_focus_out.focus_out();
-        if let Ok(mut terminal) = terminal_focus_out.try_borrow_mut() {
-            unsafe {
-                ffi::kitmux_key_tracker_reset(&mut terminal.keys);
-                ffi::kitmux_key_tracker_reset(&mut terminal.im_consumed);
-                ffi::kitmux_key_tracker_reset(&mut terminal.shortcut_consumed);
-            }
-        }
-    });
-    area.add_controller(focus);
-
-    let divider_drag = gtk::GestureDrag::new();
-    divider_drag.set_button(1);
-    let terminal_drag_begin = terminal.clone();
-    let area_drag_begin = area.clone();
-    divider_drag.connect_drag_begin(move |gesture, x, y| {
-        let mut terminal = terminal_drag_begin.borrow_mut();
-        if let Some(split) = terminal.divider_at(&area_drag_begin, x, y) {
-            terminal.divider_drag = Some((split, x, y));
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-        }
-    });
-    let terminal_drag_update = terminal.clone();
-    let area_drag_update = area.clone();
-    divider_drag.connect_drag_update(move |_, offset_x, offset_y| {
-        let mut terminal = terminal_drag_update.borrow_mut();
-        let Some((split, start_x, start_y)) = terminal.divider_drag else {
-            return;
-        };
-        if terminal.resize_divider(
-            &area_drag_update,
-            split,
-            start_x + offset_x,
-            start_y + offset_y,
-        ) {
-            area_drag_update.queue_render();
-        }
-    });
-    let terminal_drag_end = terminal.clone();
-    divider_drag.connect_drag_end(move |_, _, _| {
-        if let Some((split, _, _)) = terminal_drag_end.borrow_mut().divider_drag.take() {
-            diagnostic("divider_resized", &[("split", split.to_string())]);
-        }
-    });
-    area.add_controller(divider_drag);
-
-    let click = gtk::GestureClick::new();
-    click.set_button(0);
-    let terminal_click = terminal.clone();
-    let area_click = area.clone();
-    click.connect_pressed(move |gesture, count, x, y| {
-        area_click.grab_focus();
-        let button = gesture.current_button() as c_int;
-        let state = gesture.current_event_state();
-        let divider = (button == 1)
-            .then(|| terminal_click.borrow().divider_at(&area_click, x, y))
-            .flatten();
-        if env::var_os("KITMUX_INTERACTION_DIAGNOSTICS").is_some() {
-            diagnostic(
-                "pointer_press",
-                &[
-                    ("button", button.to_string()),
-                    ("x", format!("{x:.1}")),
-                    ("y", format!("{y:.1}")),
-                    ("divider", divider.is_some().to_string()),
-                ],
-            );
-        }
-        if divider.is_some() {
-            return;
-        }
-        let focused = terminal_click.borrow_mut().focus_pane_at(&area_click, x, y);
-        if focused {
-            diagnostic("pane_focused", &[("source", "pointer".to_owned())]);
-            apply_navigation_effect(&terminal_click, NavigationEffect::Changed);
-        }
-        if button == 1
-            && state.contains(gdk::ModifierType::CONTROL_MASK)
-            && let Some(url) = terminal_click.borrow().url_at(&area_click, x, y)
-        {
-            open_url(url);
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            return;
-        }
-        let mut terminal = terminal_click.borrow_mut();
-        terminal.mouse_reporting_button = None;
-        terminal.selection_active = false;
-        if !state.contains(gdk::ModifierType::SHIFT_MASK)
-            && terminal.send_mouse(&area_click, x, y, button, ffi::MOUSE_PRESS, state)
-        {
-            terminal.mouse_reporting_button = Some(button);
-        } else if button == 1 {
-            terminal.start_selection(&area_click, x, y, count);
-        }
-    });
-    let terminal_release_pointer = terminal.clone();
-    let area_release_pointer = area.clone();
-    click.connect_released(move |gesture, _, x, y| {
-        let state = gesture.current_event_state();
-        let mut terminal = terminal_release_pointer.borrow_mut();
-        if let Some(button) = terminal.mouse_reporting_button.take() {
-            terminal.send_mouse(
-                &area_release_pointer,
-                x,
-                y,
-                button,
-                ffi::MOUSE_RELEASE,
-                state,
-            );
-        } else {
-            terminal.update_selection(&area_release_pointer, x, y, true);
-        }
-    });
-    area.add_controller(click);
-
-    let motion = gtk::EventControllerMotion::new();
-    let terminal_motion = terminal.clone();
-    let area_motion = area.clone();
-    motion.connect_motion(move |controller, x, y| {
-        let state = controller.current_event_state();
-        let mut terminal = terminal_motion.borrow_mut();
-        if let Some(button) = terminal.mouse_reporting_button {
-            terminal.send_mouse(&area_motion, x, y, button, ffi::MOUSE_DRAG, state);
-        } else if terminal.selection_active {
-            terminal.update_selection(&area_motion, x, y, false);
-        } else if !state.contains(gdk::ModifierType::SHIFT_MASK) {
-            terminal.send_mouse(&area_motion, x, y, -1, ffi::MOUSE_MOVE, state);
-        }
-    });
-    area.add_controller(motion);
-
-    let scroll = gtk::EventControllerScroll::new(
-        gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::KINETIC,
-    );
-    scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let terminal_scroll = terminal.clone();
-    let area_scroll = area.clone();
-    scroll.connect_scroll(move |controller, _, dy| {
-        if env::var_os("KITMUX_INTERACTION_DIAGNOSTICS").is_some() {
-            diagnostic("scroll_raw", &[("dy", format!("{dy:.3}"))]);
-        }
-        let Some(event) = controller.current_event() else {
-            return Propagation::Proceed;
-        };
-        let Some((x, y)) = event.position() else {
-            return Propagation::Proceed;
-        };
-        let state = controller.current_event_state();
-        let mut terminal = terminal_scroll.borrow_mut();
-        let scale = f64::from(area_scroll.scale_factor()).max(1.0);
-        let cell_points = f64::from(terminal.cell_height.max(1)) / scale;
-        let direction = event
-            .downcast_ref::<gdk::ScrollEvent>()
-            .map(gdk::ScrollEvent::direction);
-        let mouse_wheel = event
-            .device()
-            .is_some_and(|device| device.source() == gdk::InputSource::Mouse);
-        let delta_points = match (direction, mouse_wheel) {
-            (Some(gdk::ScrollDirection::Up | gdk::ScrollDirection::Down), _) | (_, true) => {
-                -dy * cell_points * 5.0
-            }
-            _ => -dy,
-        };
-        let lines =
-            accumulate_scroll_lines(delta_points, cell_points, &mut terminal.scroll_residue);
-        if lines == 0 || terminal.session.is_null() {
-            return Propagation::Stop;
-        }
-        if env::var_os("KITMUX_INTERACTION_DIAGNOSTICS").is_some() {
-            diagnostic("scroll", &[("lines", lines.to_string())]);
-        }
-        let button = if lines > 0 { 4 } else { 5 };
-        if !state.contains(gdk::ModifierType::SHIFT_MASK)
-            && terminal.send_mouse(&area_scroll, x, y, button, ffi::MOUSE_PRESS, state)
-        {
-            for _ in 1..lines.unsigned_abs() {
-                terminal.send_mouse(&area_scroll, x, y, button, ffi::MOUSE_PRESS, state);
-            }
-        } else {
-            unsafe { ffi::kitty_session_scroll(terminal.session, lines) };
-            area_scroll.queue_render();
-        }
-        Propagation::Stop
-    });
-    area.add_controller(scroll);
-
-    let terminal_close = terminal.clone();
-    let area_close = area.clone();
-    window.connect_close_request(move |window| {
-        let Ok(mut current) = terminal_close.try_borrow_mut() else {
-            return Propagation::Stop;
-        };
-        let foreground = current.foreground_surfaces(None);
-        if current.close_confirmed
-            || !current.confirm_close_with_running_process
-            || foreground.is_empty()
-        {
-            current.shutdown(&area_close);
-            return Propagation::Proceed;
-        }
-        if current.modal_dialog_open {
-            return Propagation::Stop;
-        }
-        if let Some(confirm) = autoclose_decision() {
-            if confirm {
-                current.close_confirmed = true;
-                diagnostic(
-                    "close_confirmed",
-                    &[
-                        ("foreground_rechecked", "true".to_owned()),
-                        ("sessions", foreground.len().to_string()),
-                    ],
-                );
-                current.shutdown(&area_close);
-                return Propagation::Proceed;
-            }
-            diagnostic("close_cancelled", &[]);
-            return Propagation::Stop;
-        }
-        current.modal_dialog_open = true;
-        drop(current);
-        let dialog = gtk::AlertDialog::builder()
-            .modal(true)
-            .message("Close a terminal with a running process?")
-            .detail("Closing will terminate the foreground process and its shell.")
-            .buttons(["Cancel", "Close"])
-            .cancel_button(0)
-            .default_button(0)
-            .build();
-        let terminal_confirm = terminal_close.clone();
-        let window_confirm = window.clone();
-        let area_confirm = area_close.clone();
-        dialog.choose(Some(window), None::<&gio::Cancellable>, move |choice| {
-            let mut terminal = terminal_confirm.borrow_mut();
-            terminal.modal_dialog_open = false;
-            if matches!(choice, Ok(1)) {
-                terminal.close_confirmed = true;
-                let foreground = terminal.foreground_surfaces(None).len();
-                diagnostic(
-                    "close_confirmed",
-                    &[
-                        ("foreground_rechecked", (foreground > 0).to_string()),
-                        ("sessions", foreground.to_string()),
-                    ],
-                );
-                drop(terminal);
-                window_confirm.close();
-            } else {
-                drop(terminal);
-                area_confirm.grab_focus();
-                diagnostic("close_cancelled", &[]);
-            }
-        });
-        Propagation::Stop
-    });
-
-    let terminal_unrealize = terminal.clone();
-    area.connect_unrealize(move |area| {
-        if let Ok(mut terminal) = terminal_unrealize.try_borrow_mut() {
-            terminal.shutdown(area);
-        }
-    });
-
-    attach_sigterm_source(&terminal, &window, &area);
-
-    window.present();
-}
-
 fn main() -> glib::ExitCode {
     if !install_sigterm_handler() {
         diagnostic("sigterm_handler_failed", &[]);
@@ -5454,6 +5263,6 @@ fn main() -> glib::ExitCode {
         .application_id("dev.kitmux.Kitmux")
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
-    app.connect_activate(build_window);
+    app.connect_activate(window::build_window);
     app.run()
 }

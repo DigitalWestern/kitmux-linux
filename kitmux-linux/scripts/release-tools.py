@@ -21,8 +21,13 @@ SYSTEM_SONAMES = {
     "libc.so.6",
     "libdbus-1.so.3",
     "libdl.so.2",
+    "libepoxy.so.0",
     "libgcc_s.so.1",
+    "libgdk_pixbuf-2.0.so.0",
+    "libgtk-4.so.1",
     "libm.so.6",
+    "libmount.so.1",
+    "libpango-1.0.so.0",
     "libpthread.so.0",
     "libuuid.so.1",
     "libxcb-xkb.so.1",
@@ -160,6 +165,10 @@ def file_owners(runtime: Path, manifest: dict) -> dict[Path, dict]:
             for component in manifest["components"]
             if any(fnmatch.fnmatchcase(relative, pattern) for pattern in component["files"])
         ]
+        fallback = [component for component in matches if component.get("fallback")]
+        specific = [component for component in matches if not component.get("fallback")]
+        if fallback and len(specific) == 1:
+            matches = specific
         if len(matches) != 1:
             fail(
                 f"runtime file must map to exactly one component: {relative} "
@@ -325,19 +334,70 @@ def verify(args: argparse.Namespace) -> None:
 def verify_inputs(args: argparse.Namespace) -> None:
     linux_root = args.linux_root.resolve()
     lock = json.loads((linux_root / "source-lock.json").read_text())
-    dependency_root = linux_root / ".source" / "kitty" / "dependencies"
     expected_bundles = lock.get("kitty_dependency_bundles", {})
     required_bundles = [f"{args.platform}.tar.xz", "NerdFontsSymbolsOnly.tar.xz"]
-    for name in required_bundles:
-        expected = expected_bundles.get(name)
-        if not expected:
-            fail(f"source-lock.json has no checksum for required bundle {name}")
-        path = dependency_root / name
-        if not path.is_file():
-            fail(f"locked dependency bundle is missing: {path}")
-        actual = sha256(path)
-        if actual != expected:
-            fail(f"dependency bundle hash mismatch for {name}: {actual} != {expected}")
+    durable_platforms = lock.get("durable_inputs", {}).get(
+        "durable_dependency_platforms", []
+    )
+    durable_required = (
+        os.environ.get("KITMUX_REQUIRE_DURABLE_INPUTS") == "1"
+        and args.platform in durable_platforms
+    )
+    durable_relative = lock.get("durable_inputs", {}).get("dependency_bundles")
+    durable_dependency_root = (
+        (linux_root / durable_relative).resolve() if durable_relative else None
+    )
+    dependency_root = linux_root / ".source" / "kitty" / "dependencies"
+    if durable_dependency_root is not None and durable_dependency_root.is_dir():
+        missing = []
+        for name in required_bundles:
+            path = durable_dependency_root / name
+            if not path.is_file():
+                missing.append(name)
+                continue
+            expected = expected_bundles.get(name)
+            if expected and sha256(path) != expected:
+                fail(f"dependency bundle hash mismatch for {name}: {path}")
+        if not missing:
+            dependency_root = durable_dependency_root
+        elif durable_required:
+            fail(
+                "durable dependency mirror is incomplete: "
+                + ", ".join(missing)
+            )
+    elif durable_required:
+        fail("durable dependency mirror is unavailable")
+
+    source_dependency_root = (
+        linux_root / ".source" / "kitty" / "dependencies" / args.platform
+    ).resolve()
+    using_source_tree = False
+    if not all((dependency_root / name).is_file() for name in required_bundles):
+        source_ready = (
+            (source_dependency_root / "bin" / "python").is_file()
+            and (linux_root / ".source" / "kitty" / "kitty" / "fast_data_types.so").is_file()
+        )
+        if os.environ.get("KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD") == "1" and source_ready:
+            dependency_root = source_dependency_root
+            using_source_tree = True
+        else:
+            missing = [
+                name for name in required_bundles if not (dependency_root / name).is_file()
+            ]
+            fail(
+                "locked dependency bundle is missing: "
+                + ", ".join(str(dependency_root / name) for name in missing)
+            )
+
+    if not using_source_tree:
+        for name in required_bundles:
+            expected = expected_bundles.get(name)
+            if not expected:
+                fail(f"source-lock.json has no checksum for required bundle {name}")
+            path = dependency_root / name
+            actual = sha256(path)
+            if actual != expected:
+                fail(f"dependency bundle hash mismatch for {name}: {actual} != {expected}")
 
     cargo_lockfiles = lock.get("cargo_lockfiles", {})
     for relative, expected in cargo_lockfiles.items():
@@ -365,6 +425,11 @@ def verify_inputs(args: argparse.Namespace) -> None:
         f"locked release inputs: {len(required_bundles)} bundles and "
         f"{checked_sources} source archives plus {len(cargo_lockfiles)} Cargo lockfiles verified"
     )
+    if using_source_tree:
+        print(
+            f"dependency policy: {args.platform} uses the explicit source-built "
+            "fallback; durable reproducibility is not claimed"
+        )
 
 
 def parser() -> argparse.ArgumentParser:

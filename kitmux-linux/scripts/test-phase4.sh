@@ -18,6 +18,8 @@ mouse_reader_seconds=4
 if [[ "${backend}" == "x11" ]]; then
   mouse_reader_seconds=120
 fi
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 clipboard_commands=()
 if [[ "${backend}" == "x11" ]]; then
   clipboard_commands=(xsel)
@@ -48,7 +50,6 @@ clipboard_get() {
   fi
 }
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 workspace="$(cd -- "${script_dir}/.." && pwd)"
 linux_root="$(cd -- "${workspace}/.." && pwd)"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/kitmux-phase4.XXXXXX")"

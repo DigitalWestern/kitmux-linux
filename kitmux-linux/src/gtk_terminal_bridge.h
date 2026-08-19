@@ -11,9 +11,6 @@ GtkWidget *kitmux_product_terminal_area_new(void);
 uint32_t kitmux_gdk_base_layout_keyval(GtkWidget *widget,
                                        GtkEventController *controller,
                                        uint32_t keycode);
-double kitmux_widget_surface_scale(GtkWidget *widget);
-bool kitmux_session_draw_preserving_gl_state(kitty_session *session);
-
 typedef struct {
   int framebuffer_width;
   int framebuffer_height;

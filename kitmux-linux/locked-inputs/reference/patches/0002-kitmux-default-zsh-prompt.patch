@@ -1,0 +1,16 @@
+diff --git a/shell-integration/zsh/kitty-integration b/shell-integration/zsh/kitty-integration
+--- a/shell-integration/zsh/kitty-integration
++++ b/shell-integration/zsh/kitty-integration
+@@ -93,3 +93,12 @@ _ksi_deferred_init() {
++    # Kitmux supplies a restrained default underneath the user's shell
++    # configuration. This runs after .zshrc; replace only Apple's exact stock
++    # prompt, and leave custom prompts/themes untouched. An empty value is an
++    # explicit opt-out. Unset the implementation variable before commands run.
++    if [[ -n "${KITMUX_DEFAULT_PROMPT-}" && "$PS1" == '%n@%m %1~ %# ' ]]; then
++        PS1="$KITMUX_DEFAULT_PROMPT"
++    fi
++    builtin unset KITMUX_DEFAULT_PROMPT
++
+     if [[ -n "$SSH_KITTEN_KITTY_DIR" ]]; then
+         if [[ ! "$PATH" =~ (^|:)${SSH_KITTEN_KITTY_DIR}(:|$) ]] && [[ -z "$(builtin command -v kitten)" ]]; then
+             builtin export PATH="${PATH}:${SSH_KITTEN_KITTY_DIR}"

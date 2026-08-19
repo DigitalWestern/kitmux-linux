@@ -13,6 +13,7 @@ for command in weston xdotool; do
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 gate_script="${KITMUX_WAYLAND_GATE:-test-phase4.sh}"
 gate_label="${KITMUX_WAYLAND_LABEL:-Phase 4 native-Wayland product interaction gate}"
 if [[ "${gate_script}" == */* || ! -x "${script_dir}/${gate_script}" ]]; then

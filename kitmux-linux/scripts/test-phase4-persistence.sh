@@ -17,6 +17,7 @@ sudo -n true 2>/dev/null || {
 }
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/kitmux-phase4-persistence.XXXXXX")"
 runtime="${temporary_root}/runtime"
 restore_cwd="${temporary_root}/restored-cwd"

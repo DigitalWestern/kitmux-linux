@@ -25,5 +25,6 @@ Directory map:
 | `release` | Tracked component manifest and upstream notices. |
 | `build*` | Ignored local output. Never release evidence — always build to a fresh path. |
 
-No browser UI and no native package installer belong here yet. SSH and resume
-workflows are later Phase 6 slices.
+No browser UI belongs here for the approved terminal-only beta. Reproducible
+ARM64 tarball and `.deb` packagers live under `scripts`; promotion still waits
+on the release gates in `../PORT_STATUS.md`.

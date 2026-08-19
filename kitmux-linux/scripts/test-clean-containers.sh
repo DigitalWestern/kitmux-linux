@@ -13,6 +13,7 @@ fi
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 workspace="$(cd -- "${script_dir}/.." && pwd)"
 linux_root="$(cd -- "${workspace}/.." && pwd)"
+source "${script_dir}/gate-common.sh"
 source_cache="${linux_root}/.source"
 
 if [[ ! -f "${linux_root}/source-lock.json" ]] \
@@ -59,7 +60,11 @@ run_clean_passes() {
       -v "${run_root}:/work" \
       -w /work \
       "${image}" \
-      kitmux-linux/scripts/build-release-runtime.sh
+      env KITMUX_REQUIRE_DURABLE_INPUTS=1 \
+      KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD=1 \
+      KITMUX_INVENTORY_VALIDATED=1 \
+      kitmux-linux/scripts/build-release-runtime.sh \
+      kitmux-linux/build/kitmux-engine-runtime
     local inventory_hash
     inventory_hash="$(
       sha256sum "${run_root}/kitmux-linux/build/kitmux-engine-runtime/share/SHA256SUMS" \

@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 workspace="$(cd -- "${script_dir}/.." && pwd)"
 linux_root="$(cd -- "${workspace}/.." && pwd)"
+source "${script_dir}/gate-common.sh"
 
 if [[ "${1:-}" == "--inside" ]]; then
   runtime="$(realpath "${2:?missing release runtime}")"

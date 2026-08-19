@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "reference_tag": "macos-linux-port-baseline-2026-08-02-v0.21",
-  "updated": "2026-08-02",
+  "updated": "2026-08-18",
   "notes": {
     "granularity": "Schema 2 decomposed the original 16 subsystem rows into per-behavior rows. At subsystem granularity a Phase 9 parity claim was unfalsifiable: an entire area could be marked shipped while half of it was missing. Every row here states one observable behavior and names the macOS test that pins it.",
     "macos_tests": "An entry is `path` or `path::anchor`. An anchor names a Swift, Python, or C function definition, or — for the monolithic C gates, which are one main() with no per-case functions — the `// vN.M feature` comment that labels the block asserting that behavior. `contracts/validate-inventory.py` resolves every anchor against the macOS checkout; a bare `path` means the whole file is the case (test_engine.c) or that no finer anchor exists in it. All anchors resolve at tag macos-linux-port-baseline-2026-08-02-v0.21.",
@@ -120,6 +120,10 @@
         "CPython embed API"
       ],
       "translation": "Resolve the bundled interpreter through $ORIGIN runpaths; never fall back to host Python.",
+      "linux_tests": [
+        "kitmux-linux/tests/linux_session_stress.c",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
       "linux_status": "proven headless on Ubuntu/Fedora ARM64 (Slice 1.3); Slice 4.1 proves the same path in the release-shaped product app on Ubuntu 26.04 ARM64 X11"
     },
     {
@@ -161,6 +165,9 @@
         "engine.session-create-close"
       ],
       "translation": "Linux wait status decoding differs from Darwin's; assert it explicitly.",
+      "linux_tests": [
+        "kitmux-linux/tests/linux_session_stress.c"
+      ],
       "linux_status": "exit callback and status validated in the Slice 1.2 Linux stress gate"
     },
     {
@@ -179,6 +186,11 @@
         "engine.session-create-close"
       ],
       "translation": "None.",
+      "linux_tests": [
+        "kitmux-linux/tests/linux_session_stress.c",
+        "kitmux-linux/scripts/test-desktop.sh",
+        "kitmux-linux/scripts/test-phase4-wayland.sh"
+      ],
       "linux_status": "proven headless in Slice 1.2; live GTK framebuffer resize proven over X11 (Slice 2.1), native Wayland (Slice 2.2C), and virtual outputs at 100%, 150%, and 200% (Slice 2.2E)"
     },
     {
@@ -221,6 +233,10 @@
         "engine.session-create-close"
       ],
       "translation": "Host watches kitty_session_fd through the toolkit main loop.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
       "linux_status": "proven over X11 through a GLib fd source (Slice 2.1)"
     },
     {
@@ -309,6 +325,10 @@
         "render.live-frame"
       ],
       "translation": "The host owns the framebuffer; the engine must never assume it owns the context.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh",
+        "kitmux-linux/scripts/test-phase4-wayland.sh"
+      ],
       "linux_status": "proven over X11 and native Wayland client GL paths (Slices 2.1 and 2.2C)"
     },
     {
@@ -328,6 +348,10 @@
         "engine.resize"
       ],
       "translation": "None.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh",
+        "kitmux-linux/scripts/test-phase4-wayland.sh"
+      ],
       "linux_status": "proven over X11 and native Wayland at scale 1 (Slices 2.1 and 2.2C)"
     },
     {
@@ -345,6 +369,9 @@
         "render.live-frame"
       ],
       "translation": "Track GTK's fractional surface scale separately from the integer GtkGLArea backing-buffer factor; Kitty builds its font atlas for the latter.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh"
+      ],
       "linux_status": "proven in Slice 2.2E under nested Sway: exact 100%/150%/200% and return-to-100% metrics with one live child; physical mixed-DPI remains unproven"
     },
     {
@@ -361,6 +388,10 @@
         "render.live-frame"
       ],
       "translation": "Do not make screenshot pixel equality the only render gate.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-desktop.sh",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
       "linux_status": "proven over X11 in Slice 2.1; the visible missing-runtime diagnostic is asserted by test-desktop.sh; Slice 4.1 proves the same path in the release-shaped product app on Ubuntu 26.04 ARM64 X11"
     },
     {
@@ -1078,6 +1109,10 @@
         "persistence.round-trip"
       ],
       "translation": "None.",
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_state_snapshot_corpus_accepts_repairs_and_rejects",
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::state_detail_repairs_unsafe_resume_paths_urls_and_surface_selection"
+      ],
       "linux_status": "frozen accept, repair, and reject cases plus structural bounds proven on Linux in Slice 3.2; macOS consumption of Linux-normalized accepted and repaired state values proven in Slice 3.3"
     },
     {
@@ -1125,9 +1160,11 @@
       "linux_tests": [
         "kitmux-linux/rust/model/tests/contracts_tests.rs::resume_command_bound_is_utf8_bytes_and_rejects_controls",
         "kitmux-linux/rust/model/tests/contracts_tests.rs::macos_state_import_preview_is_read_only_translates_paths_and_keeps_commands_inert",
-        "kitmux-linux/scripts/test-phase5-product.sh"
+        "kitmux-linux/rust/model/src/resume.rs::rows_start_unchecked_and_only_unchanged_selected_rows_execute",
+        "kitmux-linux/scripts/test-phase5-product.sh",
+        "kitmux-linux/scripts/test-phase6-resume.sh::Slice 6.3 resume, recovery, stale-socket, SSH, upgrade, and stress gate"
       ],
-      "linux_status": "resume text is inert bounded data in the Slice 3.2 codec; Slice 3.3 proves preview never executes it, and Slice 5.3 proves full product hierarchy restore always creates fresh passwd shells without routing resume text to session creation; explicit reviewed execution remains Phase 6 work"
+      "linux_status": "resume text remains bounded inert data in the codec; Slice 6.3 proves unchecked review, explicit terminal-only execution, final identity/command/cwd revalidation, SSH placeholder restore, legacy v1 metadata upgrade, stale-socket recovery, crash-safe persistence, and repeated startup/close churn"
     },
     {
       "id": "persistence.atomic-writes",
@@ -1272,6 +1309,10 @@
         "engine.session-create-close"
       ],
       "translation": "Validate against Linux tcgetpgrp and job control, not Darwin assumptions.",
+      "linux_tests": [
+        "kitmux-linux/tests/linux_session_stress.c",
+        "kitmux-linux/scripts/test-phase4.sh"
+      ],
       "linux_status": "libkitty foreground detection covered headless on Linux in Slice 1.2"
     },
     {
@@ -1389,6 +1430,7 @@
         "terminal.title-and-bell"
       ],
       "translation": "Portal behavior must be re-tested inside sandboxed packages.",
+      "linux_tests": [],
       "linux_status": "unproven"
     },
     {
@@ -1409,6 +1451,11 @@
         "contracts.control-v1"
       ],
       "translation": "Values and bounds are contract; the socket address is not.",
+      "linux_tests": [
+        "kitmux-linux/rust/model/tests/contracts_tests.rs::frozen_control_protocol_corpus_enforces_envelope_and_byte_bounds",
+        "kitmux-linux/rust/model/tests/control_socket_tests.rs::malformed_and_oversized_frames_get_protocol_errors",
+        "kitmux-linux/scripts/test-phase6-control.sh"
+      ],
       "linux_status": "shared request fixtures, newline framing, method catalog, response invariants, error codes, byte bounds, and macOS consumption of Linux-produced requests proven in Slices 3.2 and 3.3"
     },
     {
@@ -1558,6 +1605,7 @@
         "hierarchy.hidden-vs-visible"
       ],
       "translation": "Add WebKitGTK only after the toolkit and a supported security branch are fixed. Optional for a terminal-only beta.",
+      "linux_tests": [],
       "linux_status": "unproven"
     },
     {
@@ -1574,6 +1622,7 @@
       "linux_acceptance": "Not applicable. Linux equivalents, where any exist, are separate rows under desktop.* and are not parity obligations.",
       "dependencies": [],
       "translation": "Intentionally omitted. Do not port; do not count against parity.",
+      "linux_tests": [],
       "linux_status": "intentionally omitted"
     }
   ]

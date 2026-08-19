@@ -1,15 +1,15 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 linux_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 macos_root=$(CDPATH= cd -- "$linux_root/../macos/kitmux" && pwd)
+source "$script_dir/gate-common.sh"
 mirror="$macos_root/macos/KitmuxApp/Tests/KitmuxCoreTests/Fixtures/Portable/v1"
 phase3_tmp=$(mktemp -d "${TMPDIR:-/tmp}/kitmux-phase3.XXXXXX")
 trap 'rm -rf -- "$phase3_tmp"' EXIT HUP INT TERM
 
 python3 "$linux_root/contracts/validate-fixtures.py" --mirror "$mirror"
-python3 "$linux_root/contracts/validate-inventory.py" "$macos_root"
 "$script_dir/test-model.sh"
 
 cargo run --quiet --locked \

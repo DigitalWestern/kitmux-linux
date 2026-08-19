@@ -20,10 +20,18 @@ case "$(uname -m)" in
     ;;
 esac
 dependencies="${kitty_root}/dependencies/${kitty_platform}"
-build_dir="${workspace}/build-release"
-output="${1:-${workspace}/build/kitmux-engine-runtime}"
+build_dir="${KITMUX_BUILD_DIR:-${TMPDIR:-/tmp}/kitmux-linux-build-release}"
+output="${1:-${TMPDIR:-/tmp}/kitmux-engine-runtime}"
 component_manifest="${workspace}/release/runtime-components.json"
 build_app="${KITMUX_BUILD_APP_RUNTIME:-0}"
+
+"${script_dir}/materialize-dependencies.sh"
+
+if [[ "${KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD:-0}" == "1" ]] \
+    && { [[ ! -x "${dependencies}/bin/python" ]] \
+      || [[ ! -f "${kitty_root}/kitty/fast_data_types.so" ]]; }; then
+  "${script_dir}/build-kitty-dev.sh"
+fi
 
 python3 "${script_dir}/release-tools.py" verify-inputs \
   --linux-root "${linux_root}" \
@@ -143,6 +151,9 @@ find "${staging}" -type f -name '*.pyc' -delete
 
 mapfile -d '' -t dependency_roots < <(
   printf '%s\0' "${staging}/lib/libkitty.so"
+  if [[ "${build_app}" == "1" ]]; then
+    printf '%s\0' "${staging}/bin/kitmux" "${staging}/bin/kitmuxctl"
+  fi
   find "${staging}/kitty" -type f -name '*.so' -print0
   find "${staging}/lib/${python_dir}/lib-dynload" -type f -name '*.so' -print0
 )

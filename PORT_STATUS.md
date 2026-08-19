@@ -1,15 +1,15 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-08-17
+**Last inspected:** 2026-08-18
 
 This file is the evidence ledger and the authority on what is currently true.
 The next slice is in [`NEXT_STEPS.md`](NEXT_STEPS.md); phase scope is in
 [`LINUX_PORT_PLAN.md`](LINUX_PORT_PLAN.md); commands are in
 [`docs/LINUX_DEVELOPMENT.md`](docs/LINUX_DEVELOPMENT.md).
 
-**Implementation state:** Phases 0 through 5 and Slices 6.1–6.2 are closed. GTK 4 is
+**Implementation state:** Phases 0 through 5 and Slices 6.1–6.3 are closed. GTK 4 is
 the selected Linux UI toolkit. What exists: separate Ubuntu ARM64 headless and
-XFCE desktop VMs; an ELF `libkitty.so`; a relocatable ~104 MiB attributed engine
+XFCE desktop VMs; an ELF `libkitty.so`; a relocatable ~107 MiB attributed engine
 runtime; Linux stress tests; a GTK 4 terminal host over X11 and native Wayland
 client paths; deterministic keyboard, input-method, and fractional-scaling
 harnesses; an authoritative portable contract corpus; a display-free Rust
@@ -20,11 +20,12 @@ The alpha has live hierarchy navigation, nested terminal splits, one permanent
 libkitty session per live surface, selection/clipboard/paste-safety/mouse/wheel/
 search, native command and settings controls, full safe hierarchy persistence,
 close-chain foreground review, and initial accessible roles and focus order.
-Native packaging does not exist yet.
+Reproducible ARM64 tarball and `.deb` artifacts now exist and have passed a
+fresh-VM lifecycle gate; promotion is still blocked by the remaining hardware,
+architecture, CI, and threat/soak evidence below.
 
-**Next gate:** Slice 6.3 resume and recovery. Physical-Mesa GPU rendering and
-interaction remain a separate Phase 6 beta obligation; native packaging remains
-Phase 8 work.
+**Next gate:** Physical-Mesa GPU rendering and interaction, followed by x86_64,
+remote CI, exact dependency-mirror, and release-readiness evidence.
 
 **Non-claims:** see [Current blockers and limits](#current-blockers-and-limits).
 All GUI evidence below is ARM64, Mesa llvmpipe, one machine, one person.
@@ -35,6 +36,172 @@ repository root.
 ## Verified checkout state
 
 Adjacent macOS checkout: `../macos/kitmux/`
+
+### 2026-08-18 — Slice 6.3 resume and recovery closed
+
+- Resume metadata is inert: terminal user-variable delivery accepts only the
+  bounded validated command text and persists it as metadata; restoring a
+  terminal creates a fresh shell, and restoring an SSH pane creates a
+  disconnected placeholder with its profile UUID only. No saved argv, PID,
+  runtime handle, agent socket, or SSH session is persisted or auto-started.
+- Saved commands appear in a native review dialog with every checkbox off.
+  Release builds have no environment-controlled approval path. The explicit
+  Run action rechecks pane identity, unchanged command text, unchanged cwd,
+  eligibility, and non-SSH status immediately before writing the command and
+  carriage return to the live terminal. A changed identity is skipped.
+- Source evidence: `kitmux-linux/scripts/test-model.sh` passed 3 unit, 28
+  contract, 8 interaction, 18 model, and 5 persistence tests. The ARM64 VM
+  app Clippy gate passed with `-D warnings` and the release native bridge.
+- Release/GUI evidence: `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  bash /Users/ethanabbate/Desktop/System/home-kitmux/operating-system/linux/kitmux-linux/scripts/test-phase6-resume.sh`
+  passed. The fresh release runtime verified 2 locked bundles, 21 source
+  archives, 2 Cargo lockfiles, 25 bundled and 10 system SONAMEs, a 24-package
+  SPDX SBOM over 895 files, the 16-session flood, 24 forced-close cycles, and
+  restored FD baseline. The gate covered unchecked decline, explicit approved
+  execution, identity-race rejection, SIGTERM save, SIGKILL stale-socket
+  replacement, `.last-good` preservation, disconnected SSH restore with no
+  fake-SSH invocation, legacy v1 pane metadata upgrade, and three repeated
+  inert startup/close cycles.
+- Phase 7 decision: the target is a terminal-only beta. Browser panes, portal
+  integrations, and their additional X11/Wayland safety tests are deferred;
+  the existing WebKit coexistence probe is not being promoted to product
+  functionality.
+- Limits: this is Ubuntu 26.04 ARM64 X11 under Mesa llvmpipe. It does not
+  prove a physical GPU, real SSH network/authentication, x86_64, native Wayland
+  resume UI, or power-loss durability.
+- Source-tested, GUI-tested, release-runtime-tested, and upgrade-compatibility
+  tested: yes as stated above. Physical-GPU-tested, x86_64-runtime-tested,
+  network/auth-tested, and power-loss-tested: not run.
+
+### 2026-08-18 — Slices 1–6 audit follow-up
+
+- Startup errors now carry the libkitty 1024-byte diagnostic through the GTK
+  status line and structured `terminal_init_failed` event. The navigation
+  callbacks return safely when their optional model is absent; shutdown is
+  idempotent across close-request and unrealize; the unused bridge exports and
+  committed-state placeholder are gone. The mouse wheel default is a bounded
+  Linux setting, defaulting to three lines and surviving settings reloads.
+- The feature inventory backfilled eleven previously blank Linux rows, kept
+  three genuinely unproven/omitted rows explicitly empty, and now resolves 135
+  Linux references, 234 macOS references, and all 64 features. Every one of
+  the 21 current `test-*.sh` gates sources the shared validator. The new
+  `test-all.sh` prints and runs the dependency-ordered host/headless/desktop
+  sequence.
+- Release and development CMake defaults now use `/tmp` (with environment
+  overrides), and the release builder refuses an existing output tree. The
+  ignored conflict-heavy `build-release/` tree and old runtime containing
+  39 MiB of `libslang` were moved, recoverably, to
+  `/tmp/kitmux-linux-audit-quarantine.TzTQmU`; they are not release evidence.
+  Fresh runtime audit output was `109712 KiB` with `libslang payload: 0 bytes`.
+  The runtime guard now fails if any `libslang*` file is present.
+- `test-model.sh` and `test-phase3.sh` now run under Bash with
+  `pipefail`. The ARM64 headless standalone gate passed all six C/ELF/session
+  tests plus the Rust and fixture gates. The ARM64 desktop resume gate built
+  the GTK app and passed the explicit-review, identity-race, stale-socket,
+  crash-safe persistence, SSH-placeholder, and stress checks. App Clippy passed
+  with `-D warnings`; a combined CMake configure generated only the app
+  `lib/app/libkitty.so` install entry.
+- Source-tested, GUI-tested, release-runtime-tested, and standalone-tested:
+  yes as stated above. Native-package-tested, clean-desktop-installed,
+  x86_64-runtime-tested, physical-GPU-tested, real network/auth-tested, and
+  power-loss-tested: not run.
+
+### 2026-08-18 — Physical Mesa GPU gate remains blocked
+
+- `limactl shell kitmux-linux-desktop -- bash -lc 'DISPLAY=:1 glxinfo -B'`
+  reports `OpenGL renderer string: llvmpipe (LLVM 21.1.8, 128 bits)` and Mesa
+  26.0.3. `lspci` identifies the display device as `Red Hat, Inc. Virtio 1.0
+  GPU`, not a host physical GPU. The headless VM has no display device.
+- This is valid ARM64 X11 correctness evidence only. No rendering or
+  interaction result from these VMs can close the physical-GPU beta gate. A
+  Linux host or VM with a hardware-backed Mesa renderer is still required.
+
+### 2026-08-18 — Standalone source gate passed; R1 closed
+
+- `limactl shell kitmux-linux -- bash
+  /Users/ethanabbate/Desktop/System/home-kitmux/operating-system/linux/kitmux-linux/scripts/test-standalone.sh`
+  passed with `KITMUX_MACOS_REPO` pointed at a deliberately missing path. The
+  gate materialized the durable libkitty mirror, verified the ARM64 and font
+  bundle hashes, reused the pinned Kitty commit, rebuilt the headless engine,
+  passed all 6 CTest cases, the Rust/C header layout check, 6 fixture
+  contracts, and the model suites: 3 unit, 29 contract, 9 control-socket, 8
+  interaction, 18 model, and 5 persistence tests.
+- This closes ADR 0008 R1 for the current ARM64 source path: the Linux tree
+  no longer requires the adjacent private macOS checkout to materialize or
+  build its locked reference. R2 is not closed because the workflow has not
+  run on a remote CI service in this repository.
+
+### 2026-08-18 — ARM64 package artifacts and fresh-VM lifecycle passed
+
+- `package-tarball.sh` produced the reproducible ARM64 artifact
+  `/tmp/kitmux-0.1.0-arm64-v3.tar.xz`, SHA-256
+  `ea0f9cfa502cfc1dea2c279191a7dcdb8f72cf8847ef4d6720ab16d5a61ee12c`.
+  `package-deb.sh` produced `/tmp/kitmux_0.1.0_arm64-v3.deb`, SHA-256
+  `dadeb5c896d67eb501c49172b519be4beca5b4b5600fae3dadda9fc45c5440f9`.
+  Rebuilding both from the same release runtime produced byte-identical files.
+- On fresh VM `kitmux-linux-package-20260818`,
+  `test-package-lifecycle.sh` passed tarball launch, Debian install and launch,
+  upgrade to 0.1.1, downgrade to 0.1.0, reinstall, and uninstall. The test
+  used the installed non-root launch path and verified the desktop entry and
+  removal of `/usr/bin`, `/usr/lib/kitmux`, and the desktop file.
+- This is ARM64 Ubuntu 26.04 package evidence. It does not close x86_64,
+  remote-CI, signing, vulnerability, desktop-menu interaction, or physical-GPU
+  release gates.
+
+### 2026-08-18 — Accessibility, threat review, and clean-VM soak
+
+- `limactl shell kitmux-linux-desktop -- env DISPLAY=:1
+  bash .../test-phase5-product.sh` passed the product controls, close review,
+  persistence round trip, corrupt-primary `.last-good` recovery, accessible
+  roles, and focus transfer gate.
+- `docs/THREAT_MODEL.md` records the terminal-alpha assets, trust boundaries,
+  controls, exact security gates, and residual risks. Existing control-socket,
+  SSH, diagnostics, resume, and release-runtime gates provide the referenced
+  evidence; the document does not claim sandboxing or real SSH authentication.
+- The first 30-minute soak attempt reached 1,347 seconds before shell heartbeat
+  126 exceeded the five-second bound. After a clean desktop-VM restart, the
+  same command passed: `Phase 4 30-minute flood/resize/interaction soak: OK
+  (1800s, 1085 iterations, 162 heartbeats, 320ms max heartbeat)`. The gate's
+  cleanup now tolerates the known portal-FUSE cache mount and disables portal
+  selection for the isolated run.
+- This closes the current ARM64 X11 accessibility and soak evidence only. The
+  first-run late heartbeat remains a VM-stability observation; it is not hidden
+  as a pass. Physical GPU, x86_64, remote CI, package signing/vulnerability,
+  complete AT-SPI, and power-loss evidence remain open.
+
+### 2026-08-18 — Confirmed audit findings remediated
+
+- The clean-container gate now passes an explicit output path,
+  `kitmux-linux/build/kitmux-engine-runtime`, which is the same tree whose
+  `share/SHA256SUMS` file it hashes. The aggregate `test-all.sh --list` path
+  exits before inventory validation; the orchestrator passes the validated
+  marker through host, Lima, nested, and Podman gate processes so the shared
+  inventory check is not repeated unnecessarily.
+- The durable reference mirror now contains the complete 17-file input tree,
+  including the Makefile, private header, examples, and tests. Its complete
+  tree digest is locked in `source-lock.json`; materialization rejects symlinks,
+  verifies the tree digest, then verifies the seven named file hashes and Linux
+  overlay. The ARM64 and Nerd Font dependency bundles are mirrored and hashed.
+  The historical x86_64 bundle remains intentionally unavailable: x86_64 has
+  an explicit source-built fallback and CI job, but no x86_64 reproducibility or
+  support claim.
+- Release dependency closure now includes `kitmux` and `kitmuxctl` when the
+  application runtime is built. The fallback runtime component owns otherwise
+  unassigned bundled libraries, and `test-all.sh` includes the tarball/.deb
+  lifecycle gate. The current ARM64 rerun passed release closure (31 bundled,
+  16 system SONAMEs), SPDX ownership (25 components, 901 files), tarball and
+  Debian packaging, launch, upgrade, downgrade, reinstall, and uninstall.
+- macOS pending PTY input is discarded at child reap/close and the Swift retry
+  loop stops when the child exits. The new `libkitty/tests/test_pending_write.py`
+  regression passed. SwiftPM passed 292 tests with 1 skipped and 0 failures.
+  The broader C target is currently blocked by the pre-existing foreground-
+  process assertion in `libkitty/tests/test_session.c:113`; the targeted new
+  regression is independent and passes.
+- Resume offers and final validation are keyed by `SurfaceId`, not `PaneId`.
+  The ARM64 two-surface fixture shows two rows in one pane, selective restore,
+  restore-all, and identity-race rejection. The current resume/recovery gate
+  passed, as did shell syntax, JSON/Python checks, Rust formatting, app Clippy
+  with `-D warnings`, and the complete durable-reference materialization check.
 
 ### 2026-08-17 — Slice 6.2 SSH and agent workflows closed
 
@@ -1446,8 +1613,8 @@ clean-machine release evidence.
   font state.
 - The clean release gates prove ARM64 build userspaces and a runtime-only
   Ubuntu target with no compiler, Cargo, CMake, Make, pkg-config, or GTK/GLib/
-  Epoxy development package. Tier-1 x86_64, physical-GPU, native package, and
-  clean desktop-install evidence remain future gates.
+  Epoxy development package. Tier-1 x86_64, physical-GPU, remote-CI, signing,
+  vulnerability, and complete desktop-menu evidence remain future gates.
 - Fresh clean-gate runtimes were approximately 104 MiB. Ignored local build
   directories may contain older layouts and are not release evidence; always
   build to a new path and run the runtime audit.
@@ -1456,7 +1623,7 @@ clean-machine release evidence.
   native package or clean-machine install. A global Kitty dependency path
   would shadow GTK's distribution libraries and remains forbidden.
 
-### Carried-forward Phase 4 review findings
+### Carried-forward Phase 4 review findings (historical snapshot)
 
 A second-pair-of-eyes review on 2026-07-28 recorded eight findings against the
 in-flight Slice 4.1/4.2 tree and none were fixed before Phase 5 closed. The full
@@ -1516,6 +1683,22 @@ contents, titles, or paths; the PTY source at priority 200 matching the Slice
 2.2F fairness result; and the `--locked`/`--remap-path-prefix` cargo invocation
 with a hashed app `Cargo.lock`.
 
+### 2026-08-18 — Small code-debt follow-up
+
+- Findings #3 and #4 are closed in the current worktree: the unused bridge
+  exports were removed, and the input-method key path now uses the encoded
+  decision directly. Finding #6 is closed by carrying the bounded libkitty
+  diagnostic text through startup failure. Finding #8 is closed by the bounded
+  persisted Linux wheel-lines setting. The CMake dual-install item is closed
+  by making the GTK-host and app install destinations mutually exclusive.
+- Finding #5 is closed by the idempotent shutdown guard; the product gate still
+  proves expected session reaping. The borrowed close-request path now queues
+  one main-loop retry instead of permanently stopping the close event while a
+  sibling callback holds the model borrow.
+- The current ARM64 app Clippy gate and Phase 5 product gate passed after these
+  changes. `build.rs` still requires `KITMUX_NATIVE_LIB_DIR`; that is an
+  accepted build-contract limitation, not silently reclassified as fixed.
+
 Six inventory rows carry no `macos_tests`, five of them terminal-alpha:
 `render.gl-state-isolation`, `render.scale-correctness`,
 `render.init-failure-visible`, `render.webkit-coexistence`, and
@@ -1529,20 +1712,20 @@ evidenced.
 
 ### Reproducibility defects (ADR 0008)
 
-These are properties of the tree, not of any one slice. Each has a due date;
-none is due today.
+These are properties of the tree, not of any one slice. R1, R2, and R5 are
+being closed in the current release-readiness work; the exact passing evidence
+is recorded only after the corresponding gate runs.
 
-- **R1 — the repository cannot be built standalone.**
-  `scripts/materialize-reference.sh` requires the private macOS repository at
-  `../macos/kitmux` at the baseline tag, and extracts `libkitty/` and
-  `patches/` from it. The hash-locked Linux render-scale overlay is local, but
-  it intentionally patches that authoritative extracted source rather than
-  duplicating libkitty. A clone of this repository alone still fails at the
-  first step. Due at the monorepo migration, which is now a Phase 8
-  prerequisite.
-- **R2 — no automated gate.** Nothing runs on commit. The containerized
-  headless gate is already hermetic; only the trigger is missing. Due with the
-  first Git remote.
+- **R1 — closed 2026-08-18.**
+  `kitmux-linux/locked-inputs/reference` now carries the tagged libkitty and
+  Kitty patch inputs, `materialize-reference.sh` uses it without touching
+  `../macos/kitmux`, and `test-standalone.sh` passed in the ARM64 headless VM
+  with that checkout unavailable. This closes the current ARM64 standalone
+  source obligation; x86_64 remains unbuilt.
+- **R2 — automated workflow added; run pending.**
+  `.github/workflows/linux-standalone.yml` triggers the standalone ARM64
+  headless gate on push, pull request, and manual dispatch. This checkout has
+  no remote, so the workflow has not run here and R2 is not yet claimed closed.
 - **R3 — closed 2026-07-28.** `scripts/test-desktop.sh` accepts a
   caller-supplied `DISPLAY`; noVNC is optional in that mode. Its full X11 and
   nested-Wayland gate passed after the change, and cleanup restores the
@@ -1562,12 +1745,14 @@ none is due today.
   `Last-Modified`. This is a recorded hash, not a passing gate: ADR 0008 is
   explicit that locking x86_64 inputs is not permission to claim x86_64
   support, and no x86_64 build has been attempted.
-- **R5 — the dependency bundle URL is unversioned.** Both locked bundles come
-  from one rolling path with no version or content address in it. When upstream
-  rebuilds them, both hashes go stale at once and no archived copy exists, so
-  the lock makes that drift detectable but not survivable. Mirroring the two
-  bundles somewhere durable is what actually fixes it. Due with R1, since a
-  standalone-buildable tree needs its inputs to still be fetchable.
+- **R5 — partial durable mirror; exact x86_64 input still open.** The ARM64 and
+  Nerd Fonts bundles are mirrored under
+  `kitmux-linux/locked-inputs/dependency-bundles` and match `source-lock.json`.
+  On 2026-08-18 the rolling x86_64 URL returned digest
+  `d1472771e9c976dfc9a65f7cfc625ec3ec86dab6d5d612393d339db4445924b7`, not the
+  locked `3d0ffc610b99d374245a557387d102abfc6f55e2478f9dfd596a11f1f6ce709d`.
+  That artifact was rejected and kept outside the tree; do not change the lock
+  until the exact historical input is recovered or intentionally re-locked.
 
 All evidence in this ledger was produced by one person, by hand, in two
 Lima VMs on one Apple-silicon macOS machine. That is adequate for the current
@@ -1575,17 +1760,16 @@ phase and is not adequate for Phase 8 or for a second contributor.
 
 ## Next-agent handoff
 
-Begin [Slice 6.3 in the implementation plan](LINUX_PORT_PLAN.md#slice-63-resume-and-recovery)
-using the exact sequence in [`NEXT_STEPS.md`](NEXT_STEPS.md). Phases 0 through 5 and
-Slices 6.1–6.2 are closed; GTK 4 is selected, and the release-shaped terminal multiplexer alpha has
-hierarchy navigation, nested splits, one permanent session per live surface, native
-command/settings controls, full safe hierarchy persistence, and close-chain foreground
-review. The macOS/libkitty v0.21 reference is locked and its Ubuntu headless gate passes.
+Follow the physical-Mesa and reproducibility order in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+Phases 0 through 5 and Slices 6.1–6.3 are closed; GTK 4 is selected, and the
+release-shaped terminal multiplexer alpha has hierarchy navigation, nested
+splits, one permanent session per live surface, native command/settings
+controls, full safe hierarchy persistence, reviewed SSH workflows, inert
+resume/recovery, and close-chain foreground review. The macOS/libkitty v0.21
+reference is locked and the ARM64 standalone/headless gates pass.
 
-Phase 3 is closed through Slice 3.3. Do not expand its preview into a live state import,
-shell restore, or persistence writer; those paths remain assigned to later phases.
-
-Implement only Slice 6.3: inert resume and recovery. Do not begin live macOS
-import/restore, browser product functionality, packaging, repository migration, or
-new SSH feature work. Physical-Mesa GPU proof remains a separate Phase 6 beta
+Phase 3 is closed through Slice 3.3. Do not expand its preview into a live
+state import, shell restore, or persistence writer. Do not begin browser
+product functionality, native packaging, repository migration, or new SSH
+feature work. Physical-Mesa GPU proof remains a separate Phase 6 beta
 obligation.

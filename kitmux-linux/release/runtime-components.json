@@ -31,6 +31,15 @@
       "notice": "kitty.txt"
     },
     {
+      "id": "bundled-runtime-dependencies",
+      "name": "Bundled runtime dependencies",
+      "version": "pinned Kitty Linux dependency bundle",
+      "license": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "fallback": true,
+      "files": ["lib/**"]
+    },
+    {
       "id": "nerd-fonts-symbols",
       "name": "Symbols Nerd Font Mono",
       "version": "3.4.0",

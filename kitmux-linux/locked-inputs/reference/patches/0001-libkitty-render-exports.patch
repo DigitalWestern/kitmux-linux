@@ -1,0 +1,236 @@
+diff --git a/kitty/data-types.c b/kitty/data-types.c
+index ffe35cb..86732a8 100644
+--- a/kitty/data-types.c
++++ b/kitty/data-types.c
+@@ -780,6 +780,7 @@ extern bool init_state(PyObject *module);
+ extern bool init_keys(PyObject *module);
+ extern bool init_graphics(PyObject *module);
+ extern bool init_shaders(PyObject *module);
++extern bool init_libkitty_render(PyObject *module);
+ extern bool init_mouse(PyObject *module);
+ extern bool init_kittens(PyObject *module);
+ extern bool init_logging(PyObject *module);
+@@ -834,6 +835,7 @@ PyInit_fast_data_types(void) {
+     if (!init_keys(m)) return NULL;
+     if (!init_graphics(m)) return NULL;
+     if (!init_shaders(m)) return NULL;
++    if (!init_libkitty_render(m)) return NULL;
+     if (!init_mouse(m)) return NULL;
+     if (!init_kittens(m)) return NULL;
+     if (!init_png_reader(m)) return NULL;
+diff --git a/kitty/libkitty_render.c b/kitty/libkitty_render.c
+new file mode 100644
+index 0000000..48f7a7e
+--- /dev/null
++++ b/kitty/libkitty_render.c
+@@ -0,0 +1,210 @@
++/*
++ * libkitty_render.c — additive libkitty export shim (NOT upstream kitty code).
++ *
++ * Exposes just enough of kitty's render pipeline to Python so an embedding
++ * host (libkitty) can drive draw_cells() into a GL context it owns, without
++ * GLFW, OSWindow creation, or the kitty main loop.
++ *
++ * Kept deliberately additive: no upstream lines are modified except one
++ * registration call in data-types.c. See kitmux/patches/.
++ *
++ * Distributed under terms of the GPL3 license, same as kitty.
++ */
++
++#include "state.h"
++#include "gl.h"
++#include <dlfcn.h>
++
++extern PyTypeObject Screen_Type;
++
++static GLADapiproc
++opengl_framework_loader(const char *name) {
++    static void *handle = NULL;
++    if (!handle) {
++        handle = dlopen("/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL", RTLD_LAZY | RTLD_GLOBAL);
++        if (!handle) handle = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY | RTLD_GLOBAL);
++    }
++    return handle ? (GLADapiproc)dlsym(handle, name) : NULL;
++}
++
++static PyObject*
++libkitty_gl_init(PyObject *self UNUSED, PyObject *args UNUSED) {
++    // Mirrors gl_init() (gl.c) but loads GL from the OpenGL framework
++    // directly instead of via glfwGetProcAddress. Requires a current context.
++    static bool loaded = false;
++    if (!loaded) {
++        global_state.gl_version = gladLoadGL(opengl_framework_loader);
++        if (!global_state.gl_version) {
++            PyErr_SetString(PyExc_RuntimeError, "gladLoadGL failed: no current GL context or symbol lookup failure");
++            return NULL;
++        }
++        if (!global_state.debug_rendering) gladUninstallGLDebug();
++        global_state.supports_framebuffer_srgb = true;  // always true on macOS, see gl.c
++        loaded = true;
++    }
++    return PyLong_FromLong((long)global_state.gl_version);
++}
++
++static PyObject*
++libkitty_create_fonts_data(PyObject *self UNUSED, PyObject *args) {
++    double sz, dpi_x, dpi_y;
++    if (!PyArg_ParseTuple(args, "ddd", &sz, &dpi_x, &dpi_y)) return NULL;
++    FONTS_DATA_HANDLE fd = load_fonts_data(sz, dpi_x, dpi_y);
++    if (!fd) { PyErr_SetString(PyExc_RuntimeError, "load_fonts_data failed"); return NULL; }
++    PyObject *cap = PyCapsule_New((void*)fd, "libkitty.fonts_data", NULL);
++    if (!cap) return NULL;
++    return Py_BuildValue("NII", cap, (unsigned int)fd->fcm.cell_width, (unsigned int)fd->fcm.cell_height);
++}
++
++static void
++free_window_stub(PyObject *cap) {
++    // The stub owns only its own calloc'd struct: fonts_data is shared
++    // (owned by the fonts capsule) and the sprite map lives on the font group.
++    OSWindow *osw = PyCapsule_GetPointer(cap, "libkitty.os_window");
++    free(osw);
++}
++
++static PyObject*
++libkitty_create_window_stub(PyObject *self UNUSED, PyObject *args) {
++    int w, h; PyObject *fd_cap;
++    if (!PyArg_ParseTuple(args, "iiO", &w, &h, &fd_cap)) return NULL;
++    FONTS_DATA_HANDLE fd = PyCapsule_GetPointer(fd_cap, "libkitty.fonts_data");
++    if (!fd) return NULL;
++    OSWindow *osw = calloc(1, sizeof(OSWindow));
++    if (!osw) return PyErr_NoMemory();
++    osw->id = 1;
++    osw->viewport_width = w; osw->viewport_height = h;
++    osw->viewport_x_ratio = 1.0; osw->viewport_y_ratio = 1.0;
++    osw->is_focused = true;
++    // The AppKit host provides an alpha-capable surface. Reuse kitty's own
++    // parsed value so its cell shader makes only default backgrounds
++    // translucent; explicit colors, selections, and cursors stay opaque.
++    osw->background_opacity.alpha = MAX(0.f, MIN(OPT(background_opacity), 1.f));
++    osw->background_opacity.supports_transparency = true;
++    osw->background_opacity.os_forces_opaque = false;
++    osw->fonts_data = fd;
++    // Stock kitty does this right after OS-window creation (glfw.c:1904):
++    // allocates the glyph sprite map and uploads prerendered sprites.
++    // Requires a current GL context.
++    send_prerendered_sprites_for_window(osw);
++    return PyCapsule_New(osw, "libkitty.os_window", free_window_stub);
++}
++
++static PyObject*
++libkitty_refresh_window_stub_options(PyObject *self UNUSED, PyObject *args) {
++    // S4 config reload: a stub bakes exactly one option in at creation —
++    // background_opacity. Mirror the line stock kitty's apply_options_update
++    // runs per OS window on config reload (state.c) so a reloaded opacity
++    // reaches the cell shader's default-background alpha. No GL calls.
++    PyObject *osw_cap;
++    if (!PyArg_ParseTuple(args, "O", &osw_cap)) return NULL;
++    OSWindow *osw = PyCapsule_GetPointer(osw_cap, "libkitty.os_window");
++    if (!osw) return NULL;
++    osw->background_opacity.alpha = MAX(0.f, MIN(OPT(background_opacity), 1.f));
++    Py_RETURN_NONE;
++}
++
++static PyObject*
++libkitty_resize_window_stub(PyObject *self UNUSED, PyObject *args) {
++    int w, h; PyObject *osw_cap;
++    if (!PyArg_ParseTuple(args, "Oii", &osw_cap, &w, &h)) return NULL;
++    OSWindow *osw = PyCapsule_GetPointer(osw_cap, "libkitty.os_window");
++    if (!osw) return NULL;
++    osw->viewport_width = w; osw->viewport_height = h;
++    Py_RETURN_NONE;
++}
++
++static PyObject*
++libkitty_set_screen_cell_size(PyObject *self UNUSED, PyObject *args) {
++    PyObject *screen_obj;
++    unsigned int cell_width, cell_height;
++    if (!PyArg_ParseTuple(args, "O!II", &Screen_Type, &screen_obj, &cell_width, &cell_height)) return NULL;
++    if (!cell_width || !cell_height) {
++        PyErr_SetString(PyExc_ValueError, "cell dimensions must be positive");
++        return NULL;
++    }
++    Screen *screen = (Screen*)screen_obj;
++    screen->cell_size.width = cell_width;
++    screen->cell_size.height = cell_height;
++    screen_dirty_sprite_positions(screen);
++    screen_rescale_images(screen);
++    screen->reload_all_gpu_data = true;
++    Py_RETURN_NONE;
++}
++
++static PyObject*
++libkitty_force_screen_gpu_reload(PyObject *self UNUSED, PyObject *args) {
++    PyObject *screen_obj;
++    if (!PyArg_ParseTuple(args, "O!", &Screen_Type, &screen_obj)) return NULL;
++    Screen *screen = (Screen*)screen_obj;
++    screen_dirty_sprite_positions(screen);
++    screen->reload_all_gpu_data = true;
++    Py_RETURN_NONE;
++}
++
++static PyObject*
++libkitty_create_cell_vao_py(PyObject *self UNUSED, PyObject *args UNUSED) {
++    // Stock kitty allocates one cell VAO per window (state.c); embedders do
++    // the same per session so multiple screens can composite into one surface.
++    return PyLong_FromSsize_t(create_cell_vao());
++}
++
++static PyObject*
++libkitty_remove_vao_py(PyObject *self UNUSED, PyObject *args) {
++    Py_ssize_t idx;
++    if (!PyArg_ParseTuple(args, "n", &idx)) return NULL;
++    remove_vao(idx);
++    Py_RETURN_NONE;
++}
++
++static PyObject*
++libkitty_draw_screen(PyObject *self UNUSED, PyObject *args) {
++    PyObject *screen_obj, *osw_cap;
++    Py_ssize_t vao_idx;
++    unsigned int left, top, right, bottom;
++    int pane_active, window_focused, single_pane;
++    if (!PyArg_ParseTuple(args, "O!OnIIIIppp", &Screen_Type, &screen_obj,
++                         &osw_cap, &vao_idx, &left, &top, &right, &bottom,
++                         &pane_active, &window_focused, &single_pane)) return NULL;
++    OSWindow *osw = PyCapsule_GetPointer(osw_cap, "libkitty.os_window");
++    if (!osw) return NULL;
++    osw->is_focused = window_focused;
++    Screen *screen = (Screen*)screen_obj;
++    WindowRenderData srd = {.vao_idx = vao_idx, .screen = screen};
++    srd.geometry.left = left; srd.geometry.top = top;
++    srd.geometry.right = right; srd.geometry.bottom = bottom;
++    // Stock kitty fills cursor_render_info every frame from its
++    // child-monitor render loop (collect_cursor_info); this extraction
++    // draws on damage instead, so populate the render subset here. The host
++    // supplies blink redraw timing and suppresses eligible cursor frames
++    // before entering this shim.
++    CursorRenderInfo *cri = &screen->cursor_render_info;
++    cri->x = screen->cursor->x; cri->y = screen->cursor->y;
++    cri->is_visible = screen->scrolled_by ? false : screen_is_cursor_visible(screen);
++    cri->multicursor_count = screen->scrolled_by ? 0 : screen_multi_cursor_count(screen);
++    cri->cursor_opacity = 1; cri->text_blink_opacity = 1;
++    cri->shape = screen->cursor->shape ? screen->cursor->shape : OPT(cursor_shape);
++    cri->is_focused = pane_active && window_focused;
++    send_cell_data_to_gpu(vao_idx, screen, osw);
++    draw_cells(&srd, osw, pane_active, false, single_pane, NULL);
++    Py_RETURN_NONE;
++}
++
++static PyMethodDef libkitty_methods[] = {
++    {"libkitty_gl_init", (PyCFunction)libkitty_gl_init, METH_NOARGS, "Load GL via the macOS OpenGL framework; requires a current context"},
++    {"libkitty_create_fonts_data", (PyCFunction)libkitty_create_fonts_data, METH_VARARGS, "(size_pts, dpi_x, dpi_y) -> (capsule, cell_width, cell_height)"},
++    {"libkitty_create_window_stub", (PyCFunction)libkitty_create_window_stub, METH_VARARGS, "(viewport_w, viewport_h, fonts_capsule) -> capsule"},
++    {"libkitty_resize_window_stub", (PyCFunction)libkitty_resize_window_stub, METH_VARARGS, "(window_capsule, viewport_w, viewport_h) -> None"},
++    {"libkitty_refresh_window_stub_options", (PyCFunction)libkitty_refresh_window_stub_options, METH_VARARGS, "(window_capsule) -> None; re-read reloaded config options a stub bakes in (background_opacity)"},
++    {"libkitty_set_screen_cell_size", (PyCFunction)libkitty_set_screen_cell_size, METH_VARARGS, "(screen, cell_width, cell_height) -> None"},
++    {"libkitty_force_screen_gpu_reload", (PyCFunction)libkitty_force_screen_gpu_reload, METH_VARARGS, "(screen) -> None"},
++    {"libkitty_create_cell_vao", (PyCFunction)libkitty_create_cell_vao_py, METH_NOARGS, "() -> vao_idx"},
++    {"libkitty_remove_vao", (PyCFunction)libkitty_remove_vao_py, METH_VARARGS, "(vao_idx) -> None"},
++    {"libkitty_draw_screen", (PyCFunction)libkitty_draw_screen, METH_VARARGS, "(screen, window_capsule, vao_idx, left, top, right, bottom, pane_active, window_focused, single_pane) -> None"},
++    {NULL, NULL, 0, NULL},
++};
++
++bool
++init_libkitty_render(PyObject *module) {
++    return PyModule_AddFunctions(module, libkitty_methods) == 0;
++}

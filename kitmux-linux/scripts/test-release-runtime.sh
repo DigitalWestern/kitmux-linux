@@ -4,6 +4,7 @@ set -euo pipefail
 runtime="${1:?usage: test-release-runtime.sh /path/to/runtime}"
 runtime="$(realpath "${runtime}")"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 component_manifest="${script_dir}/../release/runtime-components.json"
 
 mapfile -t python_dirs < <(
@@ -48,6 +49,17 @@ for path in "${required[@]}"; do
     exit 1
   fi
 done
+
+mapfile -t forbidden_slang < <(
+  find "${runtime}/lib" \( -type f -o -type l \) -iname 'libslang*' -print
+)
+if [[ "${#forbidden_slang[@]}" -ne 0 ]]; then
+  printf 'Release runtime contains unreferenced libslang payload:\n%s\n' \
+    "${forbidden_slang[@]}" >&2
+  exit 1
+fi
+runtime_kib="$(du -sk -- "${runtime}" | awk '{print $1}')"
+echo "Release runtime size: ${runtime_kib} KiB; libslang payload: 0 bytes"
 
 mapfile -d '' -t elf_files < <(
   while IFS= read -r -d '' candidate; do

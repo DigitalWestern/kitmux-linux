@@ -73,15 +73,30 @@ only `source-lock.json`; record the new baseline and result separately in
 
 ## Materialize the locked source
 
-The Linux spike reads only hash-locked files from the tagged macOS baseline.
-Materialization also verifies and applies the hash-locked Linux render-scale
-overlay in `kitmux-linux/patches/libkitty/`; it does not create a separately
-maintained libkitty copy. Run this once after cloning or after deleting the
-ignored `.source` cache:
+The Linux tree carries a durable mirror of the locked libkitty reference under
+`kitmux-linux/locked-inputs/reference`. Materialization verifies that mirror
+and applies the hash-locked Linux render-scale overlay in
+`kitmux-linux/patches/libkitty/`. A checkout from before the mirror was added
+may still fall back to the tagged adjacent macOS checkout; a standalone build
+must use the durable mirror.
+
+Run this once after cloning or after deleting the ignored `.source` cache:
 
 ```sh
 kitmux-linux/scripts/materialize-reference.sh
 ```
+
+The locked Kitty dependency bundles are mirrored under
+`kitmux-linux/locked-inputs/dependency-bundles` and are copied into the ignored
+development cache by:
+
+```sh
+kitmux-linux/scripts/materialize-dependencies.sh
+```
+
+Both scripts verify SHA-256 values from `source-lock.json` before materializing
+anything. The exact x86_64 bundle remains unavailable while the upstream
+rolling URL serves a different digest; do not replace the lock with that file.
 
 ## Headless VM
 
@@ -118,6 +133,61 @@ It builds the pinned Kitty native extension, builds `libkitty.so`, audits its
 ELF runpath and exports, runs the C/C++ header, engine-lifecycle, full session
 API, and Linux flood/close/reaping/resource suites, then checks the public
 struct layout from Rust.
+
+Run the standalone R1/R2 gate inside Linux or CI:
+
+```sh
+kitmux-linux/scripts/test-standalone.sh
+```
+
+It deliberately points `KITMUX_MACOS_REPO` at a missing path, verifies the
+durable mirrors, rebuilds the pinned headless engine, and runs the source,
+header, fixture, and model checks. The GitHub Actions trigger is
+`.github/workflows/linux-standalone.yml`; a local run is evidence for the
+checkout only until that workflow has run on its configured runner.
+
+## Package and installation gates
+
+Build a release-shaped runtime first, then promote it in this order:
+
+```sh
+KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=OFF \
+  kitmux-linux/scripts/build-release-runtime.sh /tmp/kitmux-runtime
+SOURCE_DATE_EPOCH=0 kitmux-linux/scripts/package-tarball.sh \
+  /tmp/kitmux-0.1.0-arm64.tar.xz /tmp/kitmux-runtime
+SOURCE_DATE_EPOCH=0 kitmux-linux/scripts/package-deb.sh \
+  /tmp/kitmux_0.1.0_arm64.deb /tmp/kitmux-runtime
+```
+
+Use a fresh Linux VM for the lifecycle gate. It requires an X11 `DISPLAY` and
+noninteractive `sudo` for `dpkg`:
+
+```sh
+limactl shell kitmux-linux-package-20260818 -- env DISPLAY=:1 \
+  bash "$PWD/kitmux-linux/scripts/test-package-lifecycle.sh" \
+  /tmp/kitmux-0.1.0-arm64.tar.xz /tmp/kitmux_0.1.0_arm64.deb
+```
+
+The gate verifies tarball launch, `.deb` install and launch, upgrade,
+downgrade, reinstall, and uninstall. It does not prove x86_64, signing,
+vulnerability scanning, a desktop-menu click, or physical-GPU behavior.
+
+## Complete gate sequence
+
+Run the dependency-ordered host, headless-VM, and desktop-VM gates with one
+command:
+
+```sh
+kitmux-linux/scripts/test-all.sh
+```
+
+The command validates the feature inventory once at the aggregate boundary;
+nested gates inherit that result, while a standalone gate still validates when
+run directly. It uses `/tmp` for release build state by default and stops at
+the first failure. `--list` prints the exact sequence without running a gate or
+validation.
+Set `KITMUX_DISPLAY` to choose the desktop VM display and
+`KITMUX_PHASE4_SOAK_SECONDS` to shorten or extend the soak deliberately.
 
 ## Display-free Phase 3 gate
 
@@ -353,6 +423,25 @@ The gate covers `kitmuxctl ssh profile list`, review then approval for
 nonstandard executable lookup, one-argument remote commands, missing agent
 environment, private profile permissions, and log-safety checks.
 
+## Resume and recovery
+
+Saved terminal commands are inert metadata. On restore they are shown in an
+unchecked review dialog; saved SSH profiles restore as disconnected placeholders
+and never start a session. The Run action revalidates the pane, command, cwd,
+and eligibility immediately before writing to a live non-SSH terminal.
+
+Run the ARM64 X11 persistence, crash, stale-socket, SSH, upgrade-compatibility,
+and stress gate with a fresh release runtime:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase6-resume.sh"
+```
+
+The `KITMUX_AUTORESUME` modes used by this gate exist only in test-hook builds;
+they are not an approval mechanism in a release build. Normal startup never
+auto-runs restored commands or SSH sessions.
+
 ## Terminal shortcut overrides
 
 The Linux settings file can override the seven currently implemented terminal
@@ -424,7 +513,7 @@ refuses to overwrite an existing tree so an ignored, stale build cannot be
 mistaken for new evidence:
 
 ```sh
-runtime="$PWD/kitmux-linux/build/kitmux-engine-runtime-$(date +%Y%m%d-%H%M%S)"
+runtime="${TMPDIR:-/tmp}/kitmux-engine-runtime-$(date +%Y%m%d-%H%M%S)"
 kitmux-linux/scripts/build-release-runtime.sh "$runtime"
 kitmux-linux/scripts/test-release-runtime.sh "$runtime"
 ```
@@ -440,9 +529,9 @@ The generated artifacts include:
 The audit fails on missing attribution, unowned payload files, stale SBOM
 hashes, undeclared native dependencies, or a host Python resolution.
 
-The current ignored `kitmux-linux/build/kitmux-engine-runtime` directory may
-come from an older builder. Its size or contents are not evidence. Use a fresh
-output path and the successful audit output.
+Old ignored runtime/build trees may come from an older builder and are not
+evidence. Builders now default to `/tmp`; use a fresh output path and the
+successful audit output.
 
 Regenerate the tracked upstream notices only when changing the locked
 component manifest:

@@ -14,9 +14,10 @@ reviewed session.
 | Platform | Current state |
 | --- | --- |
 | macOS | Daily-driver application for macOS 13+ on Apple silicon. Terminal, navigation, persistence, settings, local control, SSH, browser panes, reliability gates, and local arm64 packaging exist. Public distribution still needs Developer ID signing, notarization, stapling, and real macOS 13 hardware qualification. |
-| Linux | Experimental, GPL-3.0-only. Phases 0 through 5 and Slices 6.1–6.2 are complete: the engine passes headless and clean-runtime gates, GTK 4 is the selected toolkit, and a release-shaped terminal multiplexer alpha with secure local control plus reviewed SSH connect/reconnect workflows runs on X11 under Mesa llvmpipe. x86_64, physical-GPU and mixed-DPI hardware behavior, complete AT-SPI coverage, browser product behavior, and native packaging remain unproven. This repository cannot currently be built standalone — see ADR 0008 R1. Exact per-slice evidence and non-claims are in [PORT_STATUS.md](PORT_STATUS.md). |
+| Linux | Experimental, GPL-3.0-only. Phases 0 through 5 and Slices 6.1–6.3 are complete: the engine passes headless and clean-runtime gates, GTK 4 is the selected toolkit, and a release-shaped terminal multiplexer alpha with secure local control, reviewed SSH workflows, and inert resume/recovery runs on X11 under Mesa llvmpipe. The ARM64 standalone source/headless gate and reproducible tarball/`.deb` lifecycle pass. x86_64, physical-GPU and mixed-DPI hardware behavior, complete AT-SPI coverage, browser product behavior, remote CI, and package promotion remain unproven. Exact per-slice evidence and non-claims are in [PORT_STATUS.md](PORT_STATUS.md). |
 
-Linux is not yet a production application or downloadable desktop package.
+Linux is not yet a production application or promoted downloadable desktop
+package; the current ARM64 artifacts are release-readiness evidence only.
 GTK 4 was selected in Slice 2.3 on 2026-07-26 after every Phase 2 kill test passed;
 see ADR 0002.
 
@@ -50,6 +51,12 @@ limitations, read [Linux development](docs/LINUX_DEVELOPMENT.md).
 The normal Linux gates, run from the macOS host at this repository root, are:
 
 ```sh
+kitmux-linux/scripts/test-all.sh
+```
+
+For individual setup and diagnostic stages:
+
+```sh
 kitmux-linux/scripts/materialize-reference.sh
 limactl start kitmux-linux
 limactl shell kitmux-linux -- "$PWD/kitmux-linux/scripts/test-headless.sh"
@@ -76,13 +83,15 @@ control, SSH, reliability, and soak gates required for changes in those areas.
 Phase 2 was reordered on 2026-07-25 so the checks that could disqualify GTK
 run before the expensive ones that almost certainly cannot.
 
-1. Secure local control, SSH and agent workflows (Slices 6.1–6.2) are closed.
-   Next is resume and recovery — Phase 6.
+1. Secure local control, SSH and agent workflows, and inert resume/recovery
+   (Slices 6.1–6.3) are closed.
 2. Prove one physical Mesa GPU before beta; llvmpipe proves correctness, not drivers.
-3. Close ADR 0008 R1 and R2 — standalone buildability and one automated gate — before
-   any packaging work or a second contributor.
-4. Produce supported packages only after R1 and R2 close — Phase 8.
-5. Consider browser panes only after the terminal product is stable — Phase 7.
+3. Keep ADR 0008 R1 and the ARM64 dependency mirrors proven; run the R2 workflow
+   on its configured remote runner.
+4. Promote packages only after x86_64, hardware, CI, signing, and security gates
+   close — current ARM64 tarball/`.deb` artifacts are test evidence.
+5. Browser panes and desktop integrations are deferred for the terminal-only
+   beta — Phase 7 is not approved.
 
 The exact resume order is in [NEXT_STEPS.md](NEXT_STEPS.md). Proven evidence
 and current blockers are in [PORT_STATUS.md](PORT_STATUS.md).

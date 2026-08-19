@@ -19,6 +19,7 @@ if ! [[ "${duration}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/kitmux-phase4-soak.XXXXXX")"
 runtime="${temporary_root}/runtime"
 command_dir="${temporary_root}/cwd"
@@ -40,7 +41,7 @@ cleanup() {
     kill "${app_pid}" 2>/dev/null || true
     wait "${app_pid}" 2>/dev/null || true
   fi
-  rm -rf -- "${temporary_root}"
+  rm -rf -- "${temporary_root}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -72,6 +73,7 @@ install -d -m 700 "${command_dir}" "${temporary_root}/config" \
 
 env -i DISPLAY="${DISPLAY}" HOME="${HOME}" LANG="${LANG:-C.UTF-8}" \
   PATH=/usr/bin:/bin GSK_RENDERER=gl GTK_IM_MODULE=gtk-im-context-simple \
+  GTK_USE_PORTAL=0 GIO_USE_PORTAL=0 \
   KITMUX_PHASE4_CWD="${command_dir}" KITMUX_INTERACTION_DIAGNOSTICS=1 \
   XDG_CONFIG_HOME="${temporary_root}/config" \
   XDG_STATE_HOME="${temporary_root}/state" \

@@ -120,23 +120,6 @@ uint32_t kitmux_gdk_base_layout_keyval(GtkWidget *widget,
   return keyval;
 }
 
-double kitmux_widget_surface_scale(GtkWidget *widget) {
-  GtkNative *native = gtk_widget_get_native(widget);
-  GdkSurface *surface = native ? gtk_native_get_surface(native) : NULL;
-  if (surface) return gdk_surface_get_scale(surface);
-  int factor = gtk_widget_get_scale_factor(widget);
-  return factor > 0 ? (double)factor : 1.0;
-}
-
-bool kitmux_session_draw_preserving_gl_state(kitty_session *session) {
-  if (!session) return false;
-  kitmux_gl_state state;
-  capture_gl_state(&state);
-  bool drawn = kitty_session_draw(session);
-  restore_gl_state(&state);
-  return drawn;
-}
-
 bool kitmux_terminal_render_frame(kitty_engine *engine, kitty_session *session,
                                   double buffer_scale,
                                   int previous_width, int previous_height,

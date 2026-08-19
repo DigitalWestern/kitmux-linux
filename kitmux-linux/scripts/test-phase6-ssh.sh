@@ -13,6 +13,7 @@ for command in python3 stat realpath grep; do
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/kitmux-phase6-ssh.XXXXXX")"
 runtime="$temporary_root/runtime"
 config="$temporary_root/config"

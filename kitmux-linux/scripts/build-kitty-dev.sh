@@ -19,6 +19,8 @@ if [[ ! -d "$kitty/.git" ]]; then
   exit 1
 fi
 
+"$script_dir/materialize-dependencies.sh"
+
 cd "$kitty"
 ./dev.sh build --skip-building-kitten
 deps="$kitty/dependencies/$kitty_platform"

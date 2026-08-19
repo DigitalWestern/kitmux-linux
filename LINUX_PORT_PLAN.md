@@ -7,16 +7,16 @@
 
 **Reference commit:** `3088295003c0842d7c3198102d0d05378da4dc62`
 
-**Last reviewed:** 2026-08-17 (Phase 5, v0.21 rebaseline, and Slices 6.1–6.2 complete; Slice 6.3 next)
+**Last reviewed:** 2026-08-18 (Phase 5, v0.21 rebaseline, and Slices 6.1–6.3 complete; physical-Mesa and reproducibility gates next)
 
 **Licence:** GPL-3.0-only. See [`LICENSE`](LICENSE) and ADR 0006.
 
-**Current progress:** Phases 0 through 5 and Slices 6.1–6.2 are complete. GTK 4 is
+**Current progress:** Phases 0 through 5 and Slices 6.1–6.3 are complete. GTK 4 is
 the selected Linux UI toolkit. Phase 5's navigation hierarchy, split/session
 ownership, product controls, full safe hierarchy persistence, close review, and
 initial accessibility are complete on X11 and native Wayland, and the secure
-local control socket, `kitmuxctl`, and reviewed SSH workflows are closed. Slice
-6.3 is next. See
+local control socket, reviewed SSH workflows, and inert resume/recovery are
+closed. See
 [`PORT_STATUS.md`](PORT_STATUS.md) and [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 **2026-07-25 audit changes:** Phase 2 was reordered so the checks that could
@@ -772,7 +772,7 @@ installation/diagnosis, and idle-client responsiveness.
 
 #### Slice 6.3: Resume and recovery
 
-- Capture resume metadata as inert data.
+- Capture resume metadata as inert data. **Closed 2026-08-18.**
 - Present every command unchecked for explicit review.
 - Revalidate identity and unchanged text immediately before execution.
 - Add packaged persistence, crash, socket, SSH, upgrade, and stress harnesses.
@@ -787,7 +787,8 @@ Exit criteria:
 
 ### Phase 7: Add browser and desktop integrations if approved
 
-This phase is optional for a terminal-only beta.
+This phase is optional for a terminal-only beta and is deferred for the current
+beta scope. Do not begin it without an explicit product-scope change.
 
 - Add WebKitGTK only after the chosen toolkit and supported security branch are
   fixed.
@@ -991,8 +992,8 @@ record and remove it from this list.
 
 In priority order, independent of which slice is nominally active:
 
-1. **Slices 6.1 and 6.2 are closed; Slice 6.3 resume and recovery is next**:
-   secure local control, the CLI, and reviewed SSH workflows have evidence in
+1. **Slices 6.1 through 6.3 are closed**: secure local control, the CLI,
+   reviewed SSH workflows, and inert resume/recovery have evidence in
    `PORT_STATUS.md`.
 2. **Prove one physical Mesa GPU during Phase 6** before beta; do not treat
    llvmpipe correctness as driver evidence.
@@ -1000,8 +1001,9 @@ In priority order, independent of which slice is nominally active:
    import preview, and the one-terminal alpha gates are proven; live import,
    browser, and packaging work stay in their assigned phases.
 4. **Keep the feature inventory current** as Phase 6 adds product behavior.
-5. **ADR 0008 R1 and R2** — standalone buildability and one automated gate —
-   before Phase 8, and before any second contributor.
+5. **ADR 0008 R1, R2, and R5** — standalone buildability, one automated gate,
+   and durable dependency mirrors — before Phase 8, and before any second
+   contributor.
 
 The recurring failure mode this plan should guard against is not lack of
 rigor. Rigor here is high and per-slice evidence is excellent. It is spending
@@ -1012,7 +1014,7 @@ items that unblock everything else stay open.
 
 Use `PORT_STATUS.md` as the evidence ledger and follow
 [`NEXT_STEPS.md`](NEXT_STEPS.md). Phase 5, the macOS/libkitty v0.21 rebaseline,
-and Slice 6.2 are complete; begin Slice 6.3. Do not start browser product
-behavior or packaging.
+and Slices 6.1–6.3 are complete; follow the physical-Mesa and reproducibility
+order in `NEXT_STEPS.md`. Do not start browser product behavior.
 Do not turn the closed Slice 3.3 preview into a live import or restore path
 incidentally.

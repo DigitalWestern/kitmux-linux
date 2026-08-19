@@ -16,6 +16,7 @@ mod interaction;
 mod model;
 mod persistence;
 mod platform;
+mod resume;
 mod runtime;
 mod settings;
 mod split;
@@ -60,14 +61,15 @@ pub use platform::{
     UnixSocketAddress, XdgPaths, atomic_write_private, read_bounded, resolve_control_socket,
     sha256_bytes, sha256_file,
 };
+pub use resume::{ResumeCommandCurrentState, ResumeCommandIdentity, ResumeCommandSelectionPolicy};
 pub use runtime::{
     BrowserRuntime, MockBrowserRuntime, MockRuntimeProbe, MockRuntimeSnapshot, MockTerminalRuntime,
     PaneContainer, PaneContainerError, PaneRuntime, PaneSurface, RuntimeKind, TerminalRuntime,
 };
 pub use settings::{
-    BrowserSearchEngine, RestoreLayoutPolicy, SETTINGS_MAX_BYTES, SettingsCodecError,
-    SettingsDocument, ValidatedSettings, WorkspaceActiveStyle, WorkspaceColorStyle,
-    decode_settings, encode_settings,
+    BrowserSearchEngine, DEFAULT_WHEEL_SCROLL_LINES, RestoreLayoutPolicy, SETTINGS_MAX_BYTES,
+    SettingsCodecError, SettingsDocument, ValidatedSettings, WorkspaceActiveStyle,
+    WorkspaceColorStyle, decode_settings, encode_settings,
 };
 pub use split::{
     Direction, PixelRect, PixelSize, ResizeTarget, Split, SplitAxis, SplitLayout, SplitNode,

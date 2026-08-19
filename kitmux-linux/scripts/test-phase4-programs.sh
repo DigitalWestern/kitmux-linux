@@ -13,6 +13,7 @@ for command in bash fish less tmux vim xdotool zsh; do
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/gate-common.sh"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/kitmux-phase4-programs.XXXXXX")"
 runtime="${temporary_root}/runtime"
 log="${temporary_root}/kitmux.log"
