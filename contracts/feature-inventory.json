@@ -1238,7 +1238,7 @@
       "linux_tests": [
         "kitmux-linux/scripts/test-phase5-product.sh"
       ],
-      "linux_status": "all 17 portable keys, types, ranges, defaults, invalid fallbacks, unknown-key exclusion, and macOS consumption of Linux-produced settings pass in Slices 3.2 and 3.3; Slice 5.3 proves keyboard-only native editing and live application of the supported product subset"
+      "linux_status": "all 18 portable keys, types, ranges, defaults, invalid fallbacks, unknown-key exclusion, and macOS consumption of Linux-produced settings pass in Slices 3.2 and 3.3; Slice 5.3 proves keyboard-only native editing and live application of the supported product subset"
     },
     {
       "id": "settings.store-durability",

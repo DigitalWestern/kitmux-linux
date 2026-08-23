@@ -4808,6 +4808,29 @@ fn execute_palette_command(
             terminal.borrow_mut().set_font_size(area, size);
         }
         CommandId::AppSettings => request_settings(window, area, terminal),
+        CommandId::AppToggleSidebar => {
+            let mut terminal = terminal.borrow_mut();
+            let Some(sidebar) = terminal
+                .navigation_ui
+                .as_ref()
+                .and_then(|ui| ui.sidebar_shell.upgrade())
+            else {
+                area.error_bell();
+                return;
+            };
+            let visible = !sidebar.is_visible();
+            sidebar.set_visible(visible);
+            if let Some(persistence) = terminal.persistence.as_mut() {
+                let mut document = persistence.settings.clone();
+                let mut resolved = document.resolved().clone();
+                resolved.sidebar_visible_on_launch = visible;
+                resolved.sidebar_collapsed_on_launch = !visible;
+                document.replace_resolved(resolved);
+                if save_settings(&persistence.settings_path, &document).is_ok() {
+                    persistence.settings = document;
+                }
+            }
+        }
         _ => request_navigation_command(terminal, command, window, area),
     }
     diagnostic("palette_command", &[("id", command.as_str().to_owned())]);
@@ -5053,6 +5076,7 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
             RestoreLayoutPolicy::Never
         };
         resolved.sidebar_visible_on_launch = sidebar.is_active();
+        resolved.sidebar_collapsed_on_launch = !sidebar.is_active();
         resolved.confirm_close_with_running_process = confirm.is_active();
         resolved.paste_confirmation_threshold_bytes = paste.value() as u64;
         document.set_wheel_scroll_lines(wheel.value() as u64);

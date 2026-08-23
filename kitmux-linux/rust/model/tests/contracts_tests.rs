@@ -554,7 +554,7 @@ fn frozen_command_catalog_is_exact_bounded_and_semantically_mapped() {
     let actual: Vec<&str> = CommandId::ALL.iter().map(|id| id.as_str()).collect();
     let expected: Vec<&str> = accepted.iter().map(|id| id.as_str().unwrap()).collect();
     assert_eq!(actual, expected);
-    assert_eq!(actual.iter().copied().collect::<HashSet<_>>().len(), 38);
+    assert_eq!(actual.iter().copied().collect::<HashSet<_>>().len(), 39);
     for identifier in &actual {
         assert_eq!(
             CommandId::from_str(identifier).unwrap().as_str(),

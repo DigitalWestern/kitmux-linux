@@ -45,6 +45,7 @@ pub struct ValidatedSettings {
     pub restore_scrollback: bool,
     pub restore_layout: RestoreLayoutPolicy,
     pub sidebar_visible_on_launch: bool,
+    pub sidebar_collapsed_on_launch: bool,
     pub paste_confirmation_threshold_bytes: u64,
     pub tab_title_shows_cwd: bool,
     pub tab_title_shows_process: bool,
@@ -67,6 +68,7 @@ impl Default for ValidatedSettings {
             restore_scrollback: false,
             restore_layout: RestoreLayoutPolicy::Always,
             sidebar_visible_on_launch: true,
+            sidebar_collapsed_on_launch: false,
             paste_confirmation_threshold_bytes: 8192,
             tab_title_shows_cwd: true,
             tab_title_shows_process: true,
@@ -187,6 +189,7 @@ fn validated_map(raw: &Map<String, Value>) -> Map<String, Value> {
     accept_bool(raw, &mut valid, "restoreScrollback");
     accept_choice(raw, &mut valid, "restoreLayout", &["always", "never"]);
     accept_bool(raw, &mut valid, "sidebarVisibleOnLaunch");
+    accept_bool(raw, &mut valid, "sidebarCollapsedOnLaunch");
     accept_integer(
         raw,
         &mut valid,
@@ -235,7 +238,17 @@ fn resolve(valid: &Map<String, Value>) -> ValidatedSettings {
         };
     }
     bool_value!(restore_scrollback, "restoreScrollback");
-    bool_value!(sidebar_visible_on_launch, "sidebarVisibleOnLaunch");
+    if let Some(value) = valid.get("sidebarVisibleOnLaunch").and_then(Value::as_bool) {
+        resolved.sidebar_visible_on_launch = value;
+        resolved.sidebar_collapsed_on_launch = !value;
+    }
+    if let Some(value) = valid
+        .get("sidebarCollapsedOnLaunch")
+        .and_then(Value::as_bool)
+    {
+        resolved.sidebar_collapsed_on_launch = value;
+        resolved.sidebar_visible_on_launch = !value;
+    }
     bool_value!(tab_title_shows_cwd, "tabTitleShowsCwd");
     bool_value!(tab_title_shows_process, "tabTitleShowsProcess");
     bool_value!(show_tab_close_button_on_hover, "showTabCloseButtonOnHover");

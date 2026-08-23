@@ -57,6 +57,7 @@ pub enum SemanticAction {
     JumpToUnread,
     SetResumeCommand,
     OpenSettings,
+    ToggleSidebar,
     InstallCommandLineTool,
     ReloadKittyConfig,
     FontDelta(i8),
@@ -193,6 +194,11 @@ commands!(
         SemanticAction::SetResumeCommand
     ),
     (AppSettings, "app.settings", SemanticAction::OpenSettings),
+    (
+        AppToggleSidebar,
+        "app.toggle-sidebar",
+        SemanticAction::ToggleSidebar
+    ),
     (
         AppInstallCommandLineTool,
         "app.install-command-line-tool",

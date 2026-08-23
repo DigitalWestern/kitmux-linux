@@ -1,7 +1,7 @@
 {
   "fixtureVersion": 1,
   "bounds": {
-    "knownKeys": 17,
+    "knownKeys": 18,
     "pasteConfirmationThresholdBytesMaximum": 10485760,
     "sidebarWidthPointsMaximum": 320,
     "tabWidthPointsMaximum": 400
@@ -17,6 +17,7 @@
         "restoreScrollback": false,
         "restoreLayout": "always",
         "sidebarVisibleOnLaunch": true,
+        "sidebarCollapsedOnLaunch": false,
         "pasteConfirmationThresholdBytes": 8192,
         "tabTitleShowsCwd": true,
         "tabTitleShowsProcess": true,
@@ -40,6 +41,7 @@
         "restoreScrollback": true,
         "restoreLayout": "never",
         "sidebarVisibleOnLaunch": false,
+        "sidebarCollapsedOnLaunch": true,
         "pasteConfirmationThresholdBytes": 4096,
         "tabTitleShowsCwd": false,
         "tabTitleShowsProcess": false,
@@ -60,6 +62,7 @@
         "restoreScrollback": true,
         "restoreLayout": "never",
         "sidebarVisibleOnLaunch": false,
+        "sidebarCollapsedOnLaunch": true,
         "pasteConfirmationThresholdBytes": 4096,
         "tabTitleShowsCwd": false,
         "tabTitleShowsProcess": false,
@@ -83,6 +86,7 @@
         "restoreScrollback": "yes",
         "restoreLayout": "sometimes",
         "sidebarVisibleOnLaunch": 1,
+        "sidebarCollapsedOnLaunch": "no",
         "pasteConfirmationThresholdBytes": -1,
         "tabTitleShowsCwd": "yes",
         "tabTitleShowsProcess": 1,
@@ -104,6 +108,7 @@
         "restoreScrollback": false,
         "restoreLayout": "always",
         "sidebarVisibleOnLaunch": true,
+        "sidebarCollapsedOnLaunch": false,
         "pasteConfirmationThresholdBytes": 8192,
         "tabTitleShowsCwd": true,
         "tabTitleShowsProcess": true,

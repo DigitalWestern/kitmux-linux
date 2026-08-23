@@ -2,7 +2,7 @@
   "fixtureVersion": 1,
   "bounds": {
     "identifierUtf8Bytes": 128,
-    "identifiers": 38
+    "identifiers": 39
   },
   "cases": [
     {
@@ -42,6 +42,7 @@
         "notification.jump-unread",
         "terminal.resume-command",
         "app.settings",
+        "app.toggle-sidebar",
         "app.install-command-line-tool",
         "app.reload-kitty-config",
         "font.increase",
