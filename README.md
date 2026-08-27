@@ -4,10 +4,12 @@ Kitmux is a native terminal workspace built around Kitty's terminal engine.
 It organizes long-running terminal sessions into workspaces, groups, tabs,
 split panes, and eventually mixed terminal/browser surfaces.
 
-This repository currently contains the experimental Linux port. The complete
-macOS application remains in the adjacent `../macos/kitmux` repository until
-the documented monorepo migration is performed in a separate, carefully
-reviewed session.
+This repository contains the experimental Linux port. The complete macOS
+application lives at
+[DigitalWestern/kitmux](https://github.com/DigitalWestern/kitmux), and the
+[Kitmux website](https://digitalwestern.github.io/kitmux-website/) covers how
+the project was built. The two repos stay separate until the documented
+monorepo migration happens in its own carefully reviewed session.
 
 ## Platform status
 
