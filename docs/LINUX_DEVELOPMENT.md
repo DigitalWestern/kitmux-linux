@@ -86,9 +86,11 @@ Run this once after cloning or after deleting the ignored `.source` cache:
 kitmux-linux/scripts/materialize-reference.sh
 ```
 
-The locked Kitty dependency bundles are mirrored under
-`kitmux-linux/locked-inputs/dependency-bundles` and are copied into the ignored
-development cache by:
+The locked Kitty dependency bundles are too large for git history, so they
+live as assets on the `dependency-bundles-v1` GitHub release. The script below
+downloads any missing bundle into the ignored local mirror at
+`kitmux-linux/locked-inputs/dependency-bundles`, then copies it into the
+development cache:
 
 ```sh
 kitmux-linux/scripts/materialize-dependencies.sh

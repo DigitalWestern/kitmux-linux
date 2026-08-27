@@ -10,3 +10,4 @@ target/
 kitmux-linux/vendor/
 .phase4-clean-target.*/
 compile_commands.json
+kitmux-linux/locked-inputs/dependency-bundles/

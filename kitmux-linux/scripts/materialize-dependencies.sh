@@ -29,6 +29,24 @@ fi
 destination="${KITMUX_KITTY_DEPENDENCIES:-${linux_root}/.source/kitty/dependencies}"
 mkdir -p "${destination}"
 
+# Bundles are too large for git history; they are published as GitHub release
+# assets and verified below against source-lock.json before use.
+bundle_release_url="${KITMUX_BUNDLE_RELEASE_URL:-https://github.com/DigitalWestern/kitmux-linux/releases/download/dependency-bundles-v1}"
+if [[ -d "${mirror}" || "${mirror}" == "${linux_root}/"* ]]; then
+  mkdir -p "${mirror}"
+  for name in "${platform}.tar.xz" "NerdFontsSymbolsOnly.tar.xz"; do
+    if [[ ! -f "${mirror}/${name}" ]]; then
+      echo "fetching ${name} from ${bundle_release_url}"
+      if ! curl -fsSL --retry 3 -o "${mirror}/.${name}.download" "${bundle_release_url}/${name}"; then
+        rm -f "${mirror}/.${name}.download"
+        echo "could not download ${name}; continuing with local mirror contents" >&2
+        continue
+      fi
+      mv "${mirror}/.${name}.download" "${mirror}/${name}"
+    fi
+  done
+fi
+
 python3 - "${linux_root}/source-lock.json" "${mirror}" "${destination}" \
   "${platform}" "${KITMUX_REQUIRE_DURABLE_INPUTS:-0}" <<'PY'
 import hashlib
