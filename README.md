@@ -1,5 +1,8 @@
 # Kitmux
 
+**Work in progress.** Neither the Linux port nor the macOS app is complete;
+this repo in particular is an experimental port with no packaged download yet.
+
 Kitmux is a native terminal workspace built around Kitty's terminal engine.
 It organizes long-running terminal sessions into workspaces, groups, tabs,
 split panes, and eventually mixed terminal/browser surfaces.
