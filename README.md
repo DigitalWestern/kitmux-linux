@@ -110,7 +110,11 @@ See the [migration proposal](docs/MONOREPO_MIGRATION.md).
 
 ## Licensing
 
-**The Linux host is GPL-3.0-only.** See [`LICENSE`](LICENSE) and
+**The Linux host is GPL-3.0-only.** Original work in this repository is
+Copyright (C) 2026 Ethan Abbate. Portions are derived from
+[kitty](https://github.com/kovidgoyal/kitty), Copyright (C) 2016-2026 Kovid
+Goyal, also GPL-3.0-only; Kitty itself is not redistributed here. See
+[`LICENSE`](LICENSE) and
 [ADR 0006](docs/decisions/0006-linux-license-posture.md).
 
 Kitty is GPL-3.0-only, `libkitty` links it, and the host links `libkitty`, so
