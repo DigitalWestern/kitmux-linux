@@ -37,7 +37,19 @@ cleanup() {
   if mountpoint -q "${full_disk_mount}" 2>/dev/null; then
     sudo -n umount "${full_disk_mount}" 2>/dev/null || true
   fi
-  rm -rf -- "${temporary_root}"
+  sleep 1
+  for _ in $(seq 1 20); do
+    # xdg-document-portal can leave a root-owned FUSE mountpoint under the
+    # test cache after the app exits; this gate already requires non-interactive
+    # sudo for its private tmpfs, so retry only these generated temp paths.
+    sudo -n rm -rf -- "${temporary_root}/roundtrip/cache/doc" 2>/dev/null || true
+    sudo -n rm -rf -- "${temporary_root}" 2>/dev/null || true
+    [[ ! -e "${temporary_root}" ]] && return 0
+    sleep 0.2
+  done
+  nohup sh -c 'sleep 1; sudo -n rm -rf -- "$1"' _ \
+    "${temporary_root}" >/dev/null 2>&1 &
+  return 0
 }
 trap cleanup EXIT
 
@@ -179,7 +191,7 @@ printf '%s\n' \
 chmod 600 "${settings_path}.new"
 mv "${settings_path}.new" "${settings_path}"
 wait_for_log "${second_log}" \
-  '^kitmux event=settings_reloaded paste_threshold=1 confirm_close=true$' \
+  '^kitmux event=settings_reloaded paste_threshold=1 wheel_lines=3 confirm_close=true$' \
   "atomic settings replacement"
 printf '%s' "printf watcher-paste-ran > '${temporary_root}/watcher-paste-ran'" \
   | xsel --clipboard --input
@@ -215,7 +227,7 @@ printf '%s\n' \
 chmod 600 "${settings_path}.new"
 mv "${settings_path}.new" "${settings_path}"
 wait_for_log "${second_log}" \
-  '^kitmux event=settings_reloaded paste_threshold=10000 confirm_close=true$' \
+  '^kitmux event=settings_reloaded paste_threshold=10000 wheel_lines=3 confirm_close=true$' \
   "valid settings recreation"
 reload_count="$(grep -c '^kitmux event=settings_reloaded ' "${second_log}" || true)"
 cp "${settings_path}" "${settings_path}.new"
@@ -262,7 +274,11 @@ import sys
 state = json.loads(pathlib.Path(sys.argv[1]).read_text())
 expected = pathlib.Path(sys.argv[2])
 detail = next(iter(state["workspaces"][0]["tabGroups"][0]["terminalTabs"][0]["paneDetails"].values()))
-assert pathlib.Path(detail["cwd"]) == expected
+if detail.get("surfaces"):
+    active = int(detail.get("activeSurfaceIndex", 0))
+    assert pathlib.Path(detail["surfaces"][active]["cwd"]) == expected
+else:
+    assert pathlib.Path(detail["cwd"]) == expected
 PY
 
 # An otherwise valid snapshot with a vanished cwd must still restore its safe
@@ -275,7 +291,11 @@ import sys
 path, missing_cwd = map(pathlib.Path, sys.argv[1:])
 state = json.loads(path.read_text())
 detail = next(iter(state["workspaces"][0]["tabGroups"][0]["terminalTabs"][0]["paneDetails"].values()))
-detail["cwd"] = str(missing_cwd)
+if detail.get("surfaces"):
+    active = int(detail.get("activeSurfaceIndex", 0))
+    detail["surfaces"][active]["cwd"] = str(missing_cwd)
+else:
+    detail["cwd"] = str(missing_cwd)
 path.write_text(json.dumps(state, indent=2) + "\n")
 path.chmod(0o600)
 PY

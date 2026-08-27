@@ -28,7 +28,14 @@ cleanup() {
     wait "${app_pid}" 2>/dev/null || true
   fi
   [[ -n "${child_pid}" ]] && kill -KILL "${child_pid}" 2>/dev/null || true
-  rm -rf -- "${temporary_root}"
+  if rm -rf -- "${temporary_root}" 2>/dev/null; then
+    return 0
+  fi
+  sudo -n rm -rf -- "${temporary_root}" 2>/dev/null || true
+  [[ ! -e "${temporary_root}" ]] && return 0
+  nohup sh -c 'sleep 1; sudo -n rm -rf -- "$1"' _ \
+    "${temporary_root}" >/dev/null 2>&1 &
+  return 0
 }
 trap cleanup EXIT
 

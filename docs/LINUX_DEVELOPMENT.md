@@ -359,7 +359,8 @@ limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
 ```
 
 `test-phase5-product.sh` uses isolated XDG config/state/data/cache roots. It
-drives the command palette and settings dialog by keyboard only, builds a
+drives the in-window GTK menu bar with F10, arrows, and Escape, then drives the
+command palette and settings dialog by keyboard only, builds a
 two-workspace nested five-session hierarchy through the product shortcut and
 palette paths, checks that a foreground job in a non-active group is still
 reviewed when that group closes, and corrupts the primary state file to prove

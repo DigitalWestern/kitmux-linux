@@ -2,7 +2,7 @@
   "fixtureVersion": 1,
   "bounds": {
     "identifierUtf8Bytes": 128,
-    "identifiers": 39
+    "identifiers": 49
   },
   "cases": [
     {
@@ -47,7 +47,17 @@
         "app.reload-kitty-config",
         "font.increase",
         "font.decrease",
-        "font.reset"
+        "font.reset",
+        "tab.close",
+        "terminal.select-all",
+        "terminal.find-next",
+        "terminal.find-previous",
+        "pane.zoom",
+        "app.full-screen",
+        "app.quit",
+        "app.help",
+        "app.about",
+        "app.report-issue"
       ]
     },
     {

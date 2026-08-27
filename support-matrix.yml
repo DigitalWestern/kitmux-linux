@@ -1,26 +1,31 @@
 schema_version: 1
-updated: 2026-08-02
+updated: 2026-08-23
 
 license: GPL-3.0-only  # ADR 0006; Kitty is GPL-3.0 and the host links it
 
 reproducibility:
   # ADR 0008. All evidence below was produced by one person, by hand, in two
   # Lima VMs on one Apple-silicon macOS machine.
-  standalone_buildable: false      # R1: needs the private macOS repo at a tag
-  automated_gate: none             # R2: due with the first Git remote
+  standalone_buildable: true       # R1: ARM64 durable mirror verified
+  standalone_buildable_architectures: [aarch64]
+  automated_gate: configured-not-run # R2: no Git remote is configured here
   desktop_gate_portable: true      # R3 closed: caller supplies DISPLAY; noVNC is optional
   locked_architectures: [aarch64, x86_64]  # R4 closed; locking is not support
+  durable_dependency_mirror_architectures: [aarch64]
 
 release_runtime_evidence:
   architecture: aarch64
   approximate_size_mib: 104
   size_basis: fresh clean-gate output; ignored local build directories may be stale
-  sbom: SPDX-2.3 JSON, 24 packages and 876 regular files
+  sbom: SPDX-2.3 JSON, 25 packages and 901 regular files
   ubuntu_26_04_clean_passes: 2
-  ubuntu_26_04_stable_inventory_sha256: c3c0e71fc8dce5e62a07b67ec69247d7bab29690cb8af64243fd6feb0e29e886
+  ubuntu_26_04_stable_inventory_sha256: d0db246996abdf4e24570b4bb3cccd8adec5ccf312603761c5f1e6985f0b3d49
   fedora_44_clean_passes: 2
-  fedora_44_stable_inventory_sha256: a4c958c659abe73ad1f937a4187d0d301408ecca0e1d9b2279d9fed99c01caef
-  package_format: unpackaged release tree
+  fedora_44_stable_inventory_sha256: a105cca8b134d9b1e3c7a15a9b25284b958d6246dd42bf5577d361d9596f4455
+  package_format: reproducible ARM64 tarball and native .deb
+  tarball_sha256: 496115f1e1ad46cd16601987b4509771e2bb4125a655457c16a142e5feb16449
+  deb_sha256: a1f0bcf5e04fc4af94e24f447452518b4044a54b383099a27e2c4fe357c4dc8a
+  package_lifecycle: fresh Ubuntu 26.04 ARM64 VM passed install, launch, upgrade, downgrade, reinstall, and uninstall
 
 phase4_product_evidence:
   slice_4_1: passed
@@ -52,10 +57,10 @@ phase4_product_evidence:
                          stable-one-terminal-ids]
   program_matrix: [bash, zsh, fish, vim, less, tmux]
   soak:
-    duration_seconds: 1801
-    interaction_cycles: 1090
-    shell_heartbeats: 160
-    max_heartbeat_ms: 220
+    duration_seconds: 1800
+    interaction_cycles: 1089
+    shell_heartbeats: 161
+    max_heartbeat_ms: 340
     shell_reaped: true
     flood_worker_reaped: true
   clean_no_sdk_runtime: passed in an Ubuntu 26.04 runtime-only Xvfb container

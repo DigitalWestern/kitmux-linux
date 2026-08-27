@@ -5,12 +5,17 @@ if [[ "$(uname -s)" != "Linux" || -z "${DISPLAY:-}" ]]; then
   echo "Run this gate on Linux with DISPLAY set to an existing X11 display." >&2
   exit 1
 fi
-for command in xdotool python3 seq; do
+for command in xdotool python3 seq xmodmap; do
   command -v "${command}" >/dev/null || {
     echo "Missing required command: ${command}" >&2
     exit 1
   }
 done
+f10_keycode="$(xmodmap -pk | awk '$2 == "0xffc7" { print $1 }')"
+[[ "${f10_keycode}" =~ ^[0-9]+$ ]] || {
+  echo "Could not resolve the live X11 F10 keycode." >&2
+  exit 1
+}
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/gate-common.sh"
@@ -92,6 +97,11 @@ launch_app() { # log
   }
   xdotool windowactivate --sync "${window_id}"
   xdotool windowfocus --sync "${window_id}"
+  xdotool key --clearmodifiers "${f10_keycode}"
+  sleep 0.2
+  xdotool key --clearmodifiers Right Down Escape
+  wait_for_log "${log}" '^kitmux event=menu_keyboard_traversal roles=true focus=true$' \
+    "F10, arrow, and Escape menu traversal"
 }
 
 finish_app() { # log, expected sessions, optional window-close

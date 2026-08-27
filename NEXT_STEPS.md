@@ -31,6 +31,9 @@ lives in [`PORT_STATUS.md`](PORT_STATUS.md); phase scope and exit gates live in
   launch, upgrade, downgrade, reinstall, and uninstall gate.
 - Accessibility/product coverage and the written threat-model review are
   complete for the terminal-alpha scope.
+- The complete local aggregate, ARM64 package lifecycle, clean-target launch,
+  and twice-repeated Ubuntu/Fedora clean-container release gates passed on
+  2026-08-23.
 
 ## Remaining order
 
@@ -41,11 +44,11 @@ lives in [`PORT_STATUS.md`](PORT_STATUS.md); phase scope and exit gates live in
    and retain the result for ADR 0008 R2.
 3. Recover or intentionally re-lock the exact x86_64 dependency bundle, build
    and test x86_64, and complete the x86_64 package path.
-4. Keep the passed long soak reproducible after the recorded heartbeat failure;
-   then close parity and audit the accepted `KITMUX_NATIVE_LIB_DIR` build
-   contract separately.
-5. Add package signing, vulnerability, desktop-menu, and release-maintainer
-   evidence before promoting Phase 8 artifacts.
+4. Decide and document the remaining release bar: real SSH/network
+   authentication, power-loss recovery, desktop-menu interaction, package
+   signing, vulnerability review, full AT-SPI coverage, and release-maintainer
+   ownership. The local long-soak, clean-target, and package lifecycle gates
+   already passed.
 
 ## Phase 7 decision
 

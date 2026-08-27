@@ -155,6 +155,22 @@ fn shortcut_matching_rejects_extra_modifiers() {
 }
 
 #[test]
+fn gtk_menu_accelerators_come_from_the_resolved_shortcut_map() {
+    let map = ShortcutMap::linux_defaults();
+    assert_eq!(
+        map.accelerator_for_command(CommandId::TerminalCopy)
+            .as_deref(),
+        Some("<Primary><Shift>c")
+    );
+    assert_eq!(
+        map.accelerator_for_action(ShortcutAction::CommandPalette)
+            .as_deref(),
+        Some("<Primary><Shift>p")
+    );
+    assert_eq!(map.accelerator_for_command(CommandId::AppQuit), None);
+}
+
+#[test]
 fn command_palette_filtering_preserves_catalog_order_and_ranks_prefixes() {
     assert_eq!(command_palette_matches(""), CommandId::ALL);
     assert_eq!(

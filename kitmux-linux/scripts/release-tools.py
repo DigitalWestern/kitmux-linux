@@ -427,8 +427,8 @@ def verify_inputs(args: argparse.Namespace) -> None:
     )
     if using_source_tree:
         print(
-            f"dependency policy: {args.platform} uses the explicit source-built "
-            "fallback; durable reproducibility is not claimed"
+            f"dependency policy: {args.platform} uses the explicit unlocked "
+            "dependency fallback; durable reproducibility is not claimed"
         )
 
 

@@ -133,7 +133,35 @@ pub enum NavigationTarget {
     TerminalTab(usize),
 }
 
+#[derive(Clone)]
 pub struct ShortcutMap(HashMap<ShortcutChord, Option<ShortcutAction>>);
+
+impl ShortcutChord {
+    #[must_use]
+    pub fn gtk_accelerator(self) -> String {
+        let mut accelerator = String::new();
+        if self.control {
+            accelerator.push_str("<Primary>");
+        }
+        if self.alt {
+            accelerator.push_str("<Alt>");
+        }
+        if self.super_key {
+            accelerator.push_str("<Super>");
+        }
+        if self.shift {
+            accelerator.push_str("<Shift>");
+        }
+        accelerator.push_str(match self.key {
+            '+' => "plus",
+            '-' => "minus",
+            '[' => "bracketleft",
+            ']' => "bracketright",
+            key => return format!("{accelerator}{key}"),
+        });
+        accelerator
+    }
+}
 
 impl ShortcutMap {
     fn linux_default_bindings() -> Vec<(ShortcutChord, ShortcutAction)> {
@@ -292,6 +320,18 @@ impl ShortcutMap {
     #[must_use]
     pub fn resolve(&self, chord: ShortcutChord) -> Option<ShortcutAction> {
         self.0.get(&chord).copied().flatten()
+    }
+
+    #[must_use]
+    pub fn accelerator_for_action(&self, action: ShortcutAction) -> Option<String> {
+        self.0.iter().find_map(|(chord, candidate)| {
+            (*candidate == Some(action)).then(|| chord.gtk_accelerator())
+        })
+    }
+
+    #[must_use]
+    pub fn accelerator_for_command(&self, command: CommandId) -> Option<String> {
+        shortcut_action(command).and_then(|action| self.accelerator_for_action(action))
     }
 }
 

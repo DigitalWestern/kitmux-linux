@@ -62,6 +62,16 @@ pub enum SemanticAction {
     ReloadKittyConfig,
     FontDelta(i8),
     FontReset,
+    CloseTab,
+    SelectAll,
+    FindNext,
+    FindPrevious,
+    ZoomPane,
+    FullScreen,
+    Quit,
+    Help,
+    About,
+    ReportIssue,
 }
 
 commands!(
@@ -212,6 +222,32 @@ commands!(
     (FontIncrease, "font.increase", SemanticAction::FontDelta(2)),
     (FontDecrease, "font.decrease", SemanticAction::FontDelta(-2)),
     (FontReset, "font.reset", SemanticAction::FontReset),
+    (TabClose, "tab.close", SemanticAction::CloseTab),
+    (
+        TerminalSelectAll,
+        "terminal.select-all",
+        SemanticAction::SelectAll
+    ),
+    (
+        TerminalFindNext,
+        "terminal.find-next",
+        SemanticAction::FindNext
+    ),
+    (
+        TerminalFindPrevious,
+        "terminal.find-previous",
+        SemanticAction::FindPrevious
+    ),
+    (PaneZoom, "pane.zoom", SemanticAction::ZoomPane),
+    (AppFullScreen, "app.full-screen", SemanticAction::FullScreen),
+    (AppQuit, "app.quit", SemanticAction::Quit),
+    (AppHelp, "app.help", SemanticAction::Help),
+    (AppAbout, "app.about", SemanticAction::About),
+    (
+        AppReportIssue,
+        "app.report-issue",
+        SemanticAction::ReportIssue
+    ),
 );
 
 #[must_use]

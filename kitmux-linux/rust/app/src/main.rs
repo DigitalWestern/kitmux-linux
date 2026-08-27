@@ -6,7 +6,9 @@ use gtk::gdk;
 use gtk::gio;
 use gtk::glib::{self, Propagation};
 use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
+use gtk::{
+    AboutDialog, Application, ApplicationWindow, Button, Entry, GLArea, Label, License, SearchBar,
+};
 use kitmux_model::{
     AppModel, AppSnapshot, CONTROL_DISPATCH_TIMEOUT, CloseOutcome, CommandId, ControlEventHistory,
     ControlMethod, ControlRequest, ControlResponse, ControlServer, ControlSocketError,
@@ -280,6 +282,7 @@ struct RestoredProduct {
     navigation: AppModel,
     active_surface: SurfaceId,
     surface_cwds: HashMap<SurfaceId, PathBuf>,
+    valid_restored_cwds: HashMap<SurfaceId, PathBuf>,
     surface_resume_commands: HashMap<SurfaceId, String>,
     surface_ssh_profiles: HashMap<SurfaceId, Uuid>,
     resume_offers: Vec<ResumeOffer>,
@@ -295,6 +298,7 @@ struct ResumeOffer {
 fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProduct> {
     let mut surface_ids = HashSet::new();
     let mut surface_cwds = HashMap::new();
+    let mut valid_restored_cwds = HashMap::new();
     let mut surface_resume_commands = HashMap::new();
     let mut surface_ssh_profiles = HashMap::new();
     let mut resume_offers = Vec::new();
@@ -327,14 +331,17 @@ fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProdu
                             if index == saved_active {
                                 active_surface_index = surfaces.len();
                             }
-                            let cwd = saved
+                            let saved_cwd = saved
                                 .cwd
                                 .as_deref()
                                 .map(PathBuf::from)
-                                .filter(|path| valid_restored_cwd(path))
-                                .unwrap_or_else(|| home.to_owned());
+                                .filter(|path| valid_restored_cwd(path));
+                            let cwd = saved_cwd.clone().unwrap_or_else(|| home.to_owned());
                             let cwd_label = cwd.to_string_lossy().into_owned();
                             surface_cwds.insert(id, cwd);
+                            if let Some(cwd) = saved_cwd {
+                                valid_restored_cwds.insert(id, cwd);
+                            }
                             if let Some(command) = saved.resume_command.clone() {
                                 surface_resume_commands.insert(id, command.clone());
                                 resume_offers.push(ResumeOffer {
@@ -365,13 +372,16 @@ fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProdu
                     if surfaces.is_empty() {
                         let id = SurfaceId::new();
                         surface_ids.insert(id);
-                        let cwd = detail
+                        let saved_cwd = detail
                             .and_then(|detail| detail.cwd.as_deref())
                             .map(PathBuf::from)
-                            .filter(|path| valid_restored_cwd(path))
-                            .unwrap_or_else(|| home.to_owned());
+                            .filter(|path| valid_restored_cwd(path));
+                        let cwd = saved_cwd.clone().unwrap_or_else(|| home.to_owned());
                         let cwd_label = cwd.to_string_lossy().into_owned();
                         surface_cwds.insert(id, cwd);
+                        if let Some(cwd) = saved_cwd {
+                            valid_restored_cwds.insert(id, cwd);
+                        }
                         if let Some(profile_id) = detail.and_then(|detail| detail.ssh_profile_id) {
                             surface_ssh_profiles.insert(id, profile_id);
                         } else if let Some(command) =
@@ -440,6 +450,7 @@ fn restored_product(snapshot: &AppSnapshot, home: &Path) -> Option<RestoredProdu
         navigation,
         active_surface,
         surface_cwds,
+        valid_restored_cwds,
         surface_resume_commands,
         surface_ssh_profiles,
         resume_offers,
@@ -779,6 +790,8 @@ struct Terminal {
     default_font_size: f64,
     shortcut_consumed: KitmuxKeyTracker,
     close_confirmed: bool,
+    fullscreen: bool,
+    zoomed_pane: Option<PaneId>,
     modal_dialog_open: bool,
     paste_confirmation_threshold: usize,
     wheel_scroll_lines: u64,
@@ -824,6 +837,7 @@ impl TerminalRuntime for PendingTerminalRuntime {
 
 #[derive(Clone)]
 struct NavigationUi {
+    app: glib::WeakRef<Application>,
     sidebar_shell: glib::WeakRef<gtk::Box>,
     sidebar: glib::WeakRef<gtk::Box>,
     tab_strip: glib::WeakRef<gtk::Box>,
@@ -833,6 +847,9 @@ struct NavigationUi {
     area: glib::WeakRef<GLArea>,
     search_bar: glib::WeakRef<SearchBar>,
     search_entry: glib::WeakRef<Entry>,
+    menu_bar: glib::WeakRef<gtk::PopoverMenuBar>,
+    workspace_menu: gio::Menu,
+    tab_menu: gio::Menu,
     command_palette: glib::WeakRef<Button>,
     settings: glib::WeakRef<Button>,
 }
@@ -879,6 +896,8 @@ impl Default for Terminal {
             default_font_size: 0.0,
             shortcut_consumed: KitmuxKeyTracker::default(),
             close_confirmed: false,
+            fullscreen: false,
+            zoomed_pane: None,
             modal_dialog_open: false,
             paste_confirmation_threshold: 8192,
             wheel_scroll_lines: DEFAULT_WHEEL_SCROLL_LINES,
@@ -929,6 +948,7 @@ fn changed(value: bool) -> NavigationEffect {
 fn foreground_scope(command: CommandId) -> ForegroundScope {
     match command {
         CommandId::PaneClose => ForegroundScope::Pane,
+        CommandId::TabClose => ForegroundScope::Tab,
         CommandId::GroupClose => ForegroundScope::Group,
         CommandId::WorkspaceClose => ForegroundScope::Workspace,
         _ => ForegroundScope::Pane,
@@ -2163,6 +2183,9 @@ impl Terminal {
         let settings_load = load_settings_at_launch(&settings_path);
         let state_load = load_state_at_launch(&state_path);
         self.shortcuts = ShortcutMap::linux_from_settings(&settings_load.document);
+        if let Some(app) = self.navigation_ui.as_ref().and_then(|ui| ui.app.upgrade()) {
+            set_menu_accelerators(&app, &self.shortcuts);
+        }
         self.paste_confirmation_threshold = usize::try_from(
             settings_load
                 .document
@@ -2175,6 +2198,15 @@ impl Terminal {
             .document
             .resolved()
             .confirm_close_with_running_process;
+        let menu_bar_visible = settings_load.document.resolved().menu_bar_visible_on_launch;
+        window.set_show_menubar(menu_bar_visible);
+        if let Some(menu_bar) = self
+            .navigation_ui
+            .as_ref()
+            .and_then(|ui| ui.menu_bar.upgrade())
+        {
+            menu_bar.set_visible(menu_bar_visible);
+        }
         if let Some(sidebar) = self
             .navigation_ui
             .as_ref()
@@ -2202,6 +2234,7 @@ impl Terminal {
         let (
             navigation,
             surface_cwds,
+            valid_restored_cwds,
             surface_resume_commands,
             surface_ssh_profiles,
             resume_offers,
@@ -2213,6 +2246,7 @@ impl Terminal {
             (
                 restored.navigation,
                 restored.surface_cwds,
+                restored.valid_restored_cwds,
                 restored.surface_resume_commands,
                 restored.surface_ssh_profiles,
                 restored.resume_offers,
@@ -2225,6 +2259,7 @@ impl Terminal {
                 HashMap::from([(self.active_surface_id, account.home.clone())]),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
                 Vec::new(),
             )
         };
@@ -2233,7 +2268,7 @@ impl Terminal {
             .get(&self.active_surface_id)
             .cloned();
         let restored_ssh_profile = surface_ssh_profiles.get(&self.active_surface_id).copied();
-        let restored_cwd = surface_cwds.get(&self.active_surface_id).cloned();
+        let restored_cwd = valid_restored_cwds.get(&self.active_surface_id).cloned();
         self.last_cwd = restored_cwd.clone();
         if self.last_cwd.is_some() {
             diagnostic("cwd_restore_seeded", &[]);
@@ -2443,12 +2478,17 @@ impl Terminal {
 
     fn split_layout(&self, area: &GLArea) -> Option<SplitLayout> {
         let (rect, gap, minimum) = split_geometry(area);
-        Some(
-            self.navigation
-                .as_ref()?
-                .active_tab()
-                .layout(rect, gap, minimum),
-        )
+        let navigation = self.navigation.as_ref()?;
+        if let Some(pane) = self.zoomed_pane {
+            if navigation.active_tab().pane(pane).is_some() {
+                return Some(SplitLayout {
+                    pane_frames: HashMap::from([(pane, rect)]),
+                    split_frames: HashMap::new(),
+                    divider_frames: HashMap::new(),
+                });
+            }
+        }
+        Some(navigation.active_tab().layout(rect, gap, minimum))
     }
 
     fn focus_pane_at(&mut self, area: &GLArea, x: f64, y: f64) -> bool {
@@ -2539,15 +2579,31 @@ impl Terminal {
         let Some(navigation) = self.navigation.as_ref() else {
             return;
         };
-        let layout = navigation.active_tab().layout(
-            PixelRect::new(0, 0, width, height),
-            SPLIT_GAP * factor,
-            MINIMUM_PANE,
-        );
+        let rect = PixelRect::new(0, 0, width, height);
+        let layout = if let Some(pane) = self.zoomed_pane {
+            navigation.active_tab().pane(pane).map(|_| SplitLayout {
+                pane_frames: HashMap::from([(pane, rect)]),
+                split_frames: HashMap::new(),
+                divider_frames: HashMap::new(),
+            })
+        } else {
+            Some(
+                navigation
+                    .active_tab()
+                    .layout(rect, SPLIT_GAP * factor, MINIMUM_PANE),
+            )
+        };
+        let Some(layout) = layout else {
+            return;
+        };
         let visible = navigation
             .runtime_presentations()
             .into_iter()
             .filter(|presentation| presentation.surface_visible)
+            .filter(|presentation| {
+                self.zoomed_pane
+                    .is_none_or(|pane| presentation.location.pane_id == pane)
+            })
             .filter_map(|presentation| {
                 layout
                     .pane_frames
@@ -2999,6 +3055,13 @@ impl Terminal {
                     CommandId::GroupPrevious => {
                         changed(navigation.active_workspace_mut().cycle_group(-1))
                     }
+                    CommandId::TabClose => {
+                        let group = navigation.active_workspace_mut().active_group_mut();
+                        (group.tabs().len() > 1)
+                            .then(|| group.close_tab(group.active_tab_index()))
+                            .flatten()
+                            .map_or(NavigationEffect::Rejected, |_| NavigationEffect::Changed)
+                    }
                     CommandId::PaneClose => {
                         let pane = navigation.active_tab().focused_pane_id();
                         match navigation.close_pane(pane) {
@@ -3141,6 +3204,48 @@ impl Terminal {
         }
         owned_c_string(unsafe { ffi::kitty_session_selection_text(self.session) })
             .filter(|text| !text.is_empty())
+    }
+
+    fn select_all(&mut self, area: &GLArea) {
+        if self.session.is_null() || self.cell_width <= 0 || self.cell_height <= 0 {
+            return;
+        }
+        let columns = (self.framebuffer_width / self.cell_width).max(1) as u32;
+        let rows = (self.framebuffer_height / self.cell_height).max(1) as u32;
+        // ponytail: select the current terminal grid; libkitty exposes no
+        // history-wide select-all primitive, so a future engine API can widen it.
+        unsafe {
+            ffi::kitty_session_selection_start(self.session, 0, 0, true, 0);
+            ffi::kitty_session_selection_update(self.session, columns - 1, rows - 1, false, true);
+        }
+        self.selection_active = true;
+        area.queue_render();
+        diagnostic(
+            "selection_all",
+            &[("columns", columns.to_string()), ("rows", rows.to_string())],
+        );
+    }
+
+    fn toggle_zoom(&mut self, area: &GLArea) {
+        let Some(pane) = self
+            .navigation
+            .as_ref()
+            .map(|navigation| navigation.active_tab().focused_pane_id())
+        else {
+            return;
+        };
+        self.zoomed_pane = (self.zoomed_pane != Some(pane)).then_some(pane);
+        area.queue_render();
+        diagnostic(
+            "pane_zoom",
+            &[("enabled", self.zoomed_pane.is_some().to_string())],
+        );
+    }
+
+    fn toggle_fullscreen(&mut self, window: &ApplicationWindow) {
+        self.fullscreen = !self.fullscreen;
+        window.set_fullscreened(self.fullscreen);
+        diagnostic("fullscreen", &[("enabled", self.fullscreen.to_string())]);
     }
 
     fn paste(&mut self, text: &str) {
@@ -3481,6 +3586,24 @@ impl Terminal {
             sidebar.set_width_request(resolved.sidebar_width_points as i32);
         }
         self.shortcuts = ShortcutMap::linux_from_settings(&document);
+        let menu_bar_visible = resolved.menu_bar_visible_on_launch;
+        if let Some(window) = self
+            .navigation_ui
+            .as_ref()
+            .and_then(|ui| ui.window.upgrade())
+        {
+            window.set_show_menubar(menu_bar_visible);
+        }
+        if let Some(menu_bar) = self
+            .navigation_ui
+            .as_ref()
+            .and_then(|ui| ui.menu_bar.upgrade())
+        {
+            menu_bar.set_visible(menu_bar_visible);
+        }
+        if let Some(app) = self.navigation_ui.as_ref().and_then(|ui| ui.app.upgrade()) {
+            set_menu_accelerators(&app, &self.shortcuts);
+        }
         if let Some(persistence) = self.persistence.as_mut() {
             persistence.settings = document;
         }
@@ -4050,6 +4173,8 @@ fn refresh_navigation(terminal: &Rc<RefCell<Terminal>>) {
         return;
     };
 
+    rebuild_window_menu(&ui, &workspaces, &tabs);
+
     clear_box(&sidebar);
     for (index, (_, name)) in workspaces.into_iter().enumerate() {
         let button = Button::with_label(&format!("{}  {name}", index + 1));
@@ -4305,22 +4430,31 @@ fn run_accessibility_gate(terminal: &Rc<RefCell<Terminal>>) {
     let Some(ui) = terminal.borrow().navigation_ui.clone() else {
         return;
     };
-    let (Some(area), Some(commands), Some(settings)) = (
+    let (Some(area), Some(commands), Some(settings), Some(menu_bar)) = (
         ui.area.upgrade(),
         ui.command_palette.upgrade(),
         ui.settings.upgrade(),
+        ui.menu_bar.upgrade(),
     ) else {
         return;
     };
     let roles = gtk::test_accessible_has_role(&area, gtk::AccessibleRole::Terminal)
         && gtk::test_accessible_has_role(&commands, gtk::AccessibleRole::Button)
-        && gtk::test_accessible_has_role(&settings, gtk::AccessibleRole::Button);
+        && gtk::test_accessible_has_role(&settings, gtk::AccessibleRole::Button)
+        && gtk::test_accessible_has_role(&menu_bar, gtk::AccessibleRole::MenuBar);
     let terminal_focused = area.grab_focus();
     let commands_focused = commands.grab_focus();
     let settings_focused = settings.grab_focus();
+    let menu_focused = menu_bar.grab_focus();
     let returned = area.grab_focus();
     diagnostic(
-        if roles && terminal_focused && commands_focused && settings_focused && returned {
+        if roles
+            && terminal_focused
+            && commands_focused
+            && settings_focused
+            && menu_focused
+            && returned
+        {
             "accessibility_ready"
         } else {
             "accessibility_failed"
@@ -4329,7 +4463,12 @@ fn run_accessibility_gate(terminal: &Rc<RefCell<Terminal>>) {
             ("roles", roles.to_string()),
             (
                 "focus",
-                (terminal_focused && commands_focused && settings_focused && returned).to_string(),
+                (terminal_focused
+                    && commands_focused
+                    && settings_focused
+                    && menu_focused
+                    && returned)
+                    .to_string(),
             ),
         ],
     );
@@ -4430,6 +4569,339 @@ fn palette_command_supported(command: CommandId) -> bool {
     )
 }
 
+struct MenuState {
+    model: gio::Menu,
+    workspace_menu: gio::Menu,
+    tab_menu: gio::Menu,
+}
+
+fn command_action_name(command: CommandId) -> String {
+    format!("command-{}", command.as_str().replace('.', "-"))
+}
+
+fn command_action(command: CommandId) -> String {
+    format!("app.{}", command_action_name(command))
+}
+
+fn append_command(menu: &gio::Menu, label: &str, command: CommandId) {
+    menu.append(Some(label), Some(&command_action(command)));
+}
+
+fn set_menu_accelerators(app: &Application, shortcuts: &ShortcutMap) {
+    for command in CommandId::ALL {
+        let detailed = command_action(*command);
+        let accelerator = shortcuts.accelerator_for_command(*command);
+        let accelerators = accelerator.as_deref().into_iter().collect::<Vec<_>>();
+        app.set_accels_for_action(&detailed, &accelerators);
+    }
+    let accelerator = shortcuts.accelerator_for_action(ShortcutAction::CommandPalette);
+    let accelerators = accelerator.as_deref().into_iter().collect::<Vec<_>>();
+    app.set_accels_for_action("app.command-palette", &accelerators);
+}
+
+fn register_menu_action(
+    app: &Application,
+    terminal: &Rc<RefCell<Terminal>>,
+    window: &ApplicationWindow,
+    area: &GLArea,
+    command: CommandId,
+) {
+    let action = gio::SimpleAction::new(&command_action_name(command), None);
+    action.set_enabled(palette_command_supported(command));
+    let weak = Rc::downgrade(terminal);
+    let window = window.clone();
+    let area = area.clone();
+    action.connect_activate(move |_, _| {
+        let Some(terminal) = weak.upgrade() else {
+            return;
+        };
+        execute_palette_command(command, &terminal, &window, &area);
+        diagnostic("menu_command", &[("id", command.as_str().to_owned())]);
+    });
+    app.add_action(&action);
+}
+
+fn register_menu_actions(
+    app: &Application,
+    terminal: &Rc<RefCell<Terminal>>,
+    window: &ApplicationWindow,
+    area: &GLArea,
+) {
+    for command in CommandId::ALL {
+        register_menu_action(app, terminal, window, area, *command);
+    }
+
+    for name in ["new-window", "ssh-connect"] {
+        let action = gio::SimpleAction::new(name, None);
+        action.set_enabled(false);
+        app.add_action(&action);
+    }
+
+    let command_palette = gio::SimpleAction::new("command-palette", None);
+    let weak = Rc::downgrade(terminal);
+    let window_palette = window.clone();
+    let area_palette = area.clone();
+    command_palette.connect_activate(move |_, _| {
+        if let Some(terminal) = weak.upgrade() {
+            request_command_palette(&window_palette, &area_palette, &terminal);
+        }
+    });
+    app.add_action(&command_palette);
+
+    let shortcuts = gio::SimpleAction::new("keyboard-shortcuts", None);
+    let weak = Rc::downgrade(terminal);
+    let window_shortcuts = window.clone();
+    shortcuts.connect_activate(move |_, _| {
+        if let Some(terminal) = weak.upgrade() {
+            show_keyboard_shortcuts(&window_shortcuts, &terminal);
+        }
+    });
+    app.add_action(&shortcuts);
+
+    let workspace_select =
+        gio::SimpleAction::new("select-workspace", Some(&glib::VariantTy::UINT32));
+    let weak = Rc::downgrade(terminal);
+    workspace_select.connect_activate(move |_, parameter| {
+        let Some(index) = parameter.and_then(|value| value.get::<u32>()) else {
+            return;
+        };
+        if let Some(terminal) = weak.upgrade() {
+            let effect = terminal
+                .borrow_mut()
+                .select_navigation_target(NavigationTarget::Workspace(index as usize));
+            apply_navigation_effect(&terminal, effect);
+        }
+    });
+    app.add_action(&workspace_select);
+
+    let tab_select = gio::SimpleAction::new("select-tab", Some(&glib::VariantTy::UINT32));
+    let weak = Rc::downgrade(terminal);
+    tab_select.connect_activate(move |_, parameter| {
+        let Some(index) = parameter.and_then(|value| value.get::<u32>()) else {
+            return;
+        };
+        if let Some(terminal) = weak.upgrade() {
+            let effect = terminal
+                .borrow_mut()
+                .select_navigation_target(NavigationTarget::TerminalTab(index as usize));
+            apply_navigation_effect(&terminal, effect);
+        }
+    });
+    app.add_action(&tab_select);
+}
+
+fn build_menu_bar(
+    app: &Application,
+    terminal: &Rc<RefCell<Terminal>>,
+    window: &ApplicationWindow,
+    area: &GLArea,
+) -> MenuState {
+    register_menu_actions(app, terminal, window, area);
+
+    let model = gio::Menu::new();
+    let file = gio::Menu::new();
+    append_command(&file, "New Terminal Tab", CommandId::TerminalNewTab);
+    append_command(&file, "New Group", CommandId::GroupNew);
+    append_command(&file, "New Workspace", CommandId::WorkspaceNew);
+    file.append(Some("New Window"), Some("app.new-window"));
+    append_command(&file, "Split Right", CommandId::PaneSplitRight);
+    append_command(&file, "Split Down", CommandId::PaneSplitDown);
+    file.append(Some("Connect over SSH…"), Some("app.ssh-connect"));
+    append_command(&file, "Close Pane", CommandId::PaneClose);
+    append_command(&file, "Close Tab", CommandId::TabClose);
+    append_command(&file, "Close Group", CommandId::GroupClose);
+    append_command(&file, "Close Workspace", CommandId::WorkspaceClose);
+    append_command(&file, "Quit", CommandId::AppQuit);
+    model.append_submenu(Some("File"), &file);
+
+    let edit = gio::Menu::new();
+    append_command(&edit, "Copy", CommandId::TerminalCopy);
+    append_command(&edit, "Paste", CommandId::TerminalPaste);
+    append_command(&edit, "Select All", CommandId::TerminalSelectAll);
+    append_command(&edit, "Find…", CommandId::TerminalFind);
+    append_command(&edit, "Find Next", CommandId::TerminalFindNext);
+    append_command(&edit, "Find Previous", CommandId::TerminalFindPrevious);
+    append_command(
+        &edit,
+        "Clear Scrollback",
+        CommandId::TerminalClearScrollback,
+    );
+    append_command(
+        &edit,
+        "Set Resume Command…",
+        CommandId::TerminalResumeCommand,
+    );
+    model.append_submenu(Some("Edit"), &edit);
+
+    let view = gio::Menu::new();
+    append_command(&view, "Toggle Sidebar", CommandId::AppToggleSidebar);
+    append_command(&view, "Increase Font", CommandId::FontIncrease);
+    append_command(&view, "Decrease Font", CommandId::FontDecrease);
+    append_command(&view, "Reset Font", CommandId::FontReset);
+    append_command(&view, "Next Tab", CommandId::TerminalNextTab);
+    append_command(&view, "Previous Tab", CommandId::TerminalPreviousTab);
+    append_command(&view, "Next Group", CommandId::GroupNext);
+    append_command(&view, "Previous Group", CommandId::GroupPrevious);
+    let focus = gio::Menu::new();
+    append_command(&focus, "Left", CommandId::PaneFocusLeft);
+    append_command(&focus, "Right", CommandId::PaneFocusRight);
+    append_command(&focus, "Up", CommandId::PaneFocusUp);
+    append_command(&focus, "Down", CommandId::PaneFocusDown);
+    view.append_submenu(Some("Focus Pane"), &focus);
+    let resize = gio::Menu::new();
+    append_command(&resize, "Left", CommandId::PaneResizeLeft);
+    append_command(&resize, "Right", CommandId::PaneResizeRight);
+    append_command(&resize, "Up", CommandId::PaneResizeUp);
+    append_command(&resize, "Down", CommandId::PaneResizeDown);
+    view.append_submenu(Some("Resize Pane"), &resize);
+    append_command(&view, "Zoom Pane", CommandId::PaneZoom);
+    append_command(&view, "Full Screen", CommandId::AppFullScreen);
+    model.append_submenu(Some("View"), &view);
+
+    let workspace_menu = gio::Menu::new();
+    let tab_menu = gio::Menu::new();
+    let window_menu = gio::Menu::new();
+    window_menu.append_submenu(Some("Workspaces"), &workspace_menu);
+    window_menu.append_submenu(Some("Tabs"), &tab_menu);
+    append_command(&window_menu, "Rename Workspace", CommandId::WorkspaceRename);
+    append_command(&window_menu, "Rename Group", CommandId::GroupRename);
+    append_command(&window_menu, "Rename Tab", CommandId::TerminalRenameTab);
+    append_command(
+        &window_menu,
+        "Jump to Unread",
+        CommandId::NotificationJumpUnread,
+    );
+    let move_focus = gio::Menu::new();
+    append_command(&move_focus, "Left", CommandId::PaneFocusLeft);
+    append_command(&move_focus, "Right", CommandId::PaneFocusRight);
+    append_command(&move_focus, "Up", CommandId::PaneFocusUp);
+    append_command(&move_focus, "Down", CommandId::PaneFocusDown);
+    window_menu.append_submenu(Some("Move Pane Focus"), &move_focus);
+    model.append_submenu(Some("Window"), &window_menu);
+
+    let help = gio::Menu::new();
+    help.append(Some("Kitmux Help"), Some("app.help-url"));
+    help.append(Some("Keyboard Shortcuts"), Some("app.keyboard-shortcuts"));
+    help.append(Some("Command Palette"), Some("app.command-palette"));
+    append_command(
+        &help,
+        "Install Command Line Tool",
+        CommandId::AppInstallCommandLineTool,
+    );
+    append_command(
+        &help,
+        "Reload Kitty Config",
+        CommandId::AppReloadKittyConfig,
+    );
+    append_command(&help, "About Kitmux", CommandId::AppAbout);
+    help.append(
+        Some("Report an Issue"),
+        Some(&command_action(CommandId::AppReportIssue)),
+    );
+    model.append_submenu(Some("Help"), &help);
+
+    let help_url = gio::SimpleAction::new("help-url", None);
+    help_url.connect_activate(|_, _| {
+        open_url("https://digitalwestern.github.io/kitmux-website/".to_owned())
+    });
+    app.add_action(&help_url);
+
+    set_menu_accelerators(app, &terminal.borrow().shortcuts);
+    MenuState {
+        model,
+        workspace_menu,
+        tab_menu,
+    }
+}
+
+fn append_target(menu: &gio::Menu, label: &str, action: &str, index: usize) {
+    let item = gio::MenuItem::new(Some(label), None);
+    item.set_action_and_target_value(Some(action), Some(&(index as u32).to_variant()));
+    menu.append_item(&item);
+}
+
+fn rebuild_window_menu(
+    ui: &NavigationUi,
+    workspaces: &[(WorkspaceId, String)],
+    tabs: &[(TabId, String)],
+) {
+    ui.workspace_menu.remove_all();
+    for (index, (_, name)) in workspaces.iter().take(9).enumerate() {
+        append_target(
+            &ui.workspace_menu,
+            &format!("{}  {name}", index + 1),
+            "app.select-workspace",
+            index,
+        );
+    }
+    if workspaces.len() > 9 {
+        ui.workspace_menu.append(
+            Some(&format!(
+                "… {} more workspaces (use the sidebar)",
+                workspaces.len() - 9
+            )),
+            None,
+        );
+    }
+
+    ui.tab_menu.remove_all();
+    for (index, (_, name)) in tabs.iter().take(9).enumerate() {
+        append_target(
+            &ui.tab_menu,
+            &format!("{}  {name}", index + 1),
+            "app.select-tab",
+            index,
+        );
+    }
+    if tabs.len() > 9 {
+        ui.tab_menu.append(
+            Some(&format!(
+                "… {} more tabs (use the tab strip)",
+                tabs.len() - 9
+            )),
+            None,
+        );
+    }
+}
+
+fn show_keyboard_shortcuts(window: &ApplicationWindow, terminal: &Rc<RefCell<Terminal>>) {
+    let shortcuts = terminal.borrow().shortcuts.clone();
+    let mut detail = CommandId::ALL
+        .iter()
+        .filter_map(|command| {
+            Some(format!(
+                "{}: {}",
+                command.as_str(),
+                shortcuts.accelerator_for_command(*command)?
+            ))
+        })
+        .collect::<Vec<_>>();
+    if let Some(accelerator) = shortcuts.accelerator_for_action(ShortcutAction::CommandPalette) {
+        detail.push(format!("command-palette: {accelerator}"));
+    }
+    gtk::AlertDialog::builder()
+        .message("Keyboard Shortcuts")
+        .detail(detail.join("\n"))
+        .buttons(["Close"])
+        .build()
+        .show(Some(window));
+}
+
+fn show_about(window: &ApplicationWindow) {
+    let dialog = AboutDialog::new();
+    dialog.set_transient_for(Some(window));
+    dialog.set_modal(true);
+    dialog.set_program_name(Some("Kitmux"));
+    dialog.set_version(Some(env!("CARGO_PKG_VERSION")));
+    dialog.set_license_type(License::Gpl30Only);
+    dialog.set_comments(Some("Linux-first terminal multiplexer"));
+    dialog.set_system_information(Some(
+        "Bundled attribution notices: share/THIRD_PARTY.md and share/licenses/",
+    ));
+    dialog.set_website(Some("https://digitalwestern.github.io/kitmux-website/"));
+    dialog.present();
+}
+
 fn apply_navigation_command(terminal: &Rc<RefCell<Terminal>>, command: CommandId, reviewed: bool) {
     let effect = terminal.borrow_mut().navigation_action(command);
     if reviewed && matches!(effect, NavigationEffect::CloseWindow) {
@@ -4450,7 +4922,10 @@ fn request_navigation_command(
     }
     if !matches!(
         command,
-        CommandId::PaneClose | CommandId::GroupClose | CommandId::WorkspaceClose
+        CommandId::PaneClose
+            | CommandId::TabClose
+            | CommandId::GroupClose
+            | CommandId::WorkspaceClose
     ) {
         apply_navigation_command(terminal, command, false);
         return;
@@ -4782,6 +5257,23 @@ fn execute_palette_command(
     area: &GLArea,
 ) {
     match command {
+        CommandId::AppQuit => window.close(),
+        CommandId::AppHelp => {
+            open_url("https://digitalwestern.github.io/kitmux-website/".to_owned())
+        }
+        CommandId::AppAbout => show_about(window),
+        CommandId::AppReportIssue => {
+            open_url("https://github.com/DigitalWestern/kitmux-website/issues".to_owned())
+        }
+        CommandId::TerminalSelectAll => terminal.borrow_mut().select_all(area),
+        CommandId::TerminalFindNext | CommandId::TerminalFindPrevious => {
+            let backwards = command == CommandId::TerminalFindPrevious;
+            if !terminal.borrow_mut().navigate_search(backwards) {
+                area.error_bell();
+            }
+        }
+        CommandId::PaneZoom => terminal.borrow_mut().toggle_zoom(area),
+        CommandId::AppFullScreen => terminal.borrow_mut().toggle_fullscreen(window),
         CommandId::TerminalCopy => copy_selection(area, terminal),
         CommandId::TerminalPaste => request_paste(window, area, terminal),
         CommandId::TerminalFind => {
@@ -4986,6 +5478,8 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
     content.set_margin_bottom(16);
     let restore = gtk::CheckButton::with_label("Restore workspace layout on launch");
     restore.set_active(resolved.restore_layout == RestoreLayoutPolicy::Always);
+    let menu_bar = gtk::CheckButton::with_label("Show menu bar on launch");
+    menu_bar.set_active(resolved.menu_bar_visible_on_launch);
     let sidebar = gtk::CheckButton::with_label("Show workspace sidebar on launch");
     sidebar.set_active(resolved.sidebar_visible_on_launch);
     let confirm = gtk::CheckButton::with_mnemonic("_Confirm before closing running processes");
@@ -5010,6 +5504,7 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
     actions.append(&save);
     for widget in [
         restore.upcast_ref::<gtk::Widget>(),
+        menu_bar.upcast_ref(),
         sidebar.upcast_ref(),
         confirm.upcast_ref(),
         paste_label.upcast_ref(),
@@ -5025,6 +5520,7 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
     dialog.set_child(Some(&content));
     for (widget, name) in [
         (restore.upcast_ref::<gtk::Widget>(), "restore"),
+        (menu_bar.upcast_ref(), "menu-bar"),
         (sidebar.upcast_ref(), "sidebar"),
         (confirm.upcast_ref(), "confirm"),
         (paste.upcast_ref(), "paste-threshold"),
@@ -5075,6 +5571,7 @@ fn request_settings(window: &ApplicationWindow, area: &GLArea, terminal: &Rc<Ref
         } else {
             RestoreLayoutPolicy::Never
         };
+        resolved.menu_bar_visible_on_launch = menu_bar.is_active();
         resolved.sidebar_visible_on_launch = sidebar.is_active();
         resolved.sidebar_collapsed_on_launch = !sidebar.is_active();
         resolved.confirm_close_with_running_process = confirm.is_active();

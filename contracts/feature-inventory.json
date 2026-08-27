@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "reference_tag": "macos-linux-port-baseline-2026-08-02-v0.21",
-  "updated": "2026-08-18",
+  "updated": "2026-08-19",
   "notes": {
     "granularity": "Schema 2 decomposed the original 16 subsystem rows into per-behavior rows. At subsystem granularity a Phase 9 parity claim was unfalsifiable: an entire area could be marked shipped while half of it was missing. Every row here states one observable behavior and names the macOS test that pins it.",
     "macos_tests": "An entry is `path` or `path::anchor`. An anchor names a Swift, Python, or C function definition, or — for the monolithic C gates, which are one main() with no per-case functions — the `// vN.M feature` comment that labels the block asserting that behavior. `contracts/validate-inventory.py` resolves every anchor against the macOS checkout; a bare `path` means the whole file is the case (test_engine.c) or that no finer anchor exists in it. All anchors resolve at tag macos-linux-port-baseline-2026-08-02-v0.21.",
@@ -79,6 +79,11 @@
     {
       "id": "desktop.clipboard-notifications",
       "title": "Desktop clipboard and notifications",
+      "classification": "beta"
+    },
+    {
+      "id": "desktop.menu-bar",
+      "title": "In-window GTK menu bar",
       "classification": "beta"
     },
     {
@@ -1038,7 +1043,7 @@
         "kitmux-linux/rust/model/tests/interaction_tests.rs::command_palette_filtering_preserves_catalog_order_and_ranks_prefixes",
         "kitmux-linux/scripts/test-phase5-product.sh"
       ],
-      "linux_status": "exact 38-ID order, semantic-action mapping, and macOS consumption of the Linux-produced catalog proven display-free in Slices 3.2 and 3.3; Slice 5.3 proves stable empty-query order, prefix ranking, native keyboard filtering, disabled unsupported entries, and supported product routing"
+      "linux_status": "exact 49-ID order, semantic-action mapping, and macOS consumption of the Linux-produced catalog proven display-free in Slices 3.2 and 3.3; Slice 5.3 proves stable empty-query order, prefix ranking, native keyboard filtering, disabled unsupported entries, and supported product routing; menu-bar build Slice 7.1 adds the ten Linux menu commands"
     },
     {
       "id": "navigation.namespaced-chords",
@@ -1413,7 +1418,7 @@
     {
       "id": "desktop.notifications",
       "area": "desktop.clipboard-notifications",
-      "classification": "beta",
+      "classification": "later",
       "behavior": "Terminal notifications surface through the desktop notification service with focus-aware unread state.",
       "macos_sources": [
         "macos/KitmuxApp/Sources/KitmuxCore/NotificationBadge.swift",
@@ -1431,7 +1436,7 @@
       ],
       "translation": "Portal behavior must be re-tested inside sandboxed packages.",
       "linux_tests": [],
-      "linux_status": "unproven"
+      "linux_status": "unproven; deferred by the Phase 7 terminal-only beta decision"
     },
     {
       "id": "control.framing-bounds",
@@ -1606,22 +1611,133 @@
       ],
       "translation": "Add WebKitGTK only after the toolkit and a supported security branch are fixed. Optional for a terminal-only beta.",
       "linux_tests": [],
-      "linux_status": "unproven"
+      "linux_status": "unproven; deferred by the Phase 7 terminal-only beta decision"
+    },
+    {
+      "id": "desktop.menu-bar",
+      "area": "desktop.menu-bar",
+      "classification": "beta",
+      "behavior": "Linux exposes an in-window GTK PopoverMenuBar with File, Edit, View, Window, and Help menus.",
+      "macos_sources": [],
+      "macos_tests": [],
+      "linux_acceptance": "The application menu model, application actions, persisted visibility, and menu accessibility are exercised by the Linux product gate.",
+      "dependencies": [
+        "navigation.command-catalog",
+        "settings.schema-bounds"
+      ],
+      "translation": "Linux-first product surface; no macOS parity claim is required.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "unproven; approved scope and contract recorded for menu-bar build Slice 7.1"
+    },
+    {
+      "id": "desktop.menu-bar.file",
+      "area": "desktop.menu-bar",
+      "classification": "beta",
+      "behavior": "The File menu exposes terminal, workspace, group, split, close, and quit actions while disabled unsupported entries remain visible.",
+      "macos_sources": [],
+      "macos_tests": [],
+      "linux_acceptance": "File items use the stable command catalog and the existing foreground-process close review chain.",
+      "dependencies": [
+        "desktop.menu-bar",
+        "navigation.command-catalog",
+        "safety.close-offer"
+      ],
+      "translation": "Linux-first product surface; New Window and unreviewed SSH connect remain visibly disabled until their prerequisites exist.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "unproven; File menu implementation is part of menu-bar build Slice 7.1"
+    },
+    {
+      "id": "desktop.menu-bar.edit",
+      "area": "desktop.menu-bar",
+      "classification": "beta",
+      "behavior": "The Edit menu exposes terminal copy, reviewed paste, selection, search navigation, scrollback, and inert resume-command controls.",
+      "macos_sources": [],
+      "macos_tests": [],
+      "linux_acceptance": "Edit actions reuse the terminal clipboard, bracketed-paste review, search, and Slice 6.3 resume paths.",
+      "dependencies": [
+        "desktop.menu-bar",
+        "keyboard.paste-safety",
+        "terminal.scrollback"
+      ],
+      "translation": "Linux-first product surface; menu actions inherit existing terminal safety checks.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "unproven; Edit menu implementation is part of menu-bar build Slice 7.1"
+    },
+    {
+      "id": "desktop.menu-bar.view",
+      "area": "desktop.menu-bar",
+      "classification": "beta",
+      "behavior": "The View menu exposes sidebar, font, tab/group navigation, pane focus/resize, pane zoom, and full-screen controls.",
+      "macos_sources": [],
+      "macos_tests": [],
+      "linux_acceptance": "View items route through the existing navigation and settings model and preserve updated shortcut accelerators.",
+      "dependencies": [
+        "desktop.menu-bar",
+        "navigation.command-catalog",
+        "settings.schema-bounds"
+      ],
+      "translation": "Linux-first product surface; full-screen is a GTK window action and pane zoom is a Linux host view state.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "unproven; View menu implementation is part of menu-bar build Slice 7.1"
+    },
+    {
+      "id": "desktop.menu-bar.window",
+      "area": "desktop.menu-bar",
+      "classification": "beta",
+      "behavior": "The Window menu dynamically lists bounded workspace and tab selections, labels overflow, and exposes current workspace/tab actions.",
+      "macos_sources": [],
+      "macos_tests": [],
+      "linux_acceptance": "The dynamic sections rebuild from the navigation model after each change and never silently truncate entries.",
+      "dependencies": [
+        "desktop.menu-bar",
+        "hierarchy.ownership"
+      ],
+      "translation": "The current single-window Linux host uses Window as a workspace/tab switcher; New Window is deferred to multi-window support.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "unproven; Window menu implementation is part of menu-bar build Slice 7.1"
+    },
+    {
+      "id": "desktop.menu-bar.help",
+      "area": "desktop.menu-bar",
+      "classification": "beta",
+      "behavior": "The Help menu exposes bundled documentation, generated keyboard shortcuts, the command palette, Linux-disabled legacy actions, About, and issue reporting.",
+      "macos_sources": [],
+      "macos_tests": [],
+      "linux_acceptance": "Help actions use the existing URL opener, GTK AboutDialog, and current ShortcutMap without duplicating accelerator definitions.",
+      "dependencies": [
+        "desktop.menu-bar",
+        "navigation.command-catalog"
+      ],
+      "translation": "Linux-first product surface; Help links to the existing Kitmux website and Report an Issue opens its public issue destination.",
+      "linux_tests": [
+        "kitmux-linux/scripts/test-phase5-product.sh"
+      ],
+      "linux_status": "unproven; Help menu implementation is part of menu-bar build Slice 7.1"
     },
     {
       "id": "macos-only.appkit-surfaces",
       "area": "macos-only.desktop-integration",
       "classification": "intentionally-omitted",
-      "behavior": "AppKit window chrome, Dock/menu-bar integration, launch-at-login, Command-key chord encodings, notarization, and Keychain use are macOS-only.",
+      "behavior": "AppKit window chrome, Dock integration, launch-at-login, Command-key chord encodings, notarization, and Keychain use are macOS-only.",
       "macos_sources": [
         "macos/KitmuxApp/Sources/Kitmux/main.swift",
         "macos/KitmuxApp/Sources/Kitmux/TitlebarView.swift",
         "macos/KitmuxApp/Sources/Kitmux/WindowControlsView.swift"
       ],
       "macos_tests": [],
-      "linux_acceptance": "Not applicable. Linux equivalents, where any exist, are separate rows under desktop.* and are not parity obligations.",
+      "linux_acceptance": "Not applicable to the remaining AppKit-only surfaces. The Linux menu bar is a separate approved product area under desktop.menu-bar.",
       "dependencies": [],
-      "translation": "Intentionally omitted. Do not port; do not count against parity.",
+      "translation": "Intentionally omitted for the remaining AppKit-only surfaces; Linux menu-bar behavior is specified and tested separately.",
       "linux_tests": [],
       "linux_status": "intentionally omitted"
     }

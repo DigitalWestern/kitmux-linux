@@ -1,6 +1,6 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-08-18
+**Last inspected:** 2026-08-23
 
 This file is the evidence ledger and the authority on what is currently true.
 The next slice is in [`NEXT_STEPS.md`](NEXT_STEPS.md); phase scope is in
@@ -36,6 +36,113 @@ repository root.
 ## Verified checkout state
 
 Adjacent macOS checkout: `../macos/kitmux/`
+
+### 2026-08-26 — Approved Linux menu-bar build Slice 7.1, contract and model slice
+
+- The approved Linux-first menu bar is a beta surface but does not replace or
+  delay the physical-GPU, remote-CI, x86_64, signing, vulnerability, or other
+  release-readiness gates. It is visible by default. New Window and SSH
+  connect are intentionally rendered disabled until their prerequisites are
+  implemented. Help uses the existing Kitmux website URL; Report an Issue uses
+  the public issue destination documented in `docs/MENUBAR_PLAN.md`.
+- Added the `desktop.menu-bar` area and File/Edit/View/Window/Help rows, and
+  amended `macos-only.appkit-surfaces` so it no longer calls Linux menu bars
+  omitted. The inventory contract validates after this entry is recorded.
+- The command catalog is now 49 IDs: the ten Linux menu commands are appended
+  in deterministic order, with semantic mappings, fixture coverage, and the
+  count assertion updated. `cargo test --manifest-path
+  kitmux-linux/rust/model/Cargo.toml` passed 4 unit, 29 contract, 9
+  interaction, 18 model, and 5 persistence tests.
+- Menu GTK/app Clippy/product-gate evidence is still pending on the ARM64
+  desktop VM. A host `cargo check` is not authoritative here: this macOS host
+  has no GTK4 pkg-config development files and no `KITMUX_NATIVE_LIB_DIR`.
+
+### 2026-08-26 — Menu-bar closeout handoff
+
+- Implemented the GTK 4 in-window File/Edit/View/Window/Help menu surface in
+  `rust/app`, backed by the existing command catalog, shortcut map,
+  `palette_command_supported`, and navigation dispatch. Added dynamic
+  workspace/tab menu sections, overflow labels, disabled New Window and SSH
+  entries, foreground close review routing, persisted visibility, and the ten
+  requested command IDs. The per-agent menu remains intentionally unbuilt.
+- Updated `docs/MENUBAR_PLAN.md`, `docs/LINUX_DEVELOPMENT.md`, the inventory,
+  command/settings fixtures, model tests, and this handoff. The stale
+  macOS-only inventory claim is corrected; no macOS checkout was edited.
+- Observed passing: `git diff --check`; app `cargo fmt -- --check`; model test
+  suite (4 unit, 29 contract, 9 interaction, 18 model, 5 persistence tests);
+  and `python3 contracts/validate-inventory.py` (`70 features across 18
+  areas`, `inventory OK`). The ARM64 release runtime also built and passed its
+  existing relocation, metadata, flood, forced-close, and FD checks.
+- The final ARM64 `test-phase5-product.sh` menu traversal gate is not claimed
+  as passed. The app reached `accessibility_ready roles=true focus=true` and
+  emitted the F10 diagnostic, but the gate did not observe the complete
+  arrow/Escape traversal before the closeout stop. The last retry ended with
+  exit 141 before producing a new gate result. ARM64 GUI evidence remains
+  X11/Mesa llvmpipe; physical GPU, remote CI, x86_64, signing, clean-machine,
+  and vulnerability proof remain open release boundaries.
+
+### 2026-08-23 — Local audit fixes and complete aggregate gate passed
+
+- Fixed the restored-cwd root cause in `rust/app`: a missing or invalid saved
+  cwd now launches from the home fallback without being falsely reported as a
+  restored cwd. The current surface schema is covered by the persistence gate;
+  the persistence and bash/zsh/fish/vim/less/tmux gates both passed after the
+  fix. `cargo fmt --manifest-path kitmux-linux/rust/app/Cargo.toml -- --check`
+  also passed.
+- The Kitty development wrapper now repairs dependency trees only from a
+  hash-matching locked archive and removes the known dangling fontconfig links
+  left by the explicitly unlocked x86_64 fallback. The fallback remains
+  intentionally non-reproducible. Clean VM provisioning now installs the
+  locked toolchain's `rustfmt` and `clippy` components.
+- `KITMUX_DISPLAY=:1 bash kitmux-linux/scripts/test-all.sh` passed end to end:
+  the 1,800-second soak completed 1,089 iterations, 161 heartbeats, and a
+  340 ms maximum heartbeat; Phase 5 product/navigation, Slice 6 control,
+  resume, SSH, release, package, clean-target, and clean-container gates all
+  passed. The final result was `All Kitmux Linux gates: OK`.
+- The aggregate verified the relocatable runtime and `share/SHA256SUMS`, ran
+  two stable Ubuntu clean-release passes with inventory
+  `d0db246996abdf4e24570b4bb3cccd8adec5ccf312603761c5f1e6985f0b3d49`, and two
+  stable Fedora passes with inventory
+  `a105cca8b134d9b1e3c7a15a9b25284b958d6246dd42bf5577d361d9596f4455`.
+  The ARM64 package lifecycle also passed; its aggregate tarball and Debian
+  package hashes were `496115f1e1ad46cd16601987b4509771e2bb4125a655457c16a142e5feb16449`
+  and `a1f0bcf5e04fc4af94e24f447452518b4044a54b383099a27e2c4fe357c4dc8a`.
+- The dirty macOS reference worktree's complete `make -C
+  ../macos/kitmux/libkitty test` suite now passes, including the former
+  foreground-process failure. This is not a clean macOS rebaseline: relevant
+  macOS files remain uncommitted, so reference drift stays blocked. The final
+  drift report recorded current macOS `HEAD` `7daea1d6e18862447bc69b1f0cd73c3b1184e2ed`,
+  seven relevant committed files, and two relevant uncommitted files.
+- Current GUI evidence remains Ubuntu ARM64 X11 under Mesa llvmpipe
+  (`llvmpipe (LLVM 21.1.8, 128 bits)`), not physical-GPU evidence. The x86_64
+  compact fallback standalone smoke passes, but the exact locked dependency
+  bundle is still unavailable; no x86_64 reproducibility or package claim is
+  made. This checkout has no Git remote, so remote CI was not triggered.
+- Source-tested, GUI-tested, release-runtime-tested, package-lifecycle-tested,
+  clean-target-tested, and clean-container-tested: yes as stated above.
+  Physical-GPU, remote-CI, exact x86_64 bundle/package, real SSH/network
+  authentication, power-loss, signing, vulnerability, full AT-SPI, and
+  desktop-menu interaction evidence remain open.
+
+### 2026-08-19 — Terminal-beta parity scope reviewed
+
+- `python3 contracts/validate-inventory.py` passed with 135 Linux references,
+  234 macOS references at the locked baseline, and 64 features across 17 areas.
+- The inventory now classifies 54 rows as terminal-alpha, 7 as beta, 2 as
+  later, and 1 as intentionally omitted. Browser panes and desktop
+  notifications are explicitly later under the approved terminal-only beta;
+  this is scope deferral, not implementation evidence.
+
+### 2026-08-18 — Reference drift rechecked
+
+- `kitmux-linux/scripts/report-reference-drift.py` found frozen tag commit
+  `3088295003c0842d7c3198102d0d05378da4dc62` and current macOS `HEAD`
+  `dd798393c861e11883d4e215da181fc619c00ce9`.
+- Six relevant committed files have drifted: one contract-affecting header and
+  five behavior-affecting or unrelated files. Two relevant uncommitted macOS
+  files remain (`libkitty/py/glue.py` and `macos/KitmuxApp/Sources/Kitmux/PaneRuntime.swift`).
+- Rebaselining remains intentionally blocked until those macOS changes are
+  clean and reviewed; no macOS files were changed here.
 
 ### 2026-08-18 — Slice 6.3 resume and recovery closed
 
@@ -168,6 +275,14 @@ Adjacent macOS checkout: `../macos/kitmux/`
   first-run late heartbeat remains a VM-stability observation; it is not hidden
   as a pass. Physical GPU, x86_64, remote CI, package signing/vulnerability,
   complete AT-SPI, and power-loss evidence remain open.
+
+### 2026-08-18 — Short soak smoke attempt not accepted
+
+- A 60-second retry was attempted after starting the documented TigerVNC
+  display. It reached `soak progress: 60/60s` but exited without an `OK` result.
+- A traced 10-second run identified the short-run assertion: only one pointer
+  event and zero scroll events were observed against a minimum of three. This
+  is not a soak pass and does not replace the recorded 1,800-second result.
 
 ### 2026-08-18 — Confirmed audit findings remediated
 

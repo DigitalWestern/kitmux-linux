@@ -70,7 +70,7 @@ if missing:
         raise SystemExit(message)
     print(
         message
-        + "; using the explicit source-built dependency fallback for "
+        + "; using the explicit unlocked dependency fallback for "
         + platform
     )
     raise SystemExit(0)

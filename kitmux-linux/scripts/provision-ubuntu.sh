@@ -20,5 +20,13 @@ if ! command -v rustup >/dev/null 2>&1; then
     | sh -s -- -y --profile minimal --default-toolchain 1.97.1
 fi
 
+# rustup's installer updates PATH only for new shells.  Continue provisioning
+# this shell explicitly so a clean VM does not stop before the locked toolchain
+# check.
+if [[ -f "${HOME}/.cargo/env" ]]; then
+  # shellcheck disable=SC1091
+  source "${HOME}/.cargo/env"
+fi
 rustup toolchain install 1.97.1 --profile minimal
 rustup default 1.97.1
+rustup component add rustfmt clippy --toolchain 1.97.1

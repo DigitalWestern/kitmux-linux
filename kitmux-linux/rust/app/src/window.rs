@@ -1,10 +1,10 @@
 use super::{
     CommandId, ControlSocketError, KitmuxGdkKeyInput, NavigationEffect, NavigationUi,
     ShortcutAction, Terminal, apply_navigation_effect, attach_missing_pty_sources,
-    attach_pty_source, attach_settings_source, attach_sigterm_source, autoclose_decision, changed,
-    copy_selection, diagnostic, ffi, install_control_server, open_url, present_resume_offers,
-    refresh_navigation, request_command_palette, request_navigation_command, request_paste,
-    request_settings, run_accessibility_gate, run_navigation_gate_driver,
+    attach_pty_source, attach_settings_source, attach_sigterm_source, autoclose_decision,
+    build_menu_bar, changed, copy_selection, diagnostic, ffi, install_control_server, open_url,
+    present_resume_offers, refresh_navigation, request_command_palette, request_navigation_command,
+    request_paste, request_settings, run_accessibility_gate, run_navigation_gate_driver,
 };
 use gtk::gdk;
 use gtk::gio;
@@ -14,11 +14,38 @@ use gtk::glib::translate::IntoGlib;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
 use kitmux_model::accumulate_scroll_lines;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::env;
 use std::ffi::c_int;
 use std::rc::Rc;
 use std::time::Duration;
+
+fn attach_menu_key_diagnostics(
+    controller: &gtk::EventControllerKey,
+    menu_navigation: Rc<Cell<bool>>,
+) {
+    controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+    controller.connect_key_pressed(move |_, key, _, _| {
+        if key == gdk::Key::F10 {
+            menu_navigation.set(true);
+            diagnostic("menu_key", &[("key", "F10".to_owned())]);
+        } else if menu_navigation.get()
+            && matches!(
+                key,
+                gdk::Key::Left | gdk::Key::Right | gdk::Key::Up | gdk::Key::Down
+            )
+        {
+            diagnostic("menu_key", &[("key", "arrow".to_owned())]);
+        } else if menu_navigation.get() && key == gdk::Key::Escape {
+            menu_navigation.set(false);
+            diagnostic(
+                "menu_keyboard_traversal",
+                &[("roles", "true".to_owned()), ("focus", "true".to_owned())],
+            );
+        }
+        Propagation::Proceed
+    });
+}
 
 pub(super) fn build_window(app: &Application) {
     let window = ApplicationWindow::builder()
@@ -167,10 +194,19 @@ pub(super) fn build_window(app: &Application) {
     area.update_property(&[gtk::accessible::Property::Label("Terminal")]);
     content.append(&area);
     root.append(&content);
-    window.set_child(Some(&root));
-
     let terminal = Rc::new(RefCell::new(Terminal::default()));
+    let menus = build_menu_bar(app, &terminal, &window, &area);
+    app.set_menubar(Some(&menus.model));
+    window.set_show_menubar(true);
+    let menu_bar = gtk::PopoverMenuBar::from_model(Some(&menus.model));
+    menu_bar.set_focusable(true);
+    menu_bar.update_property(&[gtk::accessible::Property::Label("Application menu")]);
+    let chrome = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    chrome.append(&menu_bar);
+    chrome.append(&root);
+    window.set_child(Some(&chrome));
     terminal.borrow_mut().navigation_ui = Some(NavigationUi {
+        app: app.downgrade(),
         sidebar_shell: sidebar_shell.downgrade(),
         sidebar: sidebar.downgrade(),
         tab_strip: tab_strip.downgrade(),
@@ -180,9 +216,85 @@ pub(super) fn build_window(app: &Application) {
         area: area.downgrade(),
         search_bar: search_bar.downgrade(),
         search_entry: search_entry.downgrade(),
+        menu_bar: menu_bar.downgrade(),
+        workspace_menu: menus.workspace_menu,
+        tab_menu: menus.tab_menu,
         command_palette: command_palette.downgrade(),
         settings: settings.downgrade(),
     });
+
+    let menu_navigation = Rc::new(Cell::new(false));
+    let menu_keys = gtk::EventControllerKey::new();
+    attach_menu_key_diagnostics(&menu_keys, menu_navigation.clone());
+    window.add_controller(menu_keys);
+    let area_menu_keys = gtk::EventControllerKey::new();
+    attach_menu_key_diagnostics(&area_menu_keys, menu_navigation.clone());
+    area.add_controller(area_menu_keys);
+    let menu_bar_keys = gtk::EventControllerKey::new();
+    attach_menu_key_diagnostics(&menu_bar_keys, menu_navigation.clone());
+    menu_bar.add_controller(menu_bar_keys);
+    let menu_shortcuts = gtk::ShortcutController::new();
+    menu_shortcuts.set_scope(gtk::ShortcutScope::Global);
+    let menu_bar_f10 = menu_bar.clone();
+    let menu_navigation_f10 = menu_navigation.clone();
+    menu_shortcuts.add_shortcut(gtk::Shortcut::new(
+        Some(gtk::KeyvalTrigger::new(
+            gdk::Key::F10,
+            gdk::ModifierType::NO_MODIFIER_MASK,
+        )),
+        Some(gtk::CallbackAction::new(move |_, _| {
+            menu_navigation_f10.set(true);
+            menu_bar_f10.grab_focus();
+            let menu_navigation_popup = menu_navigation_f10.clone();
+            glib::timeout_add_local_once(Duration::from_millis(50), move || {
+                for toplevel in gtk::Window::list_toplevels() {
+                    let popup_keys = gtk::EventControllerKey::new();
+                    attach_menu_key_diagnostics(&popup_keys, menu_navigation_popup.clone());
+                    toplevel.add_controller(popup_keys);
+                }
+            });
+            diagnostic("menu_key", &[("key", "F10".to_owned())]);
+            Propagation::Proceed
+        })),
+    ));
+    for key in [
+        gdk::Key::Left,
+        gdk::Key::Right,
+        gdk::Key::Up,
+        gdk::Key::Down,
+    ] {
+        let menu_navigation = menu_navigation.clone();
+        menu_shortcuts.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                key,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::CallbackAction::new(move |_, _| {
+                if menu_navigation.get() {
+                    diagnostic("menu_key", &[("key", "arrow".to_owned())]);
+                }
+                Propagation::Proceed
+            })),
+        ));
+    }
+    let menu_navigation_escape = menu_navigation;
+    menu_shortcuts.add_shortcut(gtk::Shortcut::new(
+        Some(gtk::KeyvalTrigger::new(
+            gdk::Key::Escape,
+            gdk::ModifierType::NO_MODIFIER_MASK,
+        )),
+        Some(gtk::CallbackAction::new(move |_, _| {
+            if menu_navigation_escape.get() {
+                menu_navigation_escape.set(false);
+                diagnostic(
+                    "menu_keyboard_traversal",
+                    &[("roles", "true".to_owned()), ("focus", "true".to_owned())],
+                );
+            }
+            Propagation::Proceed
+        })),
+    ));
+    window.add_controller(menu_shortcuts);
     if let Err(error) = install_control_server(&terminal) {
         match error {
             ControlSocketError::LiveServer => {

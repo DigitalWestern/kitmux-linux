@@ -44,6 +44,7 @@ pub enum WorkspaceActiveStyle {
 pub struct ValidatedSettings {
     pub restore_scrollback: bool,
     pub restore_layout: RestoreLayoutPolicy,
+    pub menu_bar_visible_on_launch: bool,
     pub sidebar_visible_on_launch: bool,
     pub sidebar_collapsed_on_launch: bool,
     pub paste_confirmation_threshold_bytes: u64,
@@ -67,6 +68,7 @@ impl Default for ValidatedSettings {
         Self {
             restore_scrollback: false,
             restore_layout: RestoreLayoutPolicy::Always,
+            menu_bar_visible_on_launch: true,
             sidebar_visible_on_launch: true,
             sidebar_collapsed_on_launch: false,
             paste_confirmation_threshold_bytes: 8192,
@@ -188,6 +190,7 @@ fn validated_map(raw: &Map<String, Value>) -> Map<String, Value> {
     let mut valid = Map::new();
     accept_bool(raw, &mut valid, "restoreScrollback");
     accept_choice(raw, &mut valid, "restoreLayout", &["always", "never"]);
+    accept_bool(raw, &mut valid, "menuBarVisibleOnLaunch");
     accept_bool(raw, &mut valid, "sidebarVisibleOnLaunch");
     accept_bool(raw, &mut valid, "sidebarCollapsedOnLaunch");
     accept_integer(
@@ -238,6 +241,7 @@ fn resolve(valid: &Map<String, Value>) -> ValidatedSettings {
         };
     }
     bool_value!(restore_scrollback, "restoreScrollback");
+    bool_value!(menu_bar_visible_on_launch, "menuBarVisibleOnLaunch");
     if let Some(value) = valid.get("sidebarVisibleOnLaunch").and_then(Value::as_bool) {
         resolved.sidebar_visible_on_launch = value;
         resolved.sidebar_collapsed_on_launch = !value;
