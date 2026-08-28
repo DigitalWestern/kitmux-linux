@@ -65,6 +65,15 @@ if [[ "$kitty_platform" == "linux-64" && ! -e "$deps" ]]; then
   ln -s "$kitty_develop_platform" "$deps"
 fi
 
+# Kitty's `dev.sh deps` normally extracts the builtin symbols font; the locked
+# path skips it, so a clean checkout needs the same extraction or setup.py
+# falls back to fc-list and fails on hosts without the font installed.
+fonts_archive="$kitty/dependencies/NerdFontsSymbolsOnly.tar.xz"
+if [[ ! -f "$kitty/fonts/SymbolsNerdFontMono-Regular.ttf" && -f "$fonts_archive" ]]; then
+  mkdir -p "$kitty/fonts"
+  tar -xf "$fonts_archive" -C "$kitty/fonts" SymbolsNerdFontMono-Regular.ttf
+fi
+
 cd "$kitty"
 ./dev.sh build --skip-building-kitten
 # Kitty deliberately uses the system fontconfig on Linux.  Its dependency
