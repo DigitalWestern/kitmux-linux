@@ -14,8 +14,8 @@ Directory map:
 
 | Path | Contents |
 | --- | --- |
-| `rust/model` | Display-free product model. No display, libkitty, WebKit, shell-execution, or network dependency. |
-| `rust/app` | Release-shaped Rust/GTK application and the `kitmuxctl` client. |
+| `rust/model` | Display-free product model plus the `kitmuxctl` and import-preview binaries. No display, libkitty, WebKit, shell-execution, or network dependency. |
+| `rust/app` | Release-shaped Rust/GTK application, split into focused modules under `src/`. |
 | `rust/header-smoke` | Rust-side check of the public `libkitty` struct layout. |
 | `src` | Durable C behind the FFI boundary, plus the disposable `gtk_terminal_host.c` spike (ADR 0007). |
 | `tests` | C harnesses: key matrix, PTY input recorder, X11 key injector, header compiles, session stress. |

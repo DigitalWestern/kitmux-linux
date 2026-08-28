@@ -1,6 +1,6 @@
 # Kitmux Linux Port Status
 
-**Last inspected:** 2026-08-23
+**Last inspected:** 2026-08-27
 
 This file is the evidence ledger and the authority on what is currently true.
 The next slice is in [`NEXT_STEPS.md`](NEXT_STEPS.md); phase scope is in
@@ -18,8 +18,10 @@ alpha; and secure local control plus reviewed SSH connect/reconnect workflows.
 
 The alpha has live hierarchy navigation, nested terminal splits, one permanent
 libkitty session per live surface, selection/clipboard/paste-safety/mouse/wheel/
-search, native command and settings controls, full safe hierarchy persistence,
+search, native command and settings controls, an in-window menu bar (its
+keyboard-traversal gate check is still open), full safe hierarchy persistence,
 close-chain foreground review, and initial accessible roles and focus order.
+The app crate is modularized (2026-08-27) with no intended behavior change.
 Reproducible ARM64 tarball and `.deb` artifacts now exist and have passed a
 fresh-VM lifecycle gate; promotion is still blocked by the remaining hardware,
 architecture, CI, and threat/soak evidence below.
@@ -1876,10 +1878,12 @@ is recorded only after the corresponding gate runs.
   `../macos/kitmux`, and `test-standalone.sh` passed in the ARM64 headless VM
   with that checkout unavailable. This closes the current ARM64 standalone
   source obligation; x86_64 remains unbuilt.
-- **R2 — automated workflow added; run pending.**
+- **R2 — automated workflow added; remote now exists, run pending.**
   `.github/workflows/linux-standalone.yml` triggers the standalone ARM64
-  headless gate on push, pull request, and manual dispatch. This checkout has
-  no remote, so the workflow has not run here and R2 is not yet claimed closed.
+  headless gate on push, pull request, and manual dispatch. As of 2026-08-27
+  this checkout has a GitHub remote
+  (`DigitalWestern/kitmux-linux`); R2 closes only when a remote run's result
+  is recorded in this ledger.
 - **R3 — closed 2026-07-28.** `scripts/test-desktop.sh` accepts a
   caller-supplied `DISPLAY`; noVNC is optional in that mode. Its full X11 and
   nested-Wayland gate passed after the change, and cleanup restores the
@@ -1919,8 +1923,12 @@ Phases 0 through 5 and Slices 6.1–6.3 are closed; GTK 4 is selected, and the
 release-shaped terminal multiplexer alpha has hierarchy navigation, nested
 splits, one permanent session per live surface, native command/settings
 controls, full safe hierarchy persistence, reviewed SSH workflows, inert
-resume/recovery, and close-chain foreground review. The macOS/libkitty v0.21
-reference is locked and the ARM64 standalone/headless gates pass.
+resume/recovery, close-chain foreground review, and an in-window menu bar.
+The macOS/libkitty v0.21 reference is locked and the ARM64 standalone/headless
+gates pass. The app crate was modularized on 2026-08-27 with the desktop
+navigation/control/resume/SSH/Phase 4 gates green; the one open app gate is
+the deterministic `test-phase5-product.sh` F10 arrow/Escape menu-traversal
+check (MENUBAR_PLAN slice 4).
 
 Phase 3 is closed through Slice 3.3. Do not expand its preview into a live
 state import, shell restore, or persistence writer. Do not begin browser

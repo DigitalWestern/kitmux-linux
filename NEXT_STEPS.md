@@ -40,11 +40,18 @@ lives in [`PORT_STATUS.md`](PORT_STATUS.md); phase scope and exit gates live in
 1. Prove one physical Mesa GPU. Capture `glxinfo -B` showing a hardware Mesa
    renderer, then run the rendering and interaction gates on that same display.
    A llvmpipe result is correctness evidence only.
-2. Run `.github/workflows/linux-standalone.yml` on its configured remote runner
-   and retain the result for ADR 0008 R2.
+2. Record a remote run of `.github/workflows/linux-standalone.yml` for ADR
+   0008 R2. The checkout now has the `DigitalWestern/kitmux-linux` GitHub
+   remote and the workflow triggers on push; retain the run result in
+   `PORT_STATUS.md`.
 3. Recover or intentionally re-lock the exact x86_64 dependency bundle, build
    and test x86_64, and complete the x86_64 package path.
-4. Decide and document the remaining release bar: real SSH/network
+4. Close the open menu-bar traversal check: `test-phase5-product.sh` fails
+   deterministically at the F10 arrow/Escape `menu_keyboard_traversal`
+   diagnostic (recorded 2026-08-27; the app reaches `accessibility_ready`
+   and emits the F10 event). This is MENUBAR_PLAN slice 4 product work in
+   `rust/app/src/window.rs`.
+5. Decide and document the remaining release bar: real SSH/network
    authentication, power-loss recovery, desktop-menu interaction, package
    signing, vulnerability review, full AT-SPI coverage, and release-maintainer
    ownership. The local long-soak, clean-target, and package lifecycle gates
