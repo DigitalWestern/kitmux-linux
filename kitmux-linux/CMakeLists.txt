@@ -43,11 +43,27 @@ endif()
 # The engine embeds the bundled Kitty python; the test environment sets
 # PYTHONHOME to that bundle, so linking any other libpython (for example the
 # distro's) makes Py_InitializeFromConfig fail on a stdlib version mismatch.
+# Pin the embed artifacts directly rather than the Interpreter component: the
+# bundled launcher does not survive FindPython3's isolated-mode interpreter
+# probe on every CMake version, and nothing here needs to run it.
 if(EXISTS "${KITTY_DEVELOP_ROOT}/bin/python")
-  set(Python3_EXECUTABLE "${KITTY_DEVELOP_ROOT}/bin/python")
-  set(Python3_ROOT_DIR "${KITTY_DEVELOP_ROOT}")
+  file(GLOB KITMUX_BUNDLED_LIBPYTHON
+    "${KITTY_DEVELOP_ROOT}/lib/libpython3.*.so.1.0")
+  file(GLOB KITMUX_BUNDLED_PYTHON_INCLUDE
+    "${KITTY_DEVELOP_ROOT}/include/python3.*")
+  list(LENGTH KITMUX_BUNDLED_LIBPYTHON _kitmux_libpython_count)
+  list(LENGTH KITMUX_BUNDLED_PYTHON_INCLUDE _kitmux_pyinclude_count)
+  if(NOT _kitmux_libpython_count EQUAL 1 OR NOT _kitmux_pyinclude_count EQUAL 1)
+    message(FATAL_ERROR
+      "Expected exactly one bundled libpython and include directory under "
+      "${KITTY_DEVELOP_ROOT}")
+  endif()
+  set(Python3_LIBRARY "${KITMUX_BUNDLED_LIBPYTHON}")
+  set(Python3_INCLUDE_DIR "${KITMUX_BUNDLED_PYTHON_INCLUDE}")
 endif()
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
+find_package(Python3 REQUIRED COMPONENTS Development.Embed)
+# Any host interpreter can run the display-free codegen script.
+find_program(KITMUX_CODEGEN_PYTHON NAMES python3 python REQUIRED)
 
 add_library(kitty SHARED
   "${LIBKITTY_ROOT}/src/engine.c"
@@ -70,9 +86,12 @@ target_compile_options(kitty PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
 target_link_options(kitty PRIVATE
   "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libkitty.map"
   "-Wl,--no-undefined")
+# BUILD_WITH_INSTALL_RPATH keeps CMake from appending the bundled libpython's
+# directory to the runpath; the ELF audit requires exactly [$ORIGIN], and the
+# test environment supplies the dependency path via LD_LIBRARY_PATH.
 set_target_properties(kitty PROPERTIES
   OUTPUT_NAME kitty
-  BUILD_RPATH "$ORIGIN"
+  BUILD_WITH_INSTALL_RPATH TRUE
   INSTALL_RPATH "$ORIGIN")
 
 add_executable(header_c tests/header_c.c)
@@ -87,7 +106,7 @@ target_compile_options(engine_lifecycle PRIVATE -UNDEBUG)
 
 set(session_test_linux "${CMAKE_CURRENT_BINARY_DIR}/generated/test_session_linux.c")
 execute_process(
-  COMMAND "${Python3_EXECUTABLE}"
+  COMMAND "${KITMUX_CODEGEN_PYTHON}"
     "${CMAKE_CURRENT_SOURCE_DIR}/scripts/port-session-test.py"
     "${LIBKITTY_ROOT}/tests/test_session.c"
     "${session_test_linux}"
