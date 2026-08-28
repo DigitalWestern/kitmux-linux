@@ -27,6 +27,7 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --profile minimal --default-toolchain 1.97.1
+          "$HOME/.cargo/bin/rustup" component add rustfmt clippy
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Verify standalone source and headless runtime
         env:
@@ -54,6 +55,7 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --profile minimal --default-toolchain 1.97.1
+          "$HOME/.cargo/bin/rustup" component add rustfmt clippy
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Verify explicit x86_64 fallback build
         env:
