@@ -36,11 +36,11 @@ The settled decisions are:
 - `rust/model/src/interaction.rs:139` — `ShortcutMap::linux_default_bindings`
   maps chords to the same `CommandId`s. Accelerator labels derive from this;
   do not hand-write accelerator strings in the menu model.
-- `rust/app/src/main.rs:4435` — `palette_command_supported` already knows the
+- `rust/app/src/menu.rs` — `palette_command_supported` already knows the
   commands that are dead on Linux (`browser.new-pane`,
   `notification.jump-unread`, `app.install-command-line-tool`,
   `app.reload-kitty-config`). Menus reuse it to disable, not hide.
-- `rust/app/src/main.rs:2915` onward — `navigation_action` dispatch, with a
+- `rust/app/src/terminal.rs` — `navigation_action` dispatch, with a
   `_ => NavigationEffect::Rejected` catch-all.
 - `contracts/fixtures/v1/command-identifiers.json` — the portable catalog
   fixture both platforms consume.

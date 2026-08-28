@@ -1,10 +1,18 @@
-use super::{
-    CommandId, ControlSocketError, KitmuxGdkKeyInput, NavigationEffect, NavigationUi,
-    ShortcutAction, Terminal, apply_navigation_effect, attach_missing_pty_sources,
-    attach_pty_source, attach_settings_source, attach_sigterm_source, autoclose_decision,
-    build_menu_bar, changed, copy_selection, diagnostic, ffi, install_control_server, open_url,
-    present_resume_offers, refresh_navigation, request_command_palette, request_navigation_command,
-    request_paste, request_settings, run_accessibility_gate, run_navigation_gate_driver,
+use crate::control::install_control_server;
+use crate::diagnostic;
+use crate::dialogs::{
+    autoclose_decision, copy_selection, open_url, present_resume_offers, request_command_palette,
+    request_navigation_command, request_paste, request_settings,
+};
+use crate::ffi::{self, KitmuxGdkKeyInput};
+use crate::menu::build_menu_bar;
+use crate::navigation::{
+    NavigationEffect, NavigationUi, apply_navigation_effect, changed, refresh_navigation,
+    run_accessibility_gate, run_navigation_gate_driver,
+};
+use crate::terminal::{
+    Terminal, attach_missing_pty_sources, attach_pty_source, attach_settings_source,
+    attach_sigterm_source,
 };
 use gtk::gdk;
 use gtk::gio;
@@ -14,6 +22,7 @@ use gtk::glib::translate::IntoGlib;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Button, Entry, GLArea, Label, SearchBar};
 use kitmux_model::accumulate_scroll_lines;
+use kitmux_model::{CommandId, ControlSocketError, ShortcutAction};
 use std::cell::{Cell, RefCell};
 use std::env;
 use std::ffi::c_int;

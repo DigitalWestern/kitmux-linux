@@ -37,6 +37,45 @@ repository root.
 
 Adjacent macOS checkout: `../macos/kitmux/`
 
+### 2026-08-27 — App crate modularized; no behavior change intended
+
+- Split `rust/app/src/main.rs` (5,789 lines) into focused modules with a
+  52-line `main.rs`: `terminal.rs` (engine/session runtime, PTY pump,
+  `impl Terminal`), `control.rs` (control-socket server and dispatch),
+  `navigation.rs` (navigation UI sync and gate drivers), `dialogs.rs`
+  (modals, palette execution, paste/close review), `menu.rs` (menu bar and
+  actions), `ssh.rs` (ssh -G resolution), `restore.rs` (snapshot
+  restoration), `runtime.rs` (runtime bundle, account, C-string helpers).
+  `window.rs` imports were updated; moved items became `pub(crate)`. The
+  only non-mechanical edits were the three outstanding Clippy fixes
+  (two `needless_borrow` in the menu actions, one `collapsible_if` in
+  `split_layout`) and moving the control-surface test module below the items
+  it tests. Doc pointers in `docs/MENUBAR_PLAN.md` were updated.
+- Verified on this macOS host: function and type name multisets before/after
+  the split are identical; `cargo fmt -- --check` passes for app and model;
+  `cargo clippy --locked --all-targets -- -D warnings` passes for the app
+  crate with GTK4 pkg-config probing bypassed via `SYSTEM_DEPS_*_NO_PKG_CONFIG`
+  overrides and a stub `KITMUX_NATIVE_LIB_DIR` (typechecks against the pinned
+  gtk4-rs 0.11.4 API; does not link or run); the model suite passed
+  (4 unit, 29 contract, 9 interaction, 18 model, 5 persistence tests).
+- ARM64 VM evidence, same date: in the headless VM,
+  `CARGO_NET_OFFLINE=true scripts/test-model.sh` passed (fmt, clippy
+  `-D warnings`, full suite including the 9 Linux-only control-socket
+  tests). In the desktop VM on `DISPLAY=:1` (X11, Mesa llvmpipe), the
+  refactored app built into a fresh release runtime and
+  `test-phase5-navigation.sh`, `test-phase6-control.sh`,
+  `test-phase6-resume.sh`, `test-phase6-ssh.sh`, and `test-phase4.sh` all
+  passed — covering the moved navigation, control-dispatch, resume-dialog,
+  SSH, paste/close-review, and session-runtime code against the live app.
+- `test-phase5-product.sh` failed twice at the same point: the app reaches
+  `accessibility_ready roles=true focus=true` and emits `menu_key key=F10`,
+  but the gate never observes the arrow/Escape `menu_keyboard_traversal`
+  diagnostic. This is the same failure recorded in the 2026-08-26 menu-bar
+  closeout, in `window.rs` logic the refactor did not modify (imports only);
+  it remains the open menu-traversal item, now known to be deterministic
+  rather than an interrupted run. Package, clean-machine, physical-GPU, and
+  x86_64 evidence remain unclaimed.
+
 ### 2026-08-26 — Approved Linux menu-bar build Slice 7.1, contract and model slice
 
 - The approved Linux-first menu bar is a beta surface but does not replace or
