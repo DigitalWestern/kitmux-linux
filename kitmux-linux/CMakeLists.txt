@@ -40,6 +40,13 @@ if(NOT EXISTS "${LIBKITTY_ROOT}/include/libkitty.h")
     "Locked reference is missing. Run scripts/materialize-reference.sh on the host.")
 endif()
 
+# The engine embeds the bundled Kitty python; the test environment sets
+# PYTHONHOME to that bundle, so linking any other libpython (for example the
+# distro's) makes Py_InitializeFromConfig fail on a stdlib version mismatch.
+if(EXISTS "${KITTY_DEVELOP_ROOT}/bin/python")
+  set(Python3_EXECUTABLE "${KITTY_DEVELOP_ROOT}/bin/python")
+  set(Python3_ROOT_DIR "${KITTY_DEVELOP_ROOT}")
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
 
 add_library(kitty SHARED
