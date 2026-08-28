@@ -49,10 +49,23 @@ PY
   fi
 fi
 
+# Kitty's `dev.sh deps` rewrites the bundle's /sw/sw build prefix in every
+# pkg-config and _sysconfigdata file and drops the bundled libfontconfig so
+# the system one is used. The locked-archive path skips `dev.sh deps`, so a
+# clean checkout must repeat both after extraction or the build compiles
+# against nonexistent /sw/sw include paths.
+relocate_dependency_tree() {
+  local root="$1"
+  find "$root" -type f \( -name '*.pc' -o -name '_sysconfigdata_*.py' \) \
+    -exec sed -i "s|/sw/sw|$root|g" {} +
+  find "$root/lib" -maxdepth 1 -name 'libfontconfig.so*' -delete 2>/dev/null || true
+}
+
 if [[ ! -x "$develop_deps/bin/python" ]]; then
   if [[ -f "$deps_archive" ]]; then
     mkdir -p "$develop_deps"
     tar -xJf "$deps_archive" -C "$develop_deps"
+    relocate_dependency_tree "$develop_deps"
   elif [[ "${KITMUX_ALLOW_SOURCE_DEPENDENCY_BUILD:-0}" == "1" ]]; then
     (cd "$kitty" && ./dev.sh deps)
   else
@@ -83,6 +96,7 @@ broken_links="$(find -L "$deps/lib" -maxdepth 1 -type l -print)"
 if [[ -n "$broken_links" && "$locked_archive" == 1 ]]; then
   echo "Repairing an incomplete dependency tree from the locked archive."
   tar -xJf "$deps_archive" -C "$deps"
+  relocate_dependency_tree "$deps"
 fi
 broken_links="$(find -L "$deps/lib" -maxdepth 1 -type l -print)"
 if [[ -n "$broken_links" ]]; then
