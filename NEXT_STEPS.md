@@ -38,16 +38,16 @@ lives in [`PORT_STATUS.md`](PORT_STATUS.md); phase scope and exit gates live in
 
 ## Remaining order
 
-1. Prove one physical Mesa GPU. Capture `glxinfo -B` showing a hardware Mesa
-   renderer, then run the rendering and interaction gates on that same display.
-   A llvmpipe result is correctness evidence only.
-2. Recover or intentionally re-lock the exact x86_64 dependency bundle, build
-   and test x86_64, and complete the x86_64 package path.
-3. Close the open menu-bar traversal check: `test-phase5-product.sh` fails
-   deterministically at the F10 arrow/Escape `menu_keyboard_traversal`
-   diagnostic (recorded 2026-08-27; the app reaches `accessibility_ready`
-   and emits the F10 event). This is MENUBAR_PLAN slice 4 product work in
-   `rust/app/src/window.rs`.
+1. Prove one physical Mesa GPU — work stream A of
+   [`docs/BETA_EVIDENCE_PLAN.md`](docs/BETA_EVIDENCE_PLAN.md). Blocked on the
+   Task A0 host decision; a llvmpipe result is correctness evidence only.
+2. Lock and gate x86_64 — work stream B of the same plan. Blocked on the
+   Task B0 re-lock approval; after it, the locked gate runs on the existing
+   CI runner with no new hardware.
+3. Close the open menu-bar traversal check — the deterministic
+   `test-phase5-product.sh` F10/arrow/Escape failure. The completion plan is
+   [`docs/MENUBAR_PLAN.md`](docs/MENUBAR_PLAN.md) section 8; not blocked on
+   anything.
 4. Decide and document the remaining release bar: real SSH/network
    authentication, power-loss recovery, desktop-menu interaction, package
    signing, vulnerability review, full AT-SPI coverage, and release-maintainer

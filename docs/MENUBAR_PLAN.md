@@ -225,8 +225,10 @@ Each slice is independently dispatchable unless a dependency is named.
    Zoom Pane, Full Screen, Quit, Help, About. Each needs a fixture and
    assertion update. Splittable across agents by menu.
 4. **Accessibility.** GTK menus provide AT-SPI menu roles for free, which
-   advances the open full-AT-SPI gate. Extend the accessibility gate to
-   assert menu roles and keyboard traversal, including F10 and Escape.
+   advances the open full-AT-SPI gate. The gate side landed in
+   `test-phase5-product.sh` (F10 → Right → Down → Escape must produce
+   `menu_keyboard_traversal roles=true focus=true`) and fails
+   deterministically against the app; the completion plan is section 8.
 5. **Menu-bar visibility setting** with persistence and fixture.
 6. **Multi-window.** `ApplicationWindow` per window, per-window navigation
    root, snapshot schema extension, close-review per window. Large. Unblocks
@@ -253,3 +255,168 @@ Independent, no shared files, safe to run concurrently today:
 
 Do not run slice 6 concurrently with slices 2 or 3; all three touch
 `rust/app/src/window.rs` and the navigation root.
+
+## 8. Slice 4 completion plan — the keyboard-traversal gate
+
+Rebuilt 2026-08-27 after the failure was proven deterministic (two
+consecutive `test-phase5-product.sh` runs fail at the same point; evidence
+in `PORT_STATUS.md`).
+
+### What the gate does and what the app emits
+
+The gate (`test-phase5-product.sh`, `open_menu_via_keyboard`) focuses the
+window, presses the live F10 keycode, waits 0.2 s, presses Right, Down,
+Escape, then waits for the exact log line
+`kitmux event=menu_keyboard_traversal roles=true focus=true`. The app emits
+`menu_key key=F10` (the global `ShortcutController` fires) but never the
+arrow or Escape diagnostics, so the traversal line never appears.
+
+### Root cause hypothesis, to be confirmed by Task 1
+
+`attach_menu_key_diagnostics` controllers hang on the window, the GL area,
+and the menu bar, and the F10 handler additionally walks
+`gtk::Window::list_toplevels()` after 50 ms. None of those can see keys
+typed into an open menu: a `GtkPopoverMenu` implements `GtkNative` with its
+own surface, so its key events dispatch from the popover itself — ancestor
+capture controllers never run, and popovers are not `GtkWindow`s, so the
+`list_toplevels()` walk never finds them. The fix is to attach the existing
+diagnostics controller directly to each popover.
+
+### Task 1: instrument and confirm the delivery path
+
+**Files:** none committed — a temporary patch in
+`kitmux-linux/rust/app/src/window.rs`.
+
+- [ ] **Step 1:** Start the desktop VM and session:
+
+```sh
+limactl start kitmux-linux-desktop
+limactl shell kitmux-linux-desktop -- \
+  "$PWD/kitmux-linux/scripts/start-desktop.sh"
+```
+
+- [ ] **Step 2:** Temporarily add, after `menu_bar` is constructed in
+  `build_window`, a recursive walk that logs every descendant type name and
+  attaches a capture-phase key logger to each `PopoverMenu` found:
+
+```rust
+fn log_menu_tree(widget: &gtk::Widget, depth: usize) {
+    diagnostic(
+        "menu_tree",
+        &[("depth", depth.to_string()), ("type", widget.type_().name().to_string())],
+    );
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        log_menu_tree(&current, depth + 1);
+        child = current.next_sibling();
+    }
+}
+log_menu_tree(menu_bar.upcast_ref(), 0);
+```
+
+- [ ] **Step 3:** Build and drive it exactly the way the gate does:
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 bash -c '
+  set -e
+  runtime=$(mktemp -d)
+  KITMUX_BUILD_APP_RUNTIME=1 KITMUX_APP_TEST_HOOKS=ON \
+    "$PWD/kitmux-linux/scripts/build-release-runtime.sh" "$runtime/r"
+  "$runtime/r/bin/kitmux" >/tmp/menu-probe.log 2>&1 &
+  sleep 3
+  window=$(xdotool search --name Kitmux | head -1)
+  xdotool windowactivate --sync $window
+  f10=$(xmodmap -pk | awk '"'"'$2 == "0xffc7" { print $1 }'"'"')
+  xdotool key --clearmodifiers $f10; sleep 0.2
+  xdotool key --clearmodifiers Right Down Escape; sleep 1
+  grep -E "menu_tree|menu_key|menu_keyboard" /tmp/menu-probe.log'
+```
+
+Expected: the `menu_tree` lines show whether `GtkPopoverMenu` children
+exist at construction time, and the probe shows which widget (if any)
+receives Right/Down/Escape. Record both facts in this section before
+moving on. If popovers are created lazily (no `GtkPopoverMenu` in the
+tree at build time), Task 2 attaches inside the F10 handler instead, with
+a run-once guard.
+
+- [ ] **Step 4:** Revert the temporary patch.
+
+### Task 2: attach the diagnostics to the popovers
+
+**Files:** Modify `kitmux-linux/rust/app/src/window.rs` (the
+`build_window` menu section and the F10 `CallbackAction`).
+
+- [ ] **Step 1:** Add the walk (final form, not the probe), reusing the
+  existing `attach_menu_key_diagnostics`:
+
+```rust
+fn attach_popover_diagnostics(widget: &gtk::Widget, menu_navigation: &Rc<Cell<bool>>) {
+    if widget.is::<gtk::PopoverMenu>() {
+        let popover_keys = gtk::EventControllerKey::new();
+        attach_menu_key_diagnostics(&popover_keys, menu_navigation.clone());
+        widget.add_controller(popover_keys);
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        attach_popover_diagnostics(&current, menu_navigation);
+        child = current.next_sibling();
+    }
+}
+```
+
+Call it once after the menu bar is added to the window
+(`attach_popover_diagnostics(menu_bar.upcast_ref(), &menu_navigation);`)
+if Task 1 showed the popovers exist at build time; otherwise call it from
+the F10 handler behind a `Rc<Cell<bool>>` attached-once guard, replacing
+the 50 ms `list_toplevels()` walk.
+
+- [ ] **Step 2:** Delete the `glib::timeout_add_local_once` +
+  `list_toplevels()` block from the F10 handler — Task 1 will have shown it
+  attaches to nothing useful; keeping it re-adds controllers on every press.
+- [ ] **Step 3:** `cargo fmt` and host typecheck (macOS, no GTK install —
+  the overrides are recorded in `PORT_STATUS.md` 2026-08-27):
+  clippy must stay clean with `-D warnings`.
+
+### Task 3: prove it with the real gate, twice
+
+- [ ] **Step 1:**
+
+```sh
+limactl shell kitmux-linux-desktop -- env DISPLAY=:1 \
+  "$PWD/kitmux-linux/scripts/test-phase5-product.sh"
+```
+
+Expected: the previously failing wait —
+`Kitmux never reported F10, arrow, and Escape menu traversal` — is gone and
+the gate passes end to end.
+
+- [ ] **Step 2:** Run it a second time. Expected: pass again — the failure
+  was deterministic, so the fix must be too.
+- [ ] **Step 3:** Regression sweep, per section 5:
+  `test-phase5-navigation.sh`, `test-phase6-control.sh`,
+  `test-phase6-resume.sh`, `test-phase6-ssh.sh`, `test-phase4.sh`, and
+  `scripts/test-model.sh` in the headless VM. Expected: all pass; the
+  accessibility gate still emits
+  `accessibility_ready roles=true focus=true`.
+
+### Task 4: record and close
+
+- [ ] **Step 1:** Dated `PORT_STATUS.md` entry: the root cause (popover
+  surfaces bypass ancestor capture), the fix, and both gate results.
+- [ ] **Step 2:** Remove the traversal item from `NEXT_STEPS.md`, mark
+  slice 4 closed in section 6 above, and update the `PORT_STATUS.md`
+  header's "keyboard-traversal gate check is still open" clause.
+- [ ] **Step 3:** Commit:
+  `fix: route menu key diagnostics through the popover surfaces`.
+
+### Fallback if Task 1 falsifies the hypothesis
+
+If the popover controllers still see nothing, stop patching key plumbing
+and make the diagnostics semantic instead: connect `closed` on each
+`PopoverMenu` and emit `menu_keyboard_traversal roles=true focus=true`
+when a popover closes while `menu_navigation` is set and the closing event
+was an Escape seen by any diagnostic controller. A menu that opened and
+closed under keyboard control is stronger traversal evidence than sniffed
+keystrokes; adjust the gate's arrow expectations only if the app-side
+events genuinely cannot be observed, and record the reasoning in
+`PORT_STATUS.md` either way.
