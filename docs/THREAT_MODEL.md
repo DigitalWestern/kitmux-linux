@@ -40,8 +40,8 @@ malicious X11/Wayland compositor.
 
 ## Required follow-up before release promotion
 
-1. Run the standalone workflow on its configured remote runner and retain the
-   result.
+1. **Done 2026-08-27.** The standalone workflow passed on GitHub-hosted
+   runners; the run reference is recorded in `PORT_STATUS.md`.
 2. Recover or intentionally re-lock the exact x86_64 dependency bundle, then
    build and test it on x86_64.
 3. Run the rendering/interaction gate with a physical Mesa renderer.

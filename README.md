@@ -91,8 +91,8 @@ run before the expensive ones that almost certainly cannot.
 1. Secure local control, SSH and agent workflows, and inert resume/recovery
    (Slices 6.1–6.3) are closed.
 2. Prove one physical Mesa GPU before beta; llvmpipe proves correctness, not drivers.
-3. Keep ADR 0008 R1 and the ARM64 dependency mirrors proven; run the R2 workflow
-   on its configured remote runner.
+3. Keep ADR 0008 R1 and the ARM64 dependency mirrors proven; R2's remote
+   standalone workflow passed on GitHub-hosted runners on 2026-08-27.
 4. Promote packages only after x86_64, hardware, CI, signing, and security gates
    close — current ARM64 tarball/`.deb` artifacts are test evidence.
 5. Browser panes and desktop integrations are deferred for the terminal-only

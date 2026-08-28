@@ -26,8 +26,8 @@ Reproducible ARM64 tarball and `.deb` artifacts now exist and have passed a
 fresh-VM lifecycle gate; promotion is still blocked by the remaining hardware,
 architecture, CI, and threat/soak evidence below.
 
-**Next gate:** Physical-Mesa GPU rendering and interaction, followed by x86_64,
-remote CI, exact dependency-mirror, and release-readiness evidence.
+**Next gate:** Physical-Mesa GPU rendering and interaction, followed by x86_64
+and release-readiness evidence. Remote CI (ADR 0008 R2) closed 2026-08-27.
 
 **Non-claims:** see [Current blockers and limits](#current-blockers-and-limits).
 All GUI evidence below is ARM64, Mesa llvmpipe, one machine, one person.
@@ -38,6 +38,44 @@ repository root.
 ## Verified checkout state
 
 Adjacent macOS checkout: `../macos/kitmux/`
+
+### 2026-08-27 — First remote CI pass; ADR 0008 R2 closed
+
+- `.github/workflows/linux-standalone.yml` run 33131978184 at `3a4aa88`
+  passed both jobs on GitHub-hosted runners. standalone-arm64
+  (`ubuntu-24.04-arm`) ran the full standalone gate from a clean checkout:
+  locked materialization, kitty build, 6/6 ctest (headers, ELF audit,
+  engine lifecycle, session API, session stress), Rust header layout,
+  portable fixtures, and the complete model gate. standalone-amd64 passed
+  the explicitly unlocked x86_64 fallback build; per ADR 0008 that remains
+  fallback smoke evidence, not an x86_64 support claim.
+- Reaching green surfaced five defects that only a clean host could show —
+  the VMs' persistent `.source` tree and CMake caches had been supplying
+  state a fresh checkout lacks:
+  1. The workflow was missing xinerama/xcursor/xi/Wayland dev packages and
+     used Ubuntu's apt cargo 1.75, which cannot build edition-2024 crates;
+     it now installs the provision script's package set, zsh (the session
+     foreground tests spawn `/bin/zsh`), and pinned rustup 1.97.1 with
+     rustfmt and clippy.
+  2. `build-kitty-dev.sh`'s locked path never extracted
+     `SymbolsNerdFontMono-Regular.ttf`, so kitty's setup fell back to
+     fc-list and failed.
+  3. The locked path also never relocated the bundle's `/sw/sw` build
+     prefix in `.pc`/`_sysconfigdata` files, so compiles used nonexistent
+     include paths; extraction now repeats kitty's relocation and drops the
+     bundled libfontconfig.
+  4. Bare `find_package(Python3)` linked the host libpython while
+     PYTHONHOME pointed at the bundle, failing `Py_InitializeFromConfig`;
+     CMake now pins the bundled embed artifacts directly (no interpreter
+     probe) and uses the host python3 only for codegen.
+  5. Linking the bundled libpython leaked its directory into libkitty's
+     runpath, failing the ELF audit's exact `[$ORIGIN]` check; the build
+     now uses the install rpath plus a link-time-only INTERFACE
+     `-rpath-link` for consumers.
+- Every fix was verified before push on a clean `git clone` inside the
+  ARM64 headless VM (6/6 ctest, runpath exactly `[$ORIGIN]`) and the
+  shared-mount `test-headless.sh` end to end, so the existing VM flow is
+  unchanged.
 
 ### 2026-08-27 — App crate modularized; no behavior change intended
 
@@ -1878,12 +1916,20 @@ is recorded only after the corresponding gate runs.
   `../macos/kitmux`, and `test-standalone.sh` passed in the ARM64 headless VM
   with that checkout unavailable. This closes the current ARM64 standalone
   source obligation; x86_64 remains unbuilt.
-- **R2 — automated workflow added; remote now exists, run pending.**
-  `.github/workflows/linux-standalone.yml` triggers the standalone ARM64
-  headless gate on push, pull request, and manual dispatch. As of 2026-08-27
-  this checkout has a GitHub remote
-  (`DigitalWestern/kitmux-linux`); R2 closes only when a remote run's result
-  is recorded in this ledger.
+- **R2 — closed 2026-08-27.** `.github/workflows/linux-standalone.yml` passed
+  on the GitHub-hosted `ubuntu-24.04-arm` runner: run 33131978184 at commit
+  `3a4aa88` (<https://github.com/DigitalWestern/kitmux-linux/actions/runs/33131978184>),
+  standalone-arm64 green end to end — locked materialization, kitty build,
+  6/6 ctest including the ELF audit and session/engine suites, Rust header
+  layout, portable fixtures, and the full model gate. The standalone-amd64
+  job also passed using the explicitly unlocked x86_64 fallback; per ADR
+  0008 that is fallback smoke evidence, not an x86_64 support or
+  reproducibility claim. Getting here surfaced and fixed five clean-host
+  defects the persistent VM state had masked (workflow dev packages and
+  toolchain, missing symbols-font extraction, missing dependency-tree
+  relocation, CMake linking the host libpython, and libkitty's runpath
+  leaking the dependency path); the dated 2026-08-27 entries carry the
+  detail.
 - **R3 — closed 2026-07-28.** `scripts/test-desktop.sh` accepts a
   caller-supplied `DISPLAY`; noVNC is optional in that mode. Its full X11 and
   nested-Wayland gate passed after the change, and cleanup restores the
