@@ -16,7 +16,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes \
             binutils build-essential cmake file git patchelf \
-            pkg-config python3 python3-dev \
+            pkg-config python3 python3-dev zsh \
             libdbus-1-dev libfontconfig1-dev libfreetype6-dev libgl-dev \
             libharfbuzz-dev liblcms2-dev libpng-dev libreadline-dev \
             libsqlite3-dev libssl-dev libwayland-dev libx11-dev \
@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes \
             binutils build-essential cmake file git patchelf \
-            pkg-config python3 python3-dev \
+            pkg-config python3 python3-dev zsh \
             libdbus-1-dev libfontconfig1-dev libfreetype6-dev libgl-dev \
             libharfbuzz-dev liblcms2-dev libpng-dev libreadline-dev \
             libsqlite3-dev libssl-dev libwayland-dev libx11-dev \
