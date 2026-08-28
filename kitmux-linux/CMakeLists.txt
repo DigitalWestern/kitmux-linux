@@ -79,9 +79,16 @@ if(KITMUX_PYTHON_LIBRARY_OVERRIDE)
   endif()
   target_link_libraries(kitty PRIVATE
     "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" ${CMAKE_DL_LIBS})
+  get_filename_component(KITMUX_LIBPYTHON_DIR
+    "${KITMUX_PYTHON_LIBRARY_OVERRIDE}" DIRECTORY)
 else()
   target_link_libraries(kitty PRIVATE Python3::Python ${CMAKE_DL_LIBS})
+  get_filename_component(KITMUX_LIBPYTHON_DIR "${Python3_LIBRARIES}" DIRECTORY)
 endif()
+# libkitty's runpath is exactly [$ORIGIN] (audited), so executables linking it
+# need a link-time-only hint to resolve the transitive libpython symbols.
+target_link_options(kitty INTERFACE
+  "-Wl,-rpath-link,${KITMUX_LIBPYTHON_DIR}")
 target_compile_options(kitty PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
 target_link_options(kitty PRIVATE
   "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libkitty.map"
